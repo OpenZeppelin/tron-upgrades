@@ -1,0 +1,17 @@
+{
+  "name": "tron-sandbox",
+  "private": true,
+  "description": "Local dev loop: a Hardhat project that compiles and tests against a real TRON node (TRE in Docker) via @openzeppelin/hardhat-tron. Future home of the E2E fixture matrix.",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.1.0",
+    "@nomicfoundation/hardhat-ethers": "^3.1.0",
+    "@openzeppelin/hardhat-tron": "file:vendor/openzeppelin-hardhat-tron-0.1.0.tgz",
+    "chai": "^4.5.0",
+    "ethers": "^6.14.0",
+    "hardhat": "^2.26.0"
+  }
+}

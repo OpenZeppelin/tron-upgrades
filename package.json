@@ -1,0 +1,16 @@
+{
+  "name": "tron-upgrades-monorepo",
+  "private": true,
+  "description": "OpenZeppelin Upgrades Plugins for TRON — Hardhat and TronBox. Monorepo.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  }
+}

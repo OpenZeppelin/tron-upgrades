@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+
+# Hardhat (sandbox)
+sandbox/artifacts/
+sandbox/cache/
+sandbox/.openzeppelin/unknown-*.json
+
+# local agent instructions (never commit)
+CLAUDE.local.md
+
+.DS_Store
+*.log
