@@ -25,14 +25,26 @@ here.
 local dev loop and E2E rig. It consumes `@openzeppelin/hardhat-tron` via a
 vendored tarball (`sandbox/vendor/`) while that package is unpublished.
 
+The sandbox also depends on the ported contracts library as a sibling clone
+(`openzeppelin-tron-solidity` is not published):
+
 ```bash
-cd sandbox
+# once, next to this repo:
+git clone git@github.com:OpenZeppelin/tron-contracts.git
+cd tron-contracts && npm pkg delete scripts.prepare   # its husky hook breaks file: installs
+
+cd ../tron-upgrades/sandbox
 npm install
 npx hardhat compile   # first run downloads tron-solc (SHA-256 verified)
 npx hardhat test      # first run pulls tronbox/tre:dev and boots a TRON node in Docker
 ```
 
 Requirements: Node.js ≥ 20, Docker running.
+
+Current test coverage: transparent-proxy lifecycle (deploy, ERC-1967 slot
+verification, upgrade, state preservation), beacon-proxy atomic upgrades,
+deterministic-clone (CREATE2, `0x41` prefix) address prediction, and
+upgrade-safety validation of tron-solc build-info via `@openzeppelin/upgrades-core`.
 
 ## License
 
