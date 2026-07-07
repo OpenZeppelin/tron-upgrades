@@ -5,7 +5,7 @@ coverage/
 # Hardhat (sandbox)
 sandbox/artifacts/
 sandbox/cache/
-sandbox/.openzeppelin/unknown-*.json
+sandbox/.openzeppelin/
 
 # local agent instructions (never commit)
 CLAUDE.local.md

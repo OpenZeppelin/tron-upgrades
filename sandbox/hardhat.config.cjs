@@ -1,6 +1,7 @@
 require('@nomicfoundation/hardhat-ethers');
 require('@nomicfoundation/hardhat-chai-matchers');
 require('@openzeppelin/hardhat-tron');
+require('@openzeppelin/hardhat-tron-upgrades');
 
 module.exports = {
   solidity: {

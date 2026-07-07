@@ -1,29 +1,23 @@
 {
   "name": "@openzeppelin/hardhat-tron-upgrades",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "OpenZeppelin Upgrades plugin for Hardhat on TRON (TVM): deploy and upgrade proxies with upgrade-safety validations.",
   "license": "MIT",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.js",
   "files": [
-    "dist",
+    "src",
     "LICENSE",
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
-    "test": "echo \"no tests yet\" && exit 0"
+    "test": "echo \"tested via the repo sandbox\" && exit 0"
   },
   "dependencies": {
     "@openzeppelin/upgrades-core": "^1.46.0"
   },
   "peerDependencies": {
-    "@openzeppelin/hardhat-tron": ">=0.1.0",
     "ethers": "^6.13.0",
     "hardhat": "^2.22.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.7.0"
   },
   "publishConfig": {
     "access": "public"
