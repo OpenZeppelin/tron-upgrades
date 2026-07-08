@@ -96,9 +96,15 @@ function writeManifest(hre, manifest) {
 
 // -- deploy / upgrade (on-chain, via the TronWeb bridge) ------------
 
-async function defaultOwner(hre) {
-  const signers = await hre.ethers.getSigners();
-  return signers[0];
+// The deployer (network accounts[0]) as an EVM-style checksummed address.
+// Deliberately avoids hre.ethers.getSigners(): the bridge's signer setup
+// funds accounts via the tre_setAccountBalance cheatcode, which only exists
+// on TRE — on public networks it hard-fails. Without an explicit signer,
+// state-changing calls are signed by the deployer key anyway.
+function deployerAddress(hre) {
+  const { tronWeb, address } = hre.tre.makeTronWeb();
+  const hex21 = tronWeb.address.toHex(address);
+  return hre.ethers.getAddress('0x' + hex21.slice(2));
 }
 
 async function deployProxy(hre, contractName, args = [], opts = {}) {
@@ -121,7 +127,7 @@ async function deployProxy(hre, contractName, args = [], opts = {}) {
 
   let proxy;
   if (kind === 'transparent') {
-    const owner = opts.initialOwner ?? (await defaultOwner(hre)).address;
+    const owner = opts.initialOwner ?? deployerAddress(hre);
     proxy = await hre.ethers.deployContract(FQN.transparent, [implAddress, owner, initData]);
   } else {
     proxy = await hre.ethers.deployContract(FQN.trc1967, [implAddress, initData]);
@@ -164,7 +170,9 @@ async function upgradeProxy(hre, proxy, newContractName, opts = {}) {
   // Resolve the upgrade authority BEFORE deploying the new implementation,
   // so a mis-routed proxy (e.g. a UUPS proxy taken down the transparent
   // path) fails without leaving an orphan implementation on the chain.
-  const owner = opts.owner ?? (await defaultOwner(hre));
+  // Without opts.owner, calls are signed by the deployer key (no signer
+  // machinery needed — see deployerAddress).
+  const withOwner = (contract) => (opts.owner ? contract.connect(opts.owner) : contract);
   let admin = null;
   if (kind === 'transparent') {
     const adminAddress = slotToAddress(await getSlot(hre, proxyAddress, ADMIN_SLOT));
@@ -184,9 +192,9 @@ async function upgradeProxy(hre, proxy, newContractName, opts = {}) {
     // reached through the proxy (delegatecall), so it mutates the proxy's
     // own 1967 slot.
     const proxyAsImpl = await hre.ethers.getContractAt(fromContractName, proxyAddress);
-    await proxyAsImpl.connect(owner).upgradeToAndCall(newImplAddress, opts.call ?? '0x');
+    await withOwner(proxyAsImpl).upgradeToAndCall(newImplAddress, opts.call ?? '0x');
   } else {
-    await admin.connect(owner).upgradeAndCall(proxyAddress, newImplAddress, opts.call ?? '0x');
+    await withOwner(admin).upgradeAndCall(proxyAddress, newImplAddress, opts.call ?? '0x');
   }
 
   // trust, but verify: the implementation slot must now hold the new address
