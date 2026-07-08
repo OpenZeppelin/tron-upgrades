@@ -1,6 +1,6 @@
 {
   "name": "@openzeppelin/hardhat-tron-upgrades",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "OpenZeppelin Upgrades plugin for Hardhat on TRON (TVM): deploy and upgrade proxies with upgrade-safety validations.",
   "license": "MIT",
   "main": "src/index.js",

@@ -14,9 +14,18 @@ const FQN = {
   trc1967: `${PROXY_PKG}/TRC1967/TRC1967Proxy.sol:TRC1967Proxy`,
 };
 
+const KINDS = ['transparent', 'uups'];
+const ZERO_ADDRESS = '0x' + '0'.repeat(40);
+
+function checkKind(kind) {
+  if (!KINDS.includes(kind)) {
+    throw new Error(`kind "${kind}" not supported (expected one of: ${KINDS.join(' | ')})`);
+  }
+}
+
 // -- validation (off-chain, over compiler build-info) ---------------
 
-async function upgradeableContractFor(hre, contractName) {
+async function upgradeableContractFor(hre, contractName, opts = {}) {
   // lazy-require keeps `hardhat compile`-time loads cheap
   const { UpgradeableContract } = require('@openzeppelin/upgrades-core');
   const artifact = await hre.artifacts.readArtifact(contractName);
@@ -25,29 +34,32 @@ async function upgradeableContractFor(hre, contractName) {
   if (!buildInfo) {
     throw new Error(`No build-info for ${fqName}. Run \`hardhat compile\` first.`);
   }
+  // `kind` matters: upgrades-core only surfaces the missing
+  // upgradeTo/upgradeToAndCall error when validating as 'uups'.
+  const validationOpts = { kind: opts.kind ?? 'transparent' };
   return {
     artifact,
     contract: new UpgradeableContract(
       artifact.contractName,
       buildInfo.input,
       buildInfo.output,
-      {},
+      validationOpts,
       buildInfo.solcVersion,
     ),
   };
 }
 
-async function validateImplementation(hre, contractName) {
-  const { contract } = await upgradeableContractFor(hre, contractName);
+async function validateImplementation(hre, contractName, opts = {}) {
+  const { contract } = await upgradeableContractFor(hre, contractName, opts);
   const report = contract.getErrorReport();
   if (!report.ok) {
     throw new Error(`${contractName} is not upgrade-safe:\n${report.explain()}`);
   }
 }
 
-async function validateUpgrade(hre, fromContractName, toContractName) {
-  const from = await upgradeableContractFor(hre, fromContractName);
-  const to = await upgradeableContractFor(hre, toContractName);
+async function validateUpgrade(hre, fromContractName, toContractName, opts = {}) {
+  const from = await upgradeableContractFor(hre, fromContractName, opts);
+  const to = await upgradeableContractFor(hre, toContractName, opts);
   const errors = to.contract.getErrorReport();
   if (!errors.ok) {
     throw new Error(`${toContractName} is not upgrade-safe:\n${errors.explain()}`);
@@ -63,8 +75,8 @@ async function validateUpgrade(hre, fromContractName, toContractName) {
 // -- manifest (which proxy runs which contract, per network) --------
 //
 // Minimal deployment record so `upgradeProxy` can validate against the
-// contract currently behind the proxy. Not yet compatible with the
-// upstream .openzeppelin manifest schema.
+// contract currently behind the proxy and route by proxy kind. Not yet
+// compatible with the upstream .openzeppelin manifest schema.
 
 function manifestPath(hre) {
   return path.join(hre.config.paths.root, '.openzeppelin', `${hre.network.name}.json`);
@@ -91,15 +103,18 @@ async function defaultOwner(hre) {
 
 async function deployProxy(hre, contractName, args = [], opts = {}) {
   const kind = opts.kind ?? 'transparent';
-  if (kind !== 'transparent' && kind !== 'trc1967') {
-    throw new Error(`kind "${kind}" not supported yet (transparent | trc1967)`);
-  }
-  await validateImplementation(hre, contractName);
+  checkKind(kind);
+  await validateImplementation(hre, contractName, { kind });
 
   const impl = await hre.ethers.deployContract(contractName);
   const implAddress = await impl.getAddress();
 
   const initializer = opts.initializer ?? 'initialize';
+  if (kind === 'uups' && initializer === false) {
+    // The ported TRC1967Proxy rejects empty constructor data, so an
+    // uninitialized UUPS proxy cannot be deployed through this path yet.
+    throw new Error(`initializer: false is not supported for kind "uups"`);
+  }
   const initData =
     initializer === false ? '0x' : impl.interface.encodeFunctionData(initializer, args);
 
@@ -128,25 +143,43 @@ async function upgradeProxy(hre, proxy, newContractName, opts = {}) {
 
   const manifest = readManifest(hre);
   const record = manifest.proxies[proxyAddress.toLowerCase()];
+  if (record && opts.kind && record.kind !== opts.kind) {
+    throw new Error(
+      `Proxy ${proxyAddress} is recorded as "${record.kind}" but opts.kind says "${opts.kind}"`,
+    );
+  }
+  const kind = record?.kind ?? opts.kind ?? 'transparent';
+  checkKind(kind);
+
   const fromContractName = opts.from ?? (record && record.contract);
   if (!fromContractName) {
     throw new Error(
-      `No deployment record for proxy ${proxyAddress} on network "${hre.network.name}" — pass opts.from with the current implementation's contract name.`,
+      `No deployment record for proxy ${proxyAddress} on network "${hre.network.name}" — pass opts.from with the current implementation's contract name (and opts.kind for non-transparent proxies).`,
     );
   }
-  if (record && record.kind !== 'transparent') {
-    throw new Error(`upgradeProxy currently supports transparent proxies only (got "${record.kind}")`);
-  }
 
-  await validateUpgrade(hre, fromContractName, newContractName);
+  await validateUpgrade(hre, fromContractName, newContractName, { kind });
 
   const newImpl = await hre.ethers.deployContract(newContractName);
   const newImplAddress = await newImpl.getAddress();
 
-  const adminAddress = hre.ethers.getAddress(slotToAddress(await getSlot(hre, proxyAddress, ADMIN_SLOT)));
-  const admin = await hre.ethers.getContractAt(FQN.proxyAdmin, adminAddress);
   const owner = opts.owner ?? (await defaultOwner(hre));
-  await admin.connect(owner).upgradeAndCall(proxyAddress, newImplAddress, opts.call ?? '0x');
+  if (kind === 'uups') {
+    // The upgrade function lives in the CURRENT implementation and is
+    // reached through the proxy (delegatecall), so it mutates the proxy's
+    // own 1967 slot.
+    const proxyAsImpl = await hre.ethers.getContractAt(fromContractName, proxyAddress);
+    await proxyAsImpl.connect(owner).upgradeToAndCall(newImplAddress, opts.call ?? '0x');
+  } else {
+    const adminAddress = slotToAddress(await getSlot(hre, proxyAddress, ADMIN_SLOT));
+    if (adminAddress === ZERO_ADDRESS) {
+      throw new Error(
+        `Proxy ${proxyAddress} has no admin in the 1967 admin slot — not a transparent proxy? For UUPS proxies pass opts.kind: "uups".`,
+      );
+    }
+    const admin = await hre.ethers.getContractAt(FQN.proxyAdmin, hre.ethers.getAddress(adminAddress));
+    await admin.connect(owner).upgradeAndCall(proxyAddress, newImplAddress, opts.call ?? '0x');
+  }
 
   // trust, but verify: the implementation slot must now hold the new address
   const current = slotToAddress(await getSlot(hre, proxyAddress, IMPL_SLOT)).toLowerCase();
@@ -156,11 +189,12 @@ async function upgradeProxy(hre, proxy, newContractName, opts = {}) {
     );
   }
 
-  if (record) {
-    record.contract = newContractName;
-    record.implementation = newImplAddress;
-    writeManifest(hre, manifest);
-  }
+  manifest.proxies[proxyAddress.toLowerCase()] = {
+    kind,
+    contract: newContractName,
+    implementation: newImplAddress,
+  };
+  writeManifest(hre, manifest);
 
   return hre.ethers.getContractAt(newContractName, proxyAddress);
 }
@@ -169,8 +203,8 @@ function makeUpgrades(hre) {
   return {
     deployProxy: (name, args, opts) => deployProxy(hre, name, args, opts),
     upgradeProxy: (proxy, name, opts) => upgradeProxy(hre, proxy, name, opts),
-    validateImplementation: (name) => validateImplementation(hre, name),
-    validateUpgrade: (from, to) => validateUpgrade(hre, from, to),
+    validateImplementation: (name, opts) => validateImplementation(hre, name, opts),
+    validateUpgrade: (from, to, opts) => validateUpgrade(hre, from, to, opts),
     trc1967: { IMPL_SLOT, ADMIN_SLOT },
   };
 }
