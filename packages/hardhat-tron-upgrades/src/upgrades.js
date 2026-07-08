@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { ADMIN_SLOT, IMPL_SLOT, getSlot, slotToAddress } = require('./slots');
+const { ADMIN_SLOT, BEACON_SLOT, IMPL_SLOT, getSlot, slotToAddress } = require('./slots');
 
 // Proxy artifacts come from the ported contracts library, compiled by the
 // consumer project (see README). Fully-qualified names are required because
@@ -12,6 +12,8 @@ const FQN = {
   transparent: `${PROXY_PKG}/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy`,
   proxyAdmin: `${PROXY_PKG}/transparent/ProxyAdmin.sol:ProxyAdmin`,
   trc1967: `${PROXY_PKG}/TRC1967/TRC1967Proxy.sol:TRC1967Proxy`,
+  beacon: `${PROXY_PKG}/beacon/UpgradeableBeacon.sol:UpgradeableBeacon`,
+  beaconProxy: `${PROXY_PKG}/beacon/BeaconProxy.sol:BeaconProxy`,
 };
 
 const KINDS = ['transparent', 'uups'];
@@ -84,8 +86,10 @@ function manifestPath(hre) {
 
 function readManifest(hre) {
   const p = manifestPath(hre);
-  if (!fs.existsSync(p)) return { proxies: {} };
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
+  const manifest = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {};
+  manifest.proxies ??= {};
+  manifest.beacons ??= {};
+  return manifest;
 }
 
 function writeManifest(hre, manifest) {
@@ -156,6 +160,12 @@ async function upgradeProxy(hre, proxy, newContractName, opts = {}) {
     );
   }
   const kind = record?.kind ?? opts.kind ?? 'transparent';
+  if (kind === 'beacon') {
+    throw new Error(
+      `Proxy ${proxyAddress} is a beacon proxy — its implementation lives on the beacon. ` +
+        `Call upgradeBeacon(${record?.beacon ?? '<beaconAddress>'}, ...) instead.`,
+    );
+  }
   checkKind(kind);
 
   const fromContractName = opts.from ?? (record && record.contract);
@@ -215,13 +225,118 @@ async function upgradeProxy(hre, proxy, newContractName, opts = {}) {
   return hre.ethers.getContractAt(newContractName, proxyAddress);
 }
 
+
+// -- beacons ---------------------------------------------------------
+
+async function resolveAddress(target) {
+  return typeof target === 'string' ? target : await target.getAddress();
+}
+
+async function deployBeacon(hre, contractName, opts = {}) {
+  await validateImplementation(hre, contractName, { kind: 'beacon' });
+
+  const impl = await hre.ethers.deployContract(contractName);
+  const implAddress = await impl.getAddress();
+
+  const owner = opts.initialOwner ?? deployerAddress(hre);
+  const beacon = await hre.ethers.deployContract(FQN.beacon, [implAddress, owner]);
+  const beaconAddress = await beacon.getAddress();
+
+  const manifest = readManifest(hre);
+  manifest.beacons[beaconAddress.toLowerCase()] = {
+    contract: contractName,
+    implementation: implAddress,
+  };
+  writeManifest(hre, manifest);
+
+  return beacon;
+}
+
+async function deployBeaconProxy(hre, beacon, contractName, args = [], opts = {}) {
+  const beaconAddress = await resolveAddress(beacon);
+
+  const initializer = opts.initializer ?? 'initialize';
+  if (initializer === false) {
+    // The ported proxies reject empty constructor data (see TRC1967Proxy).
+    throw new Error(`initializer: false is not supported for beacon proxies`);
+  }
+  const impl = await hre.ethers.getContractAt(contractName, beaconAddress); // ABI source only
+  const initData = impl.interface.encodeFunctionData(initializer, args);
+
+  const proxy = await hre.ethers.deployContract(FQN.beaconProxy, [beaconAddress, initData]);
+  const proxyAddress = await proxy.getAddress();
+
+  const manifest = readManifest(hre);
+  manifest.proxies[proxyAddress.toLowerCase()] = {
+    kind: 'beacon',
+    beacon: beaconAddress,
+  };
+  writeManifest(hre, manifest);
+
+  return hre.ethers.getContractAt(contractName, proxyAddress);
+}
+
+async function upgradeBeacon(hre, beacon, newContractName, opts = {}) {
+  const beaconAddress = await resolveAddress(beacon);
+
+  const manifest = readManifest(hre);
+  const record = manifest.beacons[beaconAddress.toLowerCase()];
+  const fromContractName = opts.from ?? (record && record.contract);
+  if (!fromContractName) {
+    throw new Error(
+      `No deployment record for beacon ${beaconAddress} on network "${hre.network.name}" — pass opts.from with the current implementation's contract name.`,
+    );
+  }
+
+  await validateUpgrade(hre, fromContractName, newContractName, { kind: 'beacon' });
+
+  const beaconContract = await hre.ethers.getContractAt(FQN.beacon, beaconAddress);
+  const newImpl = await hre.ethers.deployContract(newContractName);
+  const newImplAddress = await newImpl.getAddress();
+
+  const withOwner = (c) => (opts.owner ? c.connect(opts.owner) : c);
+  await withOwner(beaconContract).upgradeTo(newImplAddress);
+
+  // trust, but verify: the beacon must now point at the new implementation
+  const current = (await beaconContract.implementation()).toLowerCase();
+  if (current !== newImplAddress.toLowerCase()) {
+    throw new Error(
+      `Beacon upgrade transaction succeeded but the beacon points at ${current}, expected ${newImplAddress}`,
+    );
+  }
+
+  manifest.beacons[beaconAddress.toLowerCase()] = {
+    contract: newContractName,
+    implementation: newImplAddress,
+  };
+  writeManifest(hre, manifest);
+
+  return beaconContract;
+}
+
 function makeUpgrades(hre) {
+  const slotAddress = async (target, slot) =>
+    hre.ethers.getAddress(slotToAddress(await getSlot(hre, await resolveAddress(target), slot)));
   return {
     deployProxy: (name, args, opts) => deployProxy(hre, name, args, opts),
     upgradeProxy: (proxy, name, opts) => upgradeProxy(hre, proxy, name, opts),
+    deployBeacon: (name, opts) => deployBeacon(hre, name, opts),
+    deployBeaconProxy: (beacon, name, args, opts) => deployBeaconProxy(hre, beacon, name, args, opts),
+    upgradeBeacon: (beacon, name, opts) => upgradeBeacon(hre, beacon, name, opts),
     validateImplementation: (name, opts) => validateImplementation(hre, name, opts),
     validateUpgrade: (from, to, opts) => validateUpgrade(hre, from, to, opts),
-    trc1967: { IMPL_SLOT, ADMIN_SLOT },
+    erc1967: {
+      getImplementationAddress: (proxy) => slotAddress(proxy, IMPL_SLOT),
+      getAdminAddress: (proxy) => slotAddress(proxy, ADMIN_SLOT),
+      getBeaconAddress: (proxy) => slotAddress(proxy, BEACON_SLOT),
+    },
+    beacon: {
+      getImplementationAddress: async (beacon) => {
+        const b = await hre.ethers.getContractAt(FQN.beacon, await resolveAddress(beacon));
+        return b.implementation();
+      },
+    },
+    trc1967: { IMPL_SLOT, ADMIN_SLOT, BEACON_SLOT },
   };
 }
 
