@@ -15,14 +15,21 @@ require('@openzeppelin/hardhat-tron-upgrades');
 ```js
 const { upgrades } = require('hardhat');
 
-// validate → deploy implementation → deploy proxy → initialize → record
+// transparent (default kind):
+// validate → deploy implementation → deploy proxy (+ admin) → initialize → record
 const box = await upgrades.deployProxy('BoxV1', [owner, 42n]);
 
-// validate layout compatibility → deploy v2 → re-point → verify slot
+// uups: same API — the upgrade mechanism lives in the implementation
+// (it must inherit UUPSUpgradeable from the ported library)
+const ubox = await upgrades.deployProxy('MyUUPSBox', [owner, 42n], { kind: 'uups' });
+
+// validate layout compatibility (+ upgrade-mechanism presence for uups)
+// → deploy v2 → re-point → verify slot
 const boxV2 = await upgrades.upgradeProxy(box, 'BoxV2');
 
-// unsafe upgrades are rejected BEFORE anything touches the chain
+// unsafe upgrades are rejected BEFORE anything touches the chain:
 await upgrades.upgradeProxy(box, 'BoxV2Broken'); // throws: storage layout incompatible
+await upgrades.upgradeProxy(ubox, 'NoButtonBox'); // throws: missing upgradeToAndCall (anti-brick)
 ```
 
 ## How it works
@@ -35,8 +42,11 @@ await upgrades.upgradeProxy(box, 'BoxV2Broken'); // throws: storage layout incom
   contracts so their artifacts are compiled locally, e.g.:
 
   ```solidity
+  // for kind: 'transparent'
   import {TransparentUpgradeableProxy} from "openzeppelin-tron-solidity/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
   import {ProxyAdmin} from "openzeppelin-tron-solidity/contracts/proxy/transparent/ProxyAdmin.sol";
+  // for kind: 'uups'
+  import {TRC1967Proxy} from "openzeppelin-tron-solidity/contracts/proxy/TRC1967/TRC1967Proxy.sol";
   ```
 
 - **Deployment records** are written to `.openzeppelin/<network>.json` so
@@ -45,8 +55,14 @@ await upgrades.upgradeProxy(box, 'BoxV2Broken'); // throws: storage layout incom
 
 ## Current limitations
 
-- Proxy kinds: `transparent` (full support) and `trc1967` (deploy only);
-  UUPS and beacon helpers are on the roadmap.
+- Proxy kinds: `transparent` and `uups` (full support); beacon helpers are on
+  the roadmap.
+- `kind` must be explicit for UUPS — upstream-style inference from the
+  implementation's bytecode is a planned follow-up.
+- `initializer: false` is not supported for `uups` (the ported `TRC1967Proxy`
+  rejects empty constructor data); the plugin throws a clear error.
+- If a proxy has no deployment record (fresh network, lost manifest), pass
+  `{ from, kind }` explicitly; conflicting record/`opts.kind` values throw.
 - The manifest is a minimal deployment record, not the upstream format.
 - Requires the consumer to compile the ported proxy contracts (see above).
 
