@@ -10,5 +10,10 @@ sandbox/.openzeppelin/
 # local agent instructions (never commit)
 CLAUDE.local.md
 
+# private keys and local env (never commit)
+sandbox/.testnet-key
+.env
+.env.*
+
 .DS_Store
 *.log

@@ -3,6 +3,29 @@ require('@nomicfoundation/hardhat-chai-matchers');
 require('@openzeppelin/hardhat-tron');
 require('@openzeppelin/hardhat-tron-upgrades');
 
+const fs = require('node:fs');
+const path = require('node:path');
+
+// Testnet key: env var wins, then the gitignored key file. There is NO
+// fallback for public networks — selecting shasta/nile without a key throws
+// here rather than ever signing with a publicly-known dev key. For all other
+// commands (tre tests, compile) a placeholder keeps config parsing working.
+function testnetKey() {
+  if (process.env.TRON_TESTNET_KEY) {
+    return '0x' + process.env.TRON_TESTNET_KEY.trim().replace(/^0x/, '');
+  }
+  const f = path.join(__dirname, '.testnet-key');
+  if (fs.existsSync(f)) return '0x' + fs.readFileSync(f, 'utf8').trim().replace(/^0x/, '');
+  if (process.argv.includes('shasta') || process.argv.includes('nile')) {
+    throw new Error(
+      'No testnet key configured: set TRON_TESTNET_KEY or create sandbox/.testnet-key ' +
+        '(never use the TRE dev key on a public network).',
+    );
+  }
+  // placeholder — never used unless a public network is actually selected
+  return '0x' + '11'.repeat(32);
+}
+
 module.exports = {
   solidity: {
     version: '0.8.26',
@@ -28,6 +51,16 @@ module.exports = {
         process.env.TRE_PRIVATE_KEY ||
           '0xdd23ca549a97cb330b011aebb674730df8b14acaee42d211ab45692699ab8ba5',
       ],
+    },
+    shasta: {
+      url: 'https://api.shasta.trongrid.io/jsonrpc',
+      tron: true,
+      accounts: [testnetKey()],
+    },
+    nile: {
+      url: 'https://nile.trongrid.io/jsonrpc',
+      tron: true,
+      accounts: [testnetKey()],
     },
   },
 };
