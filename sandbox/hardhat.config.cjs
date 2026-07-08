@@ -16,7 +16,9 @@ function testnetKey() {
   }
   const f = path.join(__dirname, '.testnet-key');
   if (fs.existsSync(f)) return '0x' + fs.readFileSync(f, 'utf8').trim().replace(/^0x/, '');
-  if (process.argv.includes('shasta') || process.argv.includes('nile')) {
+  // Network selection reaches config via CLI args OR HARDHAT_NETWORK.
+  const selected = [process.env.HARDHAT_NETWORK, ...process.argv];
+  if (selected.includes('shasta') || selected.includes('nile')) {
     throw new Error(
       'No testnet key configured: set TRON_TESTNET_KEY or create sandbox/.testnet-key ' +
         '(never use the TRE dev key on a public network).',
