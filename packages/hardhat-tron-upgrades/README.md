@@ -27,9 +27,21 @@ const ubox = await upgrades.deployProxy('MyUUPSBox', [owner, 42n], { kind: 'uups
 // → deploy v2 → re-point → verify slot
 const boxV2 = await upgrades.upgradeProxy(box, 'BoxV2');
 
+// beacon: one upgrade moves a whole fleet of proxies atomically
+const beacon = await upgrades.deployBeacon('MyBox');
+const p1 = await upgrades.deployBeaconProxy(beacon, 'MyBox', [owner, 1n]);
+const p2 = await upgrades.deployBeaconProxy(beacon, 'MyBox', [owner, 2n]);
+await upgrades.upgradeBeacon(beacon, 'MyBoxV2'); // p1 AND p2 now run V2
+
 // unsafe upgrades are rejected BEFORE anything touches the chain:
 await upgrades.upgradeProxy(box, 'BoxV2Broken'); // throws: storage layout incompatible
 await upgrades.upgradeProxy(ubox, 'NoButtonBox'); // throws: missing upgradeToAndCall (anti-brick)
+
+// inspection helpers (raw 1967 slots / beacon call)
+await upgrades.erc1967.getImplementationAddress(box);
+await upgrades.erc1967.getAdminAddress(box);
+await upgrades.erc1967.getBeaconAddress(p1);
+await upgrades.beacon.getImplementationAddress(beacon);
 ```
 
 ## How it works
@@ -38,15 +50,11 @@ await upgrades.upgradeProxy(ubox, 'NoButtonBox'); // throws: missing upgradeToAn
   project's compiler build-info (tron-solc output is supported as-is).
 - **Deployment** runs through the consumer's TronWeb-bridged `hre.ethers`.
 - **Proxy bytecode** comes from the ported contracts library
-  (`openzeppelin-tron-solidity`): the consumer project must import the proxy
-  contracts so their artifacts are compiled locally, e.g.:
+  (`openzeppelin-tron-solidity`). Add ONE import anywhere in your `contracts/`
+  so the proxy artifacts are compiled locally:
 
   ```solidity
-  // for kind: 'transparent'
-  import {TransparentUpgradeableProxy} from "openzeppelin-tron-solidity/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-  import {ProxyAdmin} from "openzeppelin-tron-solidity/contracts/proxy/transparent/ProxyAdmin.sol";
-  // for kind: 'uups'
-  import {TRC1967Proxy} from "openzeppelin-tron-solidity/contracts/proxy/TRC1967/TRC1967Proxy.sol";
+  import "@openzeppelin/hardhat-tron-upgrades/contracts/Proxies.sol";
   ```
 
 - **Deployment records** are written to `.openzeppelin/<network>.json` so
@@ -55,12 +63,12 @@ await upgrades.upgradeProxy(ubox, 'NoButtonBox'); // throws: missing upgradeToAn
 
 ## Current limitations
 
-- Proxy kinds: `transparent` and `uups` (full support); beacon helpers are on
-  the roadmap.
+- Proxy kinds: `transparent`, `uups`, and `beacon` — all fully supported
+  (`deployProxy`/`upgradeProxy`, `deployBeacon`/`deployBeaconProxy`/`upgradeBeacon`).
 - `kind` must be explicit for UUPS — upstream-style inference from the
   implementation's bytecode is a planned follow-up.
-- `initializer: false` is not supported for `uups` (the ported `TRC1967Proxy`
-  rejects empty constructor data); the plugin throws a clear error.
+- `initializer: false` is not supported for `uups` or beacon proxies (the
+  ported proxies reject empty constructor data); the plugin throws a clear error.
 - If a proxy has no deployment record (fresh network, lost manifest), pass
   `{ from, kind }` explicitly; conflicting record/`opts.kind` values throw.
 - The manifest is a minimal deployment record, not the upstream format.
