@@ -67,8 +67,9 @@ await upgrades.beacon.getImplementationAddress(beacon);
   (`deployProxy`/`upgradeProxy`, `deployBeacon`/`deployBeaconProxy`/`upgradeBeacon`).
 - `kind` must be explicit for UUPS — upstream-style inference from the
   implementation's bytecode is a planned follow-up.
-- `initializer: false` is not supported for `uups` or beacon proxies (the
-  ported proxies reject empty constructor data); the plugin throws a clear error.
+- `initializer: false` is not supported for `uups` (the ported `TRC1967Proxy`
+  rejects empty constructor data); the plugin throws a clear error. Beacon
+  proxies DO support it (uninitialized deploy, upstream parity).
 - If a proxy has no deployment record (fresh network, lost manifest), pass
   `{ from, kind }` explicitly; conflicting record/`opts.kind` values throw.
 - The manifest is a minimal deployment record, not the upstream format.

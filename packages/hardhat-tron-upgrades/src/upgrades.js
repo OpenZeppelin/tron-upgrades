@@ -255,13 +255,14 @@ async function deployBeacon(hre, contractName, opts = {}) {
 async function deployBeaconProxy(hre, beacon, contractName, args = [], opts = {}) {
   const beaconAddress = await resolveAddress(beacon);
 
+  // Unlike the ported TRC1967Proxy, BeaconProxy accepts empty constructor
+  // data — initializer: false deploys an uninitialized proxy (upstream parity).
   const initializer = opts.initializer ?? 'initialize';
-  if (initializer === false) {
-    // The ported proxies reject empty constructor data (see TRC1967Proxy).
-    throw new Error(`initializer: false is not supported for beacon proxies`);
+  let initData = '0x';
+  if (initializer !== false) {
+    const impl = await hre.ethers.getContractAt(contractName, beaconAddress); // ABI source only
+    initData = impl.interface.encodeFunctionData(initializer, args);
   }
-  const impl = await hre.ethers.getContractAt(contractName, beaconAddress); // ABI source only
-  const initData = impl.interface.encodeFunctionData(initializer, args);
 
   const proxy = await hre.ethers.deployContract(FQN.beaconProxy, [beaconAddress, initData]);
   const proxyAddress = await proxy.getAddress();

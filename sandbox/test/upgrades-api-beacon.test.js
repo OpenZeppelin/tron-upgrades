@@ -116,15 +116,19 @@ describe('hre.upgrades API — beacon kind', function () {
     expect(await upgrades.erc1967.getImplementationAddress(u)).to.not.equal(ethers.ZeroAddress);
   });
 
-  it('rejects initializer: false for beacon proxies before any deploy', async () => {
+  it('supports initializer: false — uninitialized beacon proxy, initialized later', async () => {
+    const [owner] = await ethers.getSigners();
     const beacon = await upgrades.deployBeacon('BoxV1');
-    let error = null;
-    try {
-      await upgrades.deployBeaconProxy(beacon, 'BoxV1', [], { initializer: false });
-    } catch (e) {
-      error = e;
-    }
-    expect(error).to.not.equal(null);
-    expect(error.message).to.match(/initializer/i);
+    const a = await upgrades.deployBeaconProxy(beacon, 'BoxV1', [], { initializer: false });
+
+    // delegation works while uninitialized
+    expect(await a.version()).to.equal('v1');
+    expect(await a.value()).to.equal(0n);
+    expect(await a.owner()).to.equal(ethers.ZeroAddress);
+
+    // and the proxy can be initialized afterwards
+    await a.initialize(owner.address, 9n);
+    expect(await a.value()).to.equal(9n);
+    expect(await a.owner()).to.equal(owner.address);
   });
 });
