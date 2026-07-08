@@ -104,17 +104,18 @@ async function defaultOwner(hre) {
 async function deployProxy(hre, contractName, args = [], opts = {}) {
   const kind = opts.kind ?? 'transparent';
   checkKind(kind);
+  const initializer = opts.initializer ?? 'initialize';
+  if (kind === 'uups' && initializer === false) {
+    // Deterministic option error — reject before anything reaches the
+    // chain. (The ported TRC1967Proxy rejects empty constructor data, so
+    // an uninitialized UUPS proxy cannot be deployed through this path.)
+    throw new Error(`initializer: false is not supported for kind "uups"`);
+  }
   await validateImplementation(hre, contractName, { kind });
 
   const impl = await hre.ethers.deployContract(contractName);
   const implAddress = await impl.getAddress();
 
-  const initializer = opts.initializer ?? 'initialize';
-  if (kind === 'uups' && initializer === false) {
-    // The ported TRC1967Proxy rejects empty constructor data, so an
-    // uninitialized UUPS proxy cannot be deployed through this path yet.
-    throw new Error(`initializer: false is not supported for kind "uups"`);
-  }
   const initData =
     initializer === false ? '0x' : impl.interface.encodeFunctionData(initializer, args);
 
@@ -160,10 +161,24 @@ async function upgradeProxy(hre, proxy, newContractName, opts = {}) {
 
   await validateUpgrade(hre, fromContractName, newContractName, { kind });
 
+  // Resolve the upgrade authority BEFORE deploying the new implementation,
+  // so a mis-routed proxy (e.g. a UUPS proxy taken down the transparent
+  // path) fails without leaving an orphan implementation on the chain.
+  const owner = opts.owner ?? (await defaultOwner(hre));
+  let admin = null;
+  if (kind === 'transparent') {
+    const adminAddress = slotToAddress(await getSlot(hre, proxyAddress, ADMIN_SLOT));
+    if (adminAddress === ZERO_ADDRESS) {
+      throw new Error(
+        `Proxy ${proxyAddress} has no admin in the 1967 admin slot — not a transparent proxy? For UUPS proxies pass opts.kind: "uups".`,
+      );
+    }
+    admin = await hre.ethers.getContractAt(FQN.proxyAdmin, hre.ethers.getAddress(adminAddress));
+  }
+
   const newImpl = await hre.ethers.deployContract(newContractName);
   const newImplAddress = await newImpl.getAddress();
 
-  const owner = opts.owner ?? (await defaultOwner(hre));
   if (kind === 'uups') {
     // The upgrade function lives in the CURRENT implementation and is
     // reached through the proxy (delegatecall), so it mutates the proxy's
@@ -171,13 +186,6 @@ async function upgradeProxy(hre, proxy, newContractName, opts = {}) {
     const proxyAsImpl = await hre.ethers.getContractAt(fromContractName, proxyAddress);
     await proxyAsImpl.connect(owner).upgradeToAndCall(newImplAddress, opts.call ?? '0x');
   } else {
-    const adminAddress = slotToAddress(await getSlot(hre, proxyAddress, ADMIN_SLOT));
-    if (adminAddress === ZERO_ADDRESS) {
-      throw new Error(
-        `Proxy ${proxyAddress} has no admin in the 1967 admin slot — not a transparent proxy? For UUPS proxies pass opts.kind: "uups".`,
-      );
-    }
-    const admin = await hre.ethers.getContractAt(FQN.proxyAdmin, hre.ethers.getAddress(adminAddress));
     await admin.connect(owner).upgradeAndCall(proxyAddress, newImplAddress, opts.call ?? '0x');
   }
 
