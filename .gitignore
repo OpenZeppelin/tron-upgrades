@@ -2,10 +2,14 @@ node_modules/
 dist/
 coverage/
 
-# Hardhat (sandbox)
+# Hardhat (sandbox + package tests)
 sandbox/artifacts/
 sandbox/cache/
 sandbox/.openzeppelin/
+packages/hardhat-tron-upgrades/dist/
+packages/hardhat-tron-upgrades/artifacts/
+packages/hardhat-tron-upgrades/cache/
+packages/hardhat-tron-upgrades/.openzeppelin/
 
 # local agent instructions (never commit)
 CLAUDE.local.md
