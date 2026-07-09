@@ -255,14 +255,16 @@ async function deployBeacon(hre, contractName, opts = {}) {
 async function deployBeaconProxy(hre, beacon, contractName, args = [], opts = {}) {
   const beaconAddress = await resolveAddress(beacon);
 
+  // Preflight the implementation ABI before ANY chain interaction — a bad
+  // contract name must fail here, not after a proxy is deployed and recorded.
+  const { Interface } = require('ethers');
+  const artifact = await hre.artifacts.readArtifact(contractName);
+  const iface = new Interface(artifact.abi);
+
   // Unlike the ported TRC1967Proxy, BeaconProxy accepts empty constructor
   // data — initializer: false deploys an uninitialized proxy (upstream parity).
   const initializer = opts.initializer ?? 'initialize';
-  let initData = '0x';
-  if (initializer !== false) {
-    const impl = await hre.ethers.getContractAt(contractName, beaconAddress); // ABI source only
-    initData = impl.interface.encodeFunctionData(initializer, args);
-  }
+  const initData = initializer === false ? '0x' : iface.encodeFunctionData(initializer, args);
 
   const proxy = await hre.ethers.deployContract(FQN.beaconProxy, [beaconAddress, initData]);
   const proxyAddress = await proxy.getAddress();

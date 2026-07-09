@@ -116,6 +116,22 @@ describe('hre.upgrades API — beacon kind', function () {
     expect(await upgrades.erc1967.getImplementationAddress(u)).to.not.equal(ethers.ZeroAddress);
   });
 
+  it('a bad contract name fails before any deploy or record — even with initializer: false', async () => {
+    const beacon = await upgrades.deployBeacon('BoxV1');
+    const proxiesBefore = Object.keys(readManifest().proxies).length;
+
+    let error = null;
+    try {
+      await upgrades.deployBeaconProxy(beacon, 'BoxV1Typo', [], { initializer: false });
+    } catch (e) {
+      error = e;
+    }
+    expect(error, 'expected the bad name to be rejected').to.not.equal(null);
+    expect(error.message).to.match(/BoxV1Typo|not found|artifact/i);
+    // nothing was deployed, nothing was recorded
+    expect(Object.keys(readManifest().proxies).length).to.equal(proxiesBefore);
+  });
+
   it('supports initializer: false — uninitialized beacon proxy, initialized later', async () => {
     const [owner] = await ethers.getSigners();
     const beacon = await upgrades.deployBeacon('BoxV1');
