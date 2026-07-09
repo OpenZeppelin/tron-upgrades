@@ -36,8 +36,9 @@ examples: a standalone consumer project (own package.json) that installs the
 plugins from packed tarballs (`vendor/` — the pre-publish stand-in for the npm
 registry) and hosts the public-testnet scripts.
 
-All dependencies install from `vendor/` tarballs — a clean clone needs no
-sibling checkouts. To refresh the vendored contracts library:
+The unpublished TRON-specific dependencies (the bridge, the contracts library,
+this plugin) install from `vendor/` tarballs — everything else comes from the
+npm registry. A clean clone needs no sibling checkouts. To refresh the vendored contracts library:
 `cd ../tron-contracts && npm pack --ignore-scripts --pack-destination ../tron-upgrades/vendor`
 (tarball installs never run the library's husky `prepare` hook).
 

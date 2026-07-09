@@ -6,6 +6,7 @@ coverage/
 packages/hardhat-tron-upgrades/examples/*/artifacts/
 packages/hardhat-tron-upgrades/examples/*/cache/
 packages/hardhat-tron-upgrades/examples/*/.openzeppelin/
+packages/hardhat-tron-upgrades/examples/*/*.tgz
 packages/hardhat-tron-upgrades/dist/
 packages/hardhat-tron-upgrades/artifacts/
 packages/hardhat-tron-upgrades/cache/

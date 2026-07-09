@@ -14,7 +14,7 @@
     "build": "tsc -b",
     "test": "npm run build && hardhat test",
     "prepack": "tsc -b",
-    "test:examples": "npm pack --pack-destination ../../vendor && cd examples/BoxUpgrades && npm install && npm test"
+    "test:examples": "npm pack --pack-destination examples/BoxUpgrades && cd examples/BoxUpgrades && npm install && npm install --no-save --force ./openzeppelin-hardhat-tron-upgrades-0.0.3.tgz && npm test"
   },
   "dependencies": {
     "@openzeppelin/upgrades-core": "^1.46.0"
