@@ -1,6 +1,6 @@
 // Test config for the plugin itself. The plugin under test loads from the
 // LOCAL BUILD (./dist) — `npm test` builds first. Tarball consumption is
-// proven separately by the repo-level sandbox.
+// proven separately by examples/BoxUpgrades (npm run test:examples).
 require('@nomicfoundation/hardhat-ethers');
 require('@nomicfoundation/hardhat-chai-matchers');
 require('@openzeppelin/hardhat-tron');
