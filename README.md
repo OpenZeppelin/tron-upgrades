@@ -21,23 +21,22 @@ here.
 
 ## Development
 
-`sandbox/` is a standalone Hardhat fixture project (not a workspace) used as the
-local dev loop and E2E rig. It consumes `@openzeppelin/hardhat-tron` via a
-vendored tarball (`sandbox/vendor/`) while that package is unpublished.
-
-The sandbox also depends on the ported contracts library as a sibling clone
-(`openzeppelin-tron-solidity` is not published):
+Each plugin package is self-contained (TypeScript sources, fixtures, tests)
+following the upstream `openzeppelin-upgrades` layout:
 
 ```bash
-# once, next to this repo:
-git clone git@github.com:OpenZeppelin/tron-contracts.git
-cd tron-contracts && npm pkg delete scripts.prepare   # its husky hook breaks file: installs
-
-cd ../tron-upgrades/sandbox
+cd packages/hardhat-tron-upgrades
 npm install
-npx hardhat compile   # first run downloads tron-solc (SHA-256 verified)
-npx hardhat test      # first run pulls tronbox/tre:dev and boots a TRON node in Docker
+npm test             # builds, boots a Dockerized TRON node, runs the suite
+npm run test:examples  # consumer E2E: installs the packed tarballs like an npm user
 ```
+
+`packages/hardhat-tron-upgrades/examples/BoxUpgrades` mirrors upstream's
+examples: a standalone consumer project (own package.json) that installs the
+plugins from packed tarballs (`vendor/` — the pre-publish stand-in for the npm
+registry) and hosts the public-testnet scripts. It depends on the ported
+contracts library as a sibling clone (`../tron-contracts`, see its README for
+the husky note).
 
 Requirements: Node.js ≥ 20, Docker running.
 

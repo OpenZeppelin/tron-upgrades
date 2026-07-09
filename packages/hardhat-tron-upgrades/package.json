@@ -13,7 +13,8 @@
   "scripts": {
     "build": "tsc -b",
     "test": "npm run build && hardhat test",
-    "prepack": "tsc -b"
+    "prepack": "tsc -b",
+    "test:examples": "cd examples/BoxUpgrades && npm install && npm test"
   },
   "dependencies": {
     "@openzeppelin/upgrades-core": "^1.46.0"

@@ -20,7 +20,7 @@ function testnetKey() {
   const selected = [process.env.HARDHAT_NETWORK, ...process.argv];
   if (selected.includes('shasta') || selected.includes('nile')) {
     throw new Error(
-      'No testnet key configured: set TRON_TESTNET_KEY or create sandbox/.testnet-key ' +
+      'No testnet key configured: set TRON_TESTNET_KEY or create a .testnet-key file next to this config ' +
         '(never use the TRE dev key on a public network).',
     );
   }

@@ -79,7 +79,8 @@ await upgrades.beacon.getImplementationAddress(beacon);
 
 ```bash
 npm install
-npm test        # builds TypeScript, boots a Dockerized TRON node, runs the full suite
+npm test              # builds TypeScript, boots a Dockerized TRON node, runs the full suite
+npm run test:examples # consumer E2E: examples/ install the packed tarballs like an npm user
 ```
 
 Test fixtures live in `contracts/` (upstream-plugin pattern) and are excluded
