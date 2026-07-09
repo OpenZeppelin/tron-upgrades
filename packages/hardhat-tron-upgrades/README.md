@@ -75,6 +75,17 @@ await upgrades.beacon.getImplementationAddress(beacon);
 - The manifest is a minimal deployment record, not the upstream format.
 - Requires the consumer to compile the ported proxy contracts (see above).
 
+## Development
+
+```bash
+npm install
+npm test        # builds TypeScript, boots a Dockerized TRON node, runs the full suite
+```
+
+Test fixtures live in `contracts/` (upstream-plugin pattern) and are excluded
+from the published package via the `files` whitelist — only `dist/` and
+`contracts/Proxies.sol` ship.
+
 ## License
 
 MIT
