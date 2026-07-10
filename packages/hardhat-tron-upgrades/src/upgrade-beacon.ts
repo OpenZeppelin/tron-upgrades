@@ -3,6 +3,7 @@ import {
   type AddressLike,
   FQN,
   type UpgradeBeaconOptions,
+  assertStorageCompatible,
   core,
   ethersOf,
   getManifest,
@@ -10,6 +11,7 @@ import {
   providerOf,
   resolveAddress,
   resolveImplementation,
+  txOverridesOf,
   validateImplementation,
 } from './utils';
 
@@ -25,7 +27,7 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
 
     // Chain first: ask the beacon what it points at now, then look that
     // address up in the manifest for the layout baseline.
-    const { getImplementationAddressFromBeacon, assertStorageUpgradeSafe } = core();
+    const { getImplementationAddressFromBeacon } = core();
     const currentImplAddress = await getImplementationAddressFromBeacon(
       providerOf(hre),
       beaconAddress,
@@ -36,7 +38,7 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
       ...opts,
       kind: 'beacon',
     });
-    assertStorageUpgradeSafe(currentLayout, newContract.layout, false);
+    assertStorageCompatible(currentLayout, newContract.layout, opts);
 
     const beaconContract = await ethers.getContractAt(FQN.beacon, beaconAddress);
     const newImplAddress = (
@@ -44,7 +46,10 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
     ).address;
 
     const withOwner = (c: any) => (opts.owner ? c.connect(opts.owner) : c);
-    await withOwner(beaconContract).upgradeTo(newImplAddress);
+    const txOverrides = txOverridesOf(opts);
+    await (txOverrides
+      ? withOwner(beaconContract).upgradeTo(newImplAddress, txOverrides)
+      : withOwner(beaconContract).upgradeTo(newImplAddress));
 
     // trust, but verify: the beacon must now point at the new implementation
     const current = (await beaconContract.implementation()).toLowerCase();

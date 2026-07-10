@@ -23,12 +23,13 @@ export interface UpgradesAPI {
   ): Promise<any>;
   upgradeBeacon(beacon: AddressLike, name: string, opts?: UpgradeBeaconOptions): Promise<any>;
   forceImport(address: AddressLike, name: string, opts?: ValidationOptions): Promise<any>;
-  deployImplementation(name: string, opts?: DeployImplementationOptions): Promise<string>;
+  deployImplementation(name: string, opts?: DeployImplementationOptions): Promise<any>;
   prepareUpgrade(
     reference: AddressLike,
     name: string,
     opts?: PrepareUpgradeOptions,
-  ): Promise<string>;
+  ): Promise<any>;
+  silenceWarnings(): void;
   validateImplementation(name: string, opts?: ValidationOptions): Promise<void>;
   validateUpgrade(from: string, to: string, opts?: ValidationOptions): Promise<void>;
   erc1967: {

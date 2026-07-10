@@ -27,6 +27,7 @@ import {
   BEACON_SLOT,
   FQN,
   IMPL_SLOT,
+  core,
   ethersOf,
   getSlot,
   resolveAddress,
@@ -47,6 +48,7 @@ export function makeUpgrades(hre: HardhatRuntimeEnvironment): UpgradesAPI {
     forceImport: makeForceImport(hre),
     deployImplementation: makeDeployImplementation(hre),
     prepareUpgrade: makePrepareUpgrade(hre),
+    silenceWarnings: () => core().silenceWarnings(),
     validateImplementation: makeValidateImplementation(hre),
     validateUpgrade: makeValidateUpgrade(hre),
     erc1967: {

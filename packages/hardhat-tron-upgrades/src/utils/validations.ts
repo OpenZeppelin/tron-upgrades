@@ -37,7 +37,12 @@ export async function upgradeableContractFor(
 
   // `kind` matters: upgrades-core only surfaces the missing
   // upgradeTo/upgradeToAndCall error when validating as 'uups'.
-  const validationOpts = { kind: opts.kind ?? 'transparent' };
+  const validationOpts = {
+    kind: opts.kind ?? 'transparent',
+    unsafeAllow: opts.unsafeAllow,
+    unsafeAllowRenames: opts.unsafeAllowRenames,
+    unsafeSkipStorageCheck: opts.unsafeSkipStorageCheck,
+  };
   return {
     artifact,
     validations,

@@ -35,7 +35,8 @@ export async function validateUpgrade(
   if (!errors.ok) {
     throw new Error(`${toContractName} is not upgrade-safe:\n${errors.explain()}`);
   }
-  const layout = from.contract.getStorageUpgradeReport(to.contract);
+  if (opts.unsafeSkipStorageCheck) return;
+  const layout = from.contract.getStorageUpgradeReport(to.contract, opts);
   if (!layout.ok) {
     throw new Error(
       `Storage layout of ${toContractName} is incompatible with ${fromContractName}:\n${layout.explain()}`,
@@ -50,4 +51,14 @@ export async function validateUpgrade(
 export async function layoutForAddress(manifest: any, implAddress: string): Promise<any> {
   const { getStorageLayoutForAddress } = core();
   return getStorageLayoutForAddress(manifest, [], implAddress);
+}
+
+export function assertStorageCompatible(
+  currentLayout: any,
+  newLayout: any,
+  opts: ValidationOptions,
+): void {
+  if (opts.unsafeSkipStorageCheck) return;
+  const { assertStorageUpgradeSafe, withValidationDefaults } = core();
+  assertStorageUpgradeSafe(currentLayout, newLayout, withValidationDefaults(opts));
 }

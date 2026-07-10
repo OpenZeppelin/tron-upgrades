@@ -1,17 +1,18 @@
 import type { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { core } from './core';
-import { txHashOf } from './deploy';
-import { ethersOf, providerOf } from './ethers';
+import { deployContractWithOptions, txHashOf } from './deploy';
+import { providerOf } from './ethers';
 import { getManifest } from './manifest';
-import type { ImplementationOptions } from './options';
+import { type ImplementationOptions, txOverridesOf } from './options';
 import { validateImplementation } from './validate-impl';
 
 export async function resolveImplementation(
   hre: HardhatRuntimeEnvironment,
   contractName: string,
-  opts: ImplementationOptions,
+  opts: ImplementationOptions & { getTxResponse?: boolean },
   validated?: any,
 ): Promise<{ address: string; contract: any; txResponse?: any }> {
+  txOverridesOf(opts);
   await getManifest(hre); // legacy-format preflight before any deployment
   const contract = validated ?? (await validateImplementation(hre, contractName, opts));
   const mode = opts.redeployImplementation ?? 'onchange';
@@ -21,7 +22,12 @@ export async function resolveImplementation(
         `The implementation contract ${contractName} was not previously deployed on this network`,
       );
     }
-    const impl = await ethersOf(hre).deployContract(contractName, opts.constructorArgs ?? []);
+    const impl = await deployContractWithOptions(
+      hre,
+      contractName,
+      opts.constructorArgs ?? [],
+      opts,
+    );
     return {
       address: await impl.getAddress(),
       txHash: txHashOf(impl),
@@ -49,5 +55,17 @@ export async function resolveImplementation(
     if (!(error as any)?.removed || mode === 'never') throw error;
     deployment = await fetch();
   }
-  return { address: deployment.address, contract, txResponse: deployment.txResponse };
+  let txResponse = deployment.txResponse;
+  if (!txResponse && opts.getTxResponse && deployment.txHash) {
+    const provider = providerOf(hre);
+    const tx = await provider.send('eth_getTransactionByHash', [deployment.txHash]);
+    if (tx) {
+      txResponse = {
+        ...tx,
+        hash: tx.hash ?? deployment.txHash,
+        wait: () => provider.send('eth_getTransactionReceipt', [deployment.txHash]),
+      };
+    }
+  }
+  return { address: deployment.address, contract, txResponse };
 }

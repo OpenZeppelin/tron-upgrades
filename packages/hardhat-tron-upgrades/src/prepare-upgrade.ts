@@ -3,6 +3,7 @@ import {
   type AddressLike,
   type PrepareUpgradeOptions,
   type ValidationKind,
+  assertStorageCompatible,
   core,
   getManifest,
   isBeaconContract,
@@ -19,16 +20,12 @@ export function makePrepareUpgrade(hre: HardhatRuntimeEnvironment) {
     reference: AddressLike,
     newContractName: string,
     opts: PrepareUpgradeOptions = {},
-  ): Promise<string> {
+  ): Promise<any> {
     const provider = providerOf(hre);
     const manifest = await getManifest(hre);
     const referenceAddress = await resolveAddress(reference);
-    const {
-      assertStorageUpgradeSafe,
-      getBeaconAddress,
-      getImplementationAddress,
-      getImplementationAddressFromBeacon,
-    } = core();
+    const { getBeaconAddress, getImplementationAddress, getImplementationAddressFromBeacon } =
+      core();
 
     let kind: ValidationKind;
     let currentImplAddress: string;
@@ -54,7 +51,8 @@ export function makePrepareUpgrade(hre: HardhatRuntimeEnvironment) {
 
     const currentLayout = await layoutForAddress(manifest, currentImplAddress);
     const contract = await validateImplementation(hre, newContractName, { ...opts, kind });
-    assertStorageUpgradeSafe(currentLayout, contract.layout, false);
-    return (await resolveImplementation(hre, newContractName, opts, contract)).address;
+    assertStorageCompatible(currentLayout, contract.layout, opts);
+    const deployment = await resolveImplementation(hre, newContractName, opts, contract);
+    return opts.getTxResponse && deployment.txResponse ? deployment.txResponse : deployment.address;
   };
 }

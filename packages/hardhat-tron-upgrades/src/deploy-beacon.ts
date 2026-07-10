@@ -2,10 +2,12 @@ import type { HardhatRuntimeEnvironment } from 'hardhat/types';
 import {
   type DeployBeaconOptions,
   FQN,
+  deployContractWithOptions,
   deployerAddress,
   ethersOf,
   getManifest,
   resolveImplementation,
+  txOverridesOf,
   validateImplementation,
 } from './utils';
 
@@ -15,6 +17,7 @@ export function makeDeployBeacon(hre: HardhatRuntimeEnvironment) {
     opts: DeployBeaconOptions = {},
   ): Promise<any> {
     const ethers = ethersOf(hre);
+    txOverridesOf(opts);
     const manifest = await getManifest(hre);
     const contract = await validateImplementation(hre, contractName, { ...opts, kind: 'beacon' });
     const implAddress = (
@@ -22,7 +25,7 @@ export function makeDeployBeacon(hre: HardhatRuntimeEnvironment) {
     ).address;
 
     const owner = opts.initialOwner ?? deployerAddress(hre);
-    const beacon = await ethers.deployContract(FQN.beacon, [implAddress, owner]);
+    const beacon = await deployContractWithOptions(hre, FQN.beacon, [implAddress, owner], opts);
 
     return beacon;
   };

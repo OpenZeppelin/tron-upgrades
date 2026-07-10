@@ -9,6 +9,7 @@ import {
   getSlot,
   resolveAddress,
   slotToAddress,
+  txOverridesOf,
 } from './utils';
 
 export function makeTransferProxyAdminOwnership(hre: HardhatRuntimeEnvironment) {
@@ -18,6 +19,7 @@ export function makeTransferProxyAdminOwnership(hre: HardhatRuntimeEnvironment) 
     opts: TransferProxyAdminOwnershipOptions = {},
   ): Promise<void> {
     const ethers = ethersOf(hre);
+    const txOverrides = txOverridesOf(opts);
     const proxyAddress = await resolveAddress(proxy);
     const adminAddress = slotToAddress(await getSlot(hre, proxyAddress, ADMIN_SLOT));
     if (adminAddress === ZERO_ADDRESS) {
@@ -25,7 +27,9 @@ export function makeTransferProxyAdminOwnership(hre: HardhatRuntimeEnvironment) 
     }
     let admin = await ethers.getContractAt(FQN.proxyAdmin, ethers.getAddress(adminAddress));
     if (opts.owner) admin = admin.connect(opts.owner);
-    await admin.transferOwnership(newOwner);
+    await (txOverrides
+      ? admin.transferOwnership(newOwner, txOverrides)
+      : admin.transferOwnership(newOwner));
     const actualOwner = await admin.owner();
     if (actualOwner.toLowerCase() !== newOwner.toLowerCase()) {
       throw new Error(

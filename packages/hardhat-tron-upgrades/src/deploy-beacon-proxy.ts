@@ -4,10 +4,12 @@ import {
   type DeployBeaconProxyOptions,
   FQN,
   core,
+  deployContractWithOptions,
   ethersOf,
   getInitializerData,
   getManifest,
   resolveAddress,
+  txOverridesOf,
 } from './utils';
 
 export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
@@ -18,6 +20,7 @@ export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
     opts: DeployBeaconProxyOptions = {},
   ): Promise<any> {
     const ethers = ethersOf(hre);
+    txOverridesOf(opts);
     const beaconAddress = await resolveAddress(beacon);
     const manifest = await getManifest(hre);
 
@@ -32,7 +35,12 @@ export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
     const initializer = opts.initializer ?? 'initialize';
     const initData = getInitializerData(iface, initializer, args);
 
-    const proxy = await ethers.deployContract(FQN.beaconProxy, [beaconAddress, initData]);
+    const proxy = await deployContractWithOptions(
+      hre,
+      FQN.beaconProxy,
+      [beaconAddress, initData],
+      opts,
+    );
     const proxyAddress = await proxy.getAddress();
 
     await core().addProxyToManifest('beacon', proxyAddress, manifest);

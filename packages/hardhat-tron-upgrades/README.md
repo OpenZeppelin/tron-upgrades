@@ -27,6 +27,11 @@ const ubox = await upgrades.deployProxy('MyUUPSBox', [owner, 42n], { kind: 'uups
 // → deploy v2 → re-point → verify slot
 const boxV2 = await upgrades.upgradeProxy(box, 'BoxV2');
 
+// optional post-upgrade call, encoded against BoxV2
+await upgrades.upgradeProxy(box, 'BoxV2', {
+  call: { fn: 'increment', args: [] },
+});
+
 // prepare without re-pointing (for governance or multisig execution)
 const prepared = await upgrades.prepareUpgrade(box, 'BoxV3');
 
@@ -87,6 +92,10 @@ await upgrades.admin.transferProxyAdminOwnership(box, newOwner);
 - **Implementation reuse** follows the upstream version key and defaults to
   `redeployImplementation: 'onchange'`. Use `'always'` to force a fresh
   deployment or `'never'` to require a previously deployed version.
+- **Expert options** include `unsafeAllow`, `unsafeAllowRenames`,
+  `unsafeSkipStorageCheck`, `txOverrides: { value, gasLimit }`, and
+  `getTxResponse` on implementation preparation APIs. Unsupported EVM-only
+  transaction fields are rejected rather than silently ignored.
 - **Unknown implementations are a hard stop.** If the chain reports an
   implementation address the manifest has never seen (e.g. the proxy was
   upgraded by governance, a multisig, or another checkout), the upgrade

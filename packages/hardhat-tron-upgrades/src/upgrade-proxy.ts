@@ -7,6 +7,7 @@ import {
   IMPL_SLOT,
   type UpgradeProxyOptions,
   ZERO_ADDRESS,
+  assertStorageCompatible,
   checkKind,
   core,
   ethersOf,
@@ -19,8 +20,19 @@ import {
   resolveAddress,
   resolveImplementation,
   slotToAddress,
+  txOverridesOf,
   validateImplementation,
 } from './utils';
+
+function encodeUpgradeCall(contract: any, call: UpgradeProxyOptions['call']): string {
+  if (!call) return '0x';
+  if (typeof call === 'string' && call.startsWith('0x')) return call;
+  const { Interface } = require('ethers');
+  const iface = new Interface(contract.artifact.abi);
+  return typeof call === 'string'
+    ? iface.encodeFunctionData(call, [])
+    : iface.encodeFunctionData(call.fn, call.args ?? []);
+}
 
 // A proxy facade with the stable UUPS upgrade entry points (v4 upgradeTo +
 // v5 upgradeToAndCall). The interface ships in contracts/Proxies.sol, so its
@@ -74,12 +86,14 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
     // about what runs now. The manifest supplies the stored layout FOR that
     // address — never a name-based guess, which drifts the moment the proxy
     // is upgraded outside this plugin.
-    const { getImplementationAddress, assertStorageUpgradeSafe } = core();
+    const { getImplementationAddress } = core();
     const currentImplAddress = await getImplementationAddress(providerOf(hre), proxyAddress);
     const currentLayout = await layoutForAddress(manifest, currentImplAddress);
 
     const newContract = await validateImplementation(hre, newContractName, { ...opts, kind });
-    assertStorageUpgradeSafe(currentLayout, newContract.layout, false);
+    assertStorageCompatible(currentLayout, newContract.layout, opts);
+    const callData = encodeUpgradeCall(newContract, opts.call);
+    const txOverrides = txOverridesOf(opts);
 
     // Resolve the upgrade authority BEFORE deploying the new implementation,
     // so a mis-routed proxy (e.g. a UUPS proxy taken down the transparent
@@ -95,7 +109,10 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
         );
       }
       const admin = withOwner(await ethers.getContractAt(FQN.proxyAdmin, ethers.getAddress(adminAddress)));
-      upgrade = (newImplAddress) => admin.upgradeAndCall(proxyAddress, newImplAddress, opts.call ?? '0x');
+      upgrade = (newImplAddress) =>
+        txOverrides
+          ? admin.upgradeAndCall(proxyAddress, newImplAddress, callData, txOverrides)
+          : admin.upgradeAndCall(proxyAddress, newImplAddress, callData);
     } else {
       // The upgrade entry point lives in the CURRENT implementation and is
       // reached through the proxy (delegatecall). Dispatch on the proxy's
@@ -119,10 +136,16 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
       const proxyAsUups = withOwner(await uupsProxyFacade(hre, proxyAddress));
       upgrade = (newImplAddress) =>
         uiv === '5.0.0'
-          ? proxyAsUups.upgradeToAndCall(newImplAddress, opts.call ?? '0x')
-          : opts.call
-            ? proxyAsUups.upgradeToAndCall(newImplAddress, opts.call)
-            : proxyAsUups.upgradeTo(newImplAddress);
+          ? txOverrides
+            ? proxyAsUups.upgradeToAndCall(newImplAddress, callData, txOverrides)
+            : proxyAsUups.upgradeToAndCall(newImplAddress, callData)
+          : callData !== '0x'
+            ? txOverrides
+              ? proxyAsUups.upgradeToAndCall(newImplAddress, callData, txOverrides)
+              : proxyAsUups.upgradeToAndCall(newImplAddress, callData)
+            : txOverrides
+              ? proxyAsUups.upgradeTo(newImplAddress, txOverrides)
+              : proxyAsUups.upgradeTo(newImplAddress);
     }
 
     const newImplAddress = (

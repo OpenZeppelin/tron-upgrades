@@ -4,11 +4,13 @@ import {
   FQN,
   checkKind,
   core,
+  deployContractWithOptions,
   deployerAddress,
   ethersOf,
   getInitializerData,
   getManifest,
   resolveImplementation,
+  txOverridesOf,
   validateImplementation,
 } from './utils';
 
@@ -21,6 +23,10 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
     const ethers = ethersOf(hre);
     const kind = opts.kind ?? 'transparent';
     checkKind(kind);
+    txOverridesOf(opts);
+    if (kind === 'uups' && opts.initialOwner !== undefined) {
+      throw new Error(`initialOwner is not supported for kind "uups"`);
+    }
     const initializer = opts.initializer ?? 'initialize';
     if (kind === 'uups' && initializer === false) {
       // Deterministic option error — reject before anything reaches the
@@ -42,9 +48,14 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
     let proxy;
     if (kind === 'transparent') {
       const owner = opts.initialOwner ?? deployerAddress(hre);
-      proxy = await ethers.deployContract(FQN.transparent, [implAddress, owner, initData]);
+      proxy = await deployContractWithOptions(
+        hre,
+        FQN.transparent,
+        [implAddress, owner, initData],
+        opts,
+      );
     } else {
-      proxy = await ethers.deployContract(FQN.trc1967, [implAddress, initData]);
+      proxy = await deployContractWithOptions(hre, FQN.trc1967, [implAddress, initData], opts);
     }
     const proxyAddress = await proxy.getAddress();
 
