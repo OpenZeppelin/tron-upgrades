@@ -10,12 +10,13 @@ export async function validateImplementation(
   contractName: string,
   opts: ValidationOptions = {},
 ): Promise<any> {
-  const { contract } = await upgradeableContractFor(hre, contractName, opts);
+  const data = await upgradeableContractFor(hre, contractName, opts);
+  const { contract } = data;
   const report = contract.getErrorReport();
   if (!report.ok) {
     throw new Error(`${contractName} is not upgrade-safe:\n${report.explain()}`);
   }
-  return contract;
+  return data;
 }
 
 // Standalone comparison of two LOCAL contracts. Deliberately name-based:

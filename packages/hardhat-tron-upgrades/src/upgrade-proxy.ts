@@ -12,6 +12,7 @@ import {
   ethersOf,
   getManifest,
   getSlot,
+  isOptionalCallRevert,
   layoutForAddress,
   providerOf,
   proxyRecordOf,
@@ -28,14 +29,20 @@ import {
 // resolve it from the compiled artifacts.
 async function uupsProxyFacade(hre: HardhatRuntimeEnvironment, proxyAddress: string): Promise<any> {
   const names = await hre.artifacts.getAllFullyQualifiedNames();
-  const fqn = names.find((n: string) => n.endsWith(':ITronUpgradesUUPS'));
-  if (!fqn) {
+  const expected = new Set([
+    'contracts/Proxies.sol:ITronUpgradesUUPS',
+    '@openzeppelin/hardhat-tron-upgrades/contracts/Proxies.sol:ITronUpgradesUUPS',
+  ]);
+  const matches = names.filter((name: string) => expected.has(name));
+  if (matches.length !== 1) {
     throw new Error(
-      `ITronUpgradesUUPS artifact not found — import the plugin's contracts/Proxies.sol ` +
-        `from your project (see README) and run \`hardhat compile\`.`,
+      matches.length === 0
+        ? `ITronUpgradesUUPS artifact not found — import the plugin's contracts/Proxies.sol ` +
+            `from your project (see README) and run \`hardhat compile\`.`
+        : `Multiple plugin ITronUpgradesUUPS artifacts found: ${matches.join(', ')}`,
     );
   }
-  return ethersOf(hre).getContractAt(fqn, proxyAddress);
+  return ethersOf(hre).getContractAt(matches[0], proxyAddress);
 }
 
 export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
@@ -105,7 +112,7 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
         // the optional call. TRE reports that as "REVERT opcode executed" —
         // upper case, which upstream's (lower-case) revert matcher rethrows.
         // Match their list case-insensitively; real transport errors still throw.
-        if (!/revert|invalid opcode|execution error|function selector was not recognized/i.test(e?.message ?? '')) {
+        if (!isOptionalCallRevert(e)) {
           throw e;
         }
         uiv = undefined;

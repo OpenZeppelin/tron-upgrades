@@ -19,6 +19,7 @@ export interface UpgradesAPI {
     opts?: DeployBeaconProxyOptions,
   ): Promise<any>;
   upgradeBeacon(beacon: AddressLike, name: string, opts?: UpgradeBeaconOptions): Promise<any>;
+  forceImport(address: AddressLike, name: string, opts?: ValidationOptions): Promise<any>;
   validateImplementation(name: string, opts?: ValidationOptions): Promise<void>;
   validateUpgrade(from: string, to: string, opts?: ValidationOptions): Promise<void>;
   erc1967: {

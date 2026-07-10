@@ -1,5 +1,7 @@
+export * from './beacon';
 export * from './core';
 export * from './deploy';
+export * from './errors';
 export * from './ethers';
 export * from './factories';
 export * from './initializer-data';

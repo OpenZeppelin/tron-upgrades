@@ -9,7 +9,9 @@
 // the v4 upgradeTo(address) entry point must still be upgradeable.
 
 const { expect } = require('chai');
-const { ethers, upgrades } = require('hardhat');
+const fs = require('node:fs');
+const path = require('node:path');
+const { ethers, upgrades, config, network } = require('hardhat');
 const { readManifest, implEntry } = require('./_manifest-helper');
 
 const ADMIN_FQN =
@@ -67,6 +69,12 @@ describe('chain-first validation — drift hard stops and merge semantics', func
     expect(error, 'chain-first must refuse an unknown implementation').to.not.equal(null);
     expect(error.message).to.match(/is not registered/i);
     expect(await box.version()).to.equal('v2'); // nothing else changed
+
+    await upgrades.forceImport(box, 'TestBoxV2');
+    await expect(upgrades.upgradeProxy(box, 'TestBoxV2Incompat')).to.be.rejectedWith(/incompatible/i);
+    const boxV3 = await upgrades.upgradeProxy(box, 'TestBoxV3');
+    expect(await boxV3.version()).to.equal('v3');
+    expect(await boxV3.value()).to.equal(7n);
   });
 
   it('T2: uups proxy upgraded outside the plugin → hard stop', async () => {
@@ -86,6 +94,12 @@ describe('chain-first validation — drift hard stops and merge semantics', func
     }
     expect(error, 'chain-first must refuse an unknown implementation').to.not.equal(null);
     expect(error.message).to.match(/is not registered/i);
+
+    await upgrades.forceImport(box, 'TestBoxUUPSV2');
+    await expect(upgrades.upgradeProxy(box, 'TestBoxUUPSV2Incompat')).to.be.rejectedWith(/incompatible/i);
+    const boxV3 = await upgrades.upgradeProxy(box, 'TestBoxUUPSV3');
+    expect(await boxV3.version()).to.equal('v3');
+    expect(await boxV3.value()).to.equal(3n);
   });
 
   it('T3: beacon re-pointed outside the plugin → hard stop', async () => {
@@ -107,6 +121,12 @@ describe('chain-first validation — drift hard stops and merge semantics', func
     }
     expect(error, 'chain-first must refuse an unknown implementation').to.not.equal(null);
     expect(error.message).to.match(/is not registered/i);
+
+    await upgrades.forceImport(beacon, 'TestBoxV2');
+    await expect(upgrades.upgradeBeacon(beacon, 'TestBoxV2Incompat')).to.be.rejectedWith(/incompatible/i);
+    await upgrades.upgradeBeacon(beacon, 'TestBoxV3');
+    const implV3 = await upgrades.beacon.getImplementationAddress(beacon);
+    expect(implEntry(await readManifest(), implV3)).to.not.equal(undefined);
   });
 
   it('uups v4 dispatch: upgrades through a current implementation with only upgradeTo', async () => {
@@ -122,5 +142,16 @@ describe('chain-first validation — drift hard stops and merge semantics', func
     const boxV2 = await upgrades.upgradeProxy(box, 'TestBoxUUPSV2');
     expect(await boxV2.version()).to.equal('v2');
     expect(await boxV2.value()).to.equal(6n); // state survived both hops
+  });
+
+  it('T5: refuses a legacy name-based manifest with migration guidance', async () => {
+    const legacyFile = path.join(config.paths.root, '.openzeppelin', `${network.name}.json`);
+    fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
+    fs.writeFileSync(legacyFile, JSON.stringify({ proxies: {}, beacons: {} }));
+    try {
+      await expect(upgrades.deployProxy('TestBoxV1')).to.be.rejectedWith(/legacy deployment record|forceImport/i);
+    } finally {
+      fs.rmSync(legacyFile, { force: true });
+    }
   });
 });

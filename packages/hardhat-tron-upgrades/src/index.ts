@@ -14,6 +14,7 @@ import type { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { makeDeployBeacon } from './deploy-beacon';
 import { makeDeployBeaconProxy } from './deploy-beacon-proxy';
 import { makeDeployProxy } from './deploy-proxy';
+import { makeForceImport } from './force-import';
 import type { UpgradesAPI } from './types';
 import { makeUpgradeBeacon } from './upgrade-beacon';
 import { makeUpgradeProxy } from './upgrade-proxy';
@@ -40,6 +41,7 @@ export function makeUpgrades(hre: HardhatRuntimeEnvironment): UpgradesAPI {
     deployBeacon: makeDeployBeacon(hre),
     deployBeaconProxy: makeDeployBeaconProxy(hre),
     upgradeBeacon: makeUpgradeBeacon(hre),
+    forceImport: makeForceImport(hre),
     validateImplementation: makeValidateImplementation(hre),
     validateUpgrade: makeValidateUpgrade(hre),
     erc1967: {

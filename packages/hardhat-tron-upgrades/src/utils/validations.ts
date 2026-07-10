@@ -9,18 +9,38 @@ export async function upgradeableContractFor(
   contractName: string,
   opts: ValidationOptions = {},
 ) {
-  const { UpgradeableContract } = core();
+  const {
+    UpgradeableContract,
+    getStorageLayout,
+    getUnlinkedBytecode,
+    getVersion,
+    solcInputOutputDecoder,
+    validate,
+  } = core();
   const artifact = await hre.artifacts.readArtifact(contractName);
   const fqName = `${artifact.sourceName}:${artifact.contractName}`;
   const buildInfo = await hre.artifacts.getBuildInfo(fqName);
   if (!buildInfo) {
     throw new Error(`No build-info for ${fqName}. Run \`hardhat compile\` first.`);
   }
+  const decodeSrc = solcInputOutputDecoder(buildInfo.input, buildInfo.output);
+  const validations = validate(
+    buildInfo.output,
+    decodeSrc,
+    (buildInfo as any).solcVersion,
+    buildInfo.input,
+  );
+  const unlinkedBytecode = getUnlinkedBytecode(validations, artifact.bytecode);
+  const version = getVersion(unlinkedBytecode, artifact.bytecode);
+
   // `kind` matters: upgrades-core only surfaces the missing
   // upgradeTo/upgradeToAndCall error when validating as 'uups'.
   const validationOpts = { kind: opts.kind ?? 'transparent' };
   return {
     artifact,
+    validations,
+    version,
+    layout: getStorageLayout(validations, version),
     contract: new UpgradeableContract(
       artifact.contractName,
       buildInfo.input,

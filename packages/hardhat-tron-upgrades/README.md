@@ -71,9 +71,10 @@ await upgrades.beacon.getImplementationAddress(beacon);
 - **Unknown implementations are a hard stop.** If the chain reports an
   implementation address the manifest has never seen (e.g. the proxy was
   upgraded by governance, a multisig, or another checkout), the upgrade
-  refuses to guess and asks you to register it first (`forceImport`, landing
-  in this PR series). A lost PROXY record alone is recoverable: pass
-  `{ kind }` and the implementation is found on-chain.
+  refuses to guess and asks you to register it first with
+  `await upgrades.forceImport(proxyAddress, 'CurrentImplementation')`. A lost
+  PROXY record alone is recoverable: pass `{ kind }` and the implementation is
+  found on-chain.
 
 ## Architecture
 
@@ -102,8 +103,6 @@ validates on demand, because compilation is owned by the bridge.
 - `initializer: false` is not supported for `uups` (the ported `TRC1967Proxy`
   rejects empty constructor data); the plugin throws a clear error. Beacon
   proxies DO support it (uninitialized deploy, upstream parity).
-- `forceImport` is not implemented yet, so an implementation deployed outside
-  this plugin cannot be registered for upgrades yet.
 - Manifests from plugin versions before the upstream schema are refused with
   a migration error (they recorded contract names — the drift-prone baseline
   this version removes).
