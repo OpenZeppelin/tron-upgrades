@@ -58,13 +58,18 @@ async function main() {
   console.log(`  proxy   : ${link(tAddr)}`);
   console.log(`  value=${await t.value()} version=${await t.version()}`);
 
+  const preparedV2 = await upgrades.prepareUpgrade(t, 'BoxV2');
   const t2 = await upgrades.upgradeProxy(t, 'BoxV2');
+  if ((await upgrades.erc1967.getImplementationAddress(t2)).toLowerCase() !== preparedV2.toLowerCase()) {
+    throw new Error('upgradeProxy did not reuse the prepared implementation');
+  }
   await t2.increment();
+  console.log(`  prepared + reused: ${link(preparedV2)}`);
   console.log(`  upgraded: value=${await t2.value()} version=${await t2.version()} ✔`);
 
   // -- uups kind ---------------------------------------------------------
   console.log('\n[2/3] uups proxy lifecycle');
-  const u = await upgrades.deployProxy('BoxUUPSV1', [ownerAddress, 7n], { kind: 'uups' });
+  const u = await upgrades.deployProxy('BoxUUPSV1', [ownerAddress, 7n]);
   const uAddr = await u.getAddress();
   console.log(`  proxy   : ${link(uAddr)}`);
   console.log(`  value=${await u.value()} version=${await u.version()}`);
@@ -76,9 +81,13 @@ async function main() {
   // -- safety rails (off-chain, zero cost) -------------------------------
   console.log('\n[3/3] safety rails (no transactions)');
   await expectRejected('broken storage layout', upgrades.upgradeProxy(t2, 'BoxV2Broken'), /incompatible/i);
-  await expectRejected('anti-brick (uups)', upgrades.upgradeProxy(u2, 'BoxUUPSV2NoButton'), /upgradeTo/i);
+  await expectRejected(
+    'anti-brick (uups)',
+    upgrades.upgradeProxy(u2, 'BoxUUPSV2NoButton', { kind: 'uups' }),
+    /upgradeTo/i,
+  );
 
-  console.log(`\nDone. Deployment records: .openzeppelin/${network.name}.json`);
+  console.log('\nDone. Deployment records: .openzeppelin/<network-or-chain-id>.json');
   // fee deductions settle a few seconds behind the last receipt on TronGrid
   await new Promise((r) => setTimeout(r, 5000));
   console.log(`Final balance: ${(await tronWeb.trx.getBalance(base58)) / 1e6} TRX`);

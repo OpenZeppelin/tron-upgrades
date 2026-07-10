@@ -6,7 +6,7 @@ OpenZeppelin Upgrades Plugins for the TRON Virtual Machine (TVM).
 
 | Package | What it is |
 |---|---|
-| [`@openzeppelin/hardhat-tron-upgrades`](packages/hardhat-tron-upgrades) | `deployProxy` / `upgradeProxy` / upgrade-safety validation for Hardhat on TRON, on top of [`@openzeppelin/hardhat-tron`](https://github.com/OpenZeppelin/hardhat-tron) |
+| [`@openzeppelin/hardhat-tron-upgrades`](packages/hardhat-tron-upgrades) | Transparent, UUPS, and beacon deployment/upgrades, preparation, import, reuse, and upgrade-safety validation for Hardhat on TRON |
 | [`@openzeppelin/tronbox-upgrades`](packages/tronbox-upgrades) | Upgrades plugin for [TronBox](https://tronbox.io) |
 
 Both packages reuse [`@openzeppelin/upgrades-core`](https://github.com/OpenZeppelin/openzeppelin-upgrades/tree/master/packages/core)
@@ -44,10 +44,10 @@ npm registry. A clean clone needs no sibling checkouts. To refresh the vendored 
 
 Requirements: Node.js ≥ 20, Docker running.
 
-Current test coverage: transparent-proxy lifecycle (deploy, ERC-1967 slot
-verification, upgrade, state preservation), beacon-proxy atomic upgrades,
-deterministic-clone (CREATE2, `0x41` prefix) address prediction, and
-upgrade-safety validation of tron-solc build-info via `@openzeppelin/upgrades-core`.
+Current test coverage includes transparent/UUPS/beacon lifecycles, chain-first
+drift recovery, implementation reuse and preparation, kind inference, admin
+ownership transfer, expert validation/transaction options, deterministic clone
+address prediction, and tron-solc build-info validation.
 
 ## License
 

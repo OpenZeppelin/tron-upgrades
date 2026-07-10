@@ -139,6 +139,41 @@ validates on demand, because compilation is owned by the bridge.
   `admin.transferProxyAdminOwnership` instead.
 - Requires the consumer to compile the ported proxy contracts (see above).
 
+## Upstream parity
+
+This package follows `@openzeppelin/hardhat-upgrades` semantics where they map
+to TVM. Differences are explicit:
+
+| Surface | Status on TRON |
+|---|---|
+| Transparent, UUPS, and beacon deploy/upgrade | Supported |
+| One module per operation (upstream file architecture) | Mirrored — see Architecture |
+| `deployImplementation`, `prepareUpgrade`, `forceImport` | Supported |
+| Chain-first manifests, implementation reuse, constructor arguments | Supported |
+| Kind inference and conflict detection | Supported |
+| `unsafeAllow`, `unsafeAllowRenames`, `unsafeSkipStorageCheck` | Supported |
+| `upgradeProxy` `call: { fn, args }` | Supported |
+| `deployImplementation` / `prepareUpgrade` `getTxResponse` | Supported |
+| `txOverrides.value`, `txOverrides.gasLimit` | Supported and translated by the TRON bridge |
+| EVM-only transaction fields (`gasPrice`, `nonce`, EIP-1559 fields) | Rejected as unmappable |
+| `admin.transferProxyAdminOwnership` | Supported |
+| `admin.changeProxyAdmin` | N/A: the ported v5 transparent proxy has an immutable admin |
+| Typed `ContractFactory` overloads and typed contract returns | Different by design: this API is artifact-name based |
+| Custom `proxyFactory` / `deployFunction` | N/A: deployment is owned by the TronWeb bridge |
+| Defender deployment/approval APIs | N/A: no TRON deployment backend |
+| `deployContract` helper | N/A: use the bridge's `hre.ethers.deployContract` |
+| Etherscan verification integration | N/A; Tronscan verification is future work |
+
+For Nile demo deployments, rebuild a fresh checkout's local manifest with:
+
+```bash
+npx hardhat run scripts/reimport-nile.js --network nile
+```
+
+Local TRE manifests are intentionally ephemeral. Before mainnet use, keep
+public-network manifests in version control or another durable deployment
+repository; losing them intentionally stops future upgrades until re-imported.
+
 ## Development
 
 ```bash

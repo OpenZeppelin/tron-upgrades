@@ -74,4 +74,18 @@ extendEnvironment((hre) => {
 });
 
 export type { UpgradesAPI } from './types';
-export type { DeployProxyOptions, UpgradeProxyOptions } from './utils/options';
+export type {
+  ProxyKind,
+  ValidationKind,
+  ValidationOptions,
+  TxOverrides,
+  ImplementationOptions,
+  DeployProxyOptions,
+  UpgradeProxyOptions,
+  DeployBeaconOptions,
+  DeployBeaconProxyOptions,
+  UpgradeBeaconOptions,
+  DeployImplementationOptions,
+  PrepareUpgradeOptions,
+  TransferProxyAdminOwnershipOptions,
+} from './utils/options';

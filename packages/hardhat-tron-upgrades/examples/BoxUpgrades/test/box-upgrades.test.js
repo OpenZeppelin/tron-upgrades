@@ -35,7 +35,7 @@ describe('Upgrades plugin through the packed tarball', function () {
 
     let error = null;
     try {
-      await upgrades.upgradeProxy(boxV2, 'BoxUUPSV2NoButton');
+      await upgrades.upgradeProxy(boxV2, 'BoxUUPSV2NoButton', { kind: 'uups' });
     } catch (e) {
       error = e;
     }
