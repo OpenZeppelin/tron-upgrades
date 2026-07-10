@@ -35,7 +35,7 @@ await upgrades.upgradeBeacon(beacon, 'MyBoxV2'); // p1 AND p2 now run V2
 
 // unsafe upgrades are rejected BEFORE anything touches the chain:
 await upgrades.upgradeProxy(box, 'BoxV2Broken'); // throws: storage layout incompatible
-await upgrades.upgradeProxy(ubox, 'NoButtonBox'); // throws: missing upgradeToAndCall (anti-brick)
+await upgrades.upgradeProxy(ubox, 'NoButtonBox'); // throws: missing upgrade mechanism (anti-brick)
 
 // inspection helpers (raw 1967 slots / beacon call)
 await upgrades.erc1967.getImplementationAddress(box);
@@ -57,9 +57,23 @@ await upgrades.beacon.getImplementationAddress(beacon);
   import "@openzeppelin/hardhat-tron-upgrades/contracts/Proxies.sol";
   ```
 
-- **Deployment records** are written to `.openzeppelin/<network>.json` so
-  `upgradeProxy` knows which contract currently backs a proxy (not yet
-  compatible with the upstream manifest schema).
+- **Chain-first validation.** Before any upgrade, the plugin reads the
+  implementation CURRENTLY installed on-chain (the ERC-1967 slot for
+  transparent/uups proxies, `implementation()` for beacons) and validates the
+  new contract against the storage layout stored **for that exact address** in
+  the manifest — never against a locally recorded contract name, which could
+  drift the moment the proxy is upgraded outside this plugin.
+- **The manifest** uses the upstream `.openzeppelin` schema
+  (`unknown-<chainId>.json`): implementations keyed by version hash with their
+  storage layouts (repeated deploys of the same version merge into
+  `allAddresses`), proxies with their kind. It is a safety artifact, not just
+  bookkeeping — keep it for real networks.
+- **Unknown implementations are a hard stop.** If the chain reports an
+  implementation address the manifest has never seen (e.g. the proxy was
+  upgraded by governance, a multisig, or another checkout), the upgrade
+  refuses to guess and asks you to register it first (`forceImport`, landing
+  in this PR series). A lost PROXY record alone is recoverable: pass
+  `{ kind }` and the implementation is found on-chain.
 
 ## Architecture
 
@@ -81,22 +95,18 @@ validates on demand, because compilation is owned by the bridge.
 
 ## Current limitations
 
-- Proxy kinds: `transparent`, `uups`, and `beacon` — all fully supported
+- Proxy kinds: `transparent`, `uups`, and `beacon` — all supported
   (`deployProxy`/`upgradeProxy`, `deployBeacon`/`deployBeaconProxy`/`upgradeBeacon`).
 - `kind` must be explicit for UUPS — upstream-style inference from the
-  implementation's bytecode is a planned follow-up.
+  implementation's validation data is a planned follow-up.
 - `initializer: false` is not supported for `uups` (the ported `TRC1967Proxy`
   rejects empty constructor data); the plugin throws a clear error. Beacon
   proxies DO support it (uninitialized deploy, upstream parity).
-- If a proxy has no deployment record (fresh network, lost manifest), pass
-  `{ from, kind }` explicitly; conflicting record/`opts.kind` values throw.
-- The manifest is a minimal deployment record, not the upstream format.
-- **Upgrade validation currently relies on the local manifest.** If a proxy or
-  beacon is upgraded outside this plugin (governance, multisig, another
-  checkout), do not perform another plugin-driven upgrade until its current
-  implementation has been reconciled — validation would otherwise compare
-  against a stale baseline. Chain-first validation and `forceImport` are
-  planned.
+- `forceImport` is not implemented yet, so an implementation deployed outside
+  this plugin cannot be registered for upgrades yet.
+- Manifests from plugin versions before the upstream schema are refused with
+  a migration error (they recorded contract names — the drift-prone baseline
+  this version removes).
 - Requires the consumer to compile the ported proxy contracts (see above).
 
 ## Development

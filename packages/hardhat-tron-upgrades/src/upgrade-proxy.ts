@@ -22,6 +22,22 @@ import {
   validateImplementation,
 } from './utils';
 
+// A proxy facade with the stable UUPS upgrade entry points (v4 upgradeTo +
+// v5 upgradeToAndCall). The interface ships in contracts/Proxies.sol, so its
+// fully-qualified name differs between this package and consumer projects —
+// resolve it from the compiled artifacts.
+async function uupsProxyFacade(hre: HardhatRuntimeEnvironment, proxyAddress: string): Promise<any> {
+  const names = await hre.artifacts.getAllFullyQualifiedNames();
+  const fqn = names.find((n: string) => n.endsWith(':ITronUpgradesUUPS'));
+  if (!fqn) {
+    throw new Error(
+      `ITronUpgradesUUPS artifact not found — import the plugin's contracts/Proxies.sol ` +
+        `from your project (see README) and run \`hardhat compile\`.`,
+    );
+  }
+  return ethersOf(hre).getContractAt(fqn, proxyAddress);
+}
+
 export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
   return async function upgradeProxy(
     proxy: AddressLike,
@@ -64,7 +80,7 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
     // path) fails without leaving an orphan implementation on the chain.
     // Without opts.owner, calls are signed by the deployer key.
     const withOwner = (contract: any) => (opts.owner ? contract.connect(opts.owner) : contract);
-    let admin: any = null;
+    let upgrade: (newImplAddress: string) => Promise<unknown>;
     if (kind === 'transparent') {
       const adminAddress = slotToAddress(await getSlot(hre, proxyAddress, ADMIN_SLOT));
       if (adminAddress === ZERO_ADDRESS) {
@@ -72,22 +88,45 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
           `Proxy ${proxyAddress} has no admin in the 1967 admin slot — not a transparent proxy? For UUPS proxies pass opts.kind: "uups".`,
         );
       }
-      admin = await ethers.getContractAt(FQN.proxyAdmin, ethers.getAddress(adminAddress));
+      const admin = withOwner(await ethers.getContractAt(FQN.proxyAdmin, ethers.getAddress(adminAddress)));
+      upgrade = (newImplAddress) => admin.upgradeAndCall(proxyAddress, newImplAddress, opts.call ?? '0x');
+    } else {
+      // The upgrade entry point lives in the CURRENT implementation and is
+      // reached through the proxy (delegatecall). Dispatch on the proxy's
+      // reported UPGRADE_INTERFACE_VERSION over a stable interface, exactly
+      // like upstream: v5 exposes upgradeToAndCall, v4-style implementations
+      // expose only upgradeTo — never assume the new implementation's ABI.
+      const { getUpgradeInterfaceVersion } = core();
+      let uiv: string | undefined;
+      try {
+        uiv = await getUpgradeInterfaceVersion(providerOf(hre), proxyAddress, () => {});
+      } catch (e: any) {
+        // A current implementation without UPGRADE_INTERFACE_VERSION reverts
+        // the optional call. TRE reports that as "REVERT opcode executed" —
+        // upper case, which upstream's (lower-case) revert matcher rethrows.
+        // Match their list case-insensitively; real transport errors still throw.
+        if (!/revert|invalid opcode|execution error|function selector was not recognized/i.test(e?.message ?? '')) {
+          throw e;
+        }
+        uiv = undefined;
+      }
+      const proxyAsUups = withOwner(await uupsProxyFacade(hre, proxyAddress));
+      upgrade = (newImplAddress) =>
+        uiv === '5.0.0'
+          ? proxyAsUups.upgradeToAndCall(newImplAddress, opts.call ?? '0x')
+          : opts.call
+            ? proxyAsUups.upgradeToAndCall(newImplAddress, opts.call)
+            : proxyAsUups.upgradeTo(newImplAddress);
     }
 
     const newImpl = await ethers.deployContract(newContractName);
     const newImplAddress = await newImpl.getAddress();
+    // Register BEFORE pressing the button: if the process dies between the
+    // upgrade transaction and a later write, the chain would point at an
+    // implementation the manifest never saw — self-inflicted drift.
+    await recordImpl(manifest, newContract, newImplAddress, txHashOf(newImpl));
 
-    if (kind === 'uups') {
-      // The upgrade function lives in the CURRENT implementation and is
-      // reached through the proxy (delegatecall), so it mutates the proxy's
-      // own 1967 slot. The new implementation was validated as uups, so its
-      // ABI necessarily carries upgradeToAndCall — attach that ABI.
-      const proxyAsUups = await ethers.getContractAt(newContractName, proxyAddress);
-      await withOwner(proxyAsUups).upgradeToAndCall(newImplAddress, opts.call ?? '0x');
-    } else {
-      await withOwner(admin).upgradeAndCall(proxyAddress, newImplAddress, opts.call ?? '0x');
-    }
+    await upgrade(newImplAddress);
 
     // trust, but verify: the implementation slot must now hold the new address
     const current = slotToAddress(await getSlot(hre, proxyAddress, IMPL_SLOT)).toLowerCase();
@@ -97,7 +136,6 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
       );
     }
 
-    await recordImpl(manifest, newContract, newImplAddress, txHashOf(newImpl));
     if (!record) {
       await core().addProxyToManifest(kind, proxyAddress, manifest);
     }

@@ -21,14 +21,14 @@ export function makeDeployBeacon(hre: HardhatRuntimeEnvironment) {
 
     const impl = await ethers.deployContract(contractName);
     const implAddress = await impl.getAddress();
+    // Register BEFORE the beacon exists (record-before-switch, upstream
+    // ordering). Only the implementation is recorded (with its layout) —
+    // beacons need no manifest section: upgradeBeacon reads
+    // beacon.implementation() from the chain and finds the layout by address.
+    await recordImpl(manifest, contract, implAddress, txHashOf(impl));
 
     const owner = opts.initialOwner ?? deployerAddress(hre);
     const beacon = await ethers.deployContract(FQN.beacon, [implAddress, owner]);
-
-    // Only the implementation is recorded (with its layout) — beacons need no
-    // manifest section: upgradeBeacon reads beacon.implementation() from the
-    // chain and finds the layout here by address.
-    await recordImpl(manifest, contract, implAddress, txHashOf(impl));
 
     return beacon;
   };

@@ -13,3 +13,13 @@ import {TransparentUpgradeableProxy} from "openzeppelin-tron-solidity/contracts/
 import {ProxyAdmin} from "openzeppelin-tron-solidity/contracts/proxy/transparent/ProxyAdmin.sol";
 import {UpgradeableBeacon} from "openzeppelin-tron-solidity/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import {BeaconProxy} from "openzeppelin-tron-solidity/contracts/proxy/beacon/BeaconProxy.sol";
+
+/// Stable upgrade entry points for UUPS proxies. The plugin calls the CURRENT
+/// implementation through the proxy, dispatching on the proxy's reported
+/// UPGRADE_INTERFACE_VERSION: v5 exposes upgradeToAndCall, v4-style
+/// implementations expose upgradeTo. Attaching this interface (never the new
+/// implementation's ABI) keeps the call shape independent of either side.
+interface ITronUpgradesUUPS {
+    function upgradeTo(address newImplementation) external;
+    function upgradeToAndCall(address newImplementation, bytes calldata data) external payable;
+}

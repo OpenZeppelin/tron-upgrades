@@ -39,6 +39,9 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
     const beaconContract = await ethers.getContractAt(FQN.beacon, beaconAddress);
     const newImpl = await ethers.deployContract(newContractName);
     const newImplAddress = await newImpl.getAddress();
+    // Register BEFORE re-pointing the beacon (record-before-switch): a crash
+    // after upgradeTo must not leave the fleet on an unregistered implementation.
+    await recordImpl(manifest, newContract, newImplAddress, txHashOf(newImpl));
 
     const withOwner = (c: any) => (opts.owner ? c.connect(opts.owner) : c);
     await withOwner(beaconContract).upgradeTo(newImplAddress);
@@ -50,8 +53,6 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
         `Beacon upgrade transaction succeeded but the beacon points at ${current}, expected ${newImplAddress}`,
       );
     }
-
-    await recordImpl(manifest, newContract, newImplAddress, txHashOf(newImpl));
 
     return beaconContract;
   };

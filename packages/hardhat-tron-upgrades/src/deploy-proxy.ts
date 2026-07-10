@@ -36,6 +36,10 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
 
     const impl = await ethers.deployContract(contractName);
     const implAddress = await impl.getAddress();
+    // Register BEFORE the proxy exists: if anything below fails, the manifest
+    // must already know the implementation the chain will end up pointing at —
+    // otherwise the plugin manufactures its own drift (upstream ordering).
+    await recordImpl(manifest, contract, implAddress, txHashOf(impl));
 
     const initData = getInitializerData(impl.interface, initializer, args);
 
@@ -48,7 +52,6 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
     }
     const proxyAddress = await proxy.getAddress();
 
-    await recordImpl(manifest, contract, implAddress, txHashOf(impl));
     await core().addProxyToManifest(kind, proxyAddress, manifest);
 
     return ethers.getContractAt(contractName, proxyAddress);
