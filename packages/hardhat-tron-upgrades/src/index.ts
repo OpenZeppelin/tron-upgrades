@@ -11,6 +11,7 @@
 import './type-extensions';
 import { extendEnvironment } from 'hardhat/config';
 import type { HardhatRuntimeEnvironment } from 'hardhat/types';
+import { makeTransferProxyAdminOwnership } from './admin';
 import { makeDeployBeacon } from './deploy-beacon';
 import { makeDeployBeaconProxy } from './deploy-beacon-proxy';
 import { makeDeployImplementation } from './deploy-implementation';
@@ -58,6 +59,9 @@ export function makeUpgrades(hre: HardhatRuntimeEnvironment): UpgradesAPI {
         const b = await ethersOf(hre).getContractAt(FQN.beacon, await resolveAddress(beacon));
         return b.implementation();
       },
+    },
+    admin: {
+      transferProxyAdminOwnership: makeTransferProxyAdminOwnership(hre),
     },
     trc1967: { IMPL_SLOT, ADMIN_SLOT, BEACON_SLOT },
   };

@@ -31,6 +31,9 @@ export interface UpgradeBeaconOptions extends ImplementationOptions {
 }
 export interface DeployImplementationOptions extends ImplementationOptions {}
 export interface PrepareUpgradeOptions extends ImplementationOptions {}
+export interface TransferProxyAdminOwnershipOptions {
+  owner?: unknown;
+}
 
 const KINDS: ProxyKind[] = ['transparent', 'uups'];
 

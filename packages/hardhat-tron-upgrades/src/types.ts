@@ -5,6 +5,7 @@ import type {
   DeployImplementationOptions,
   DeployProxyOptions,
   PrepareUpgradeOptions,
+  TransferProxyAdminOwnershipOptions,
   UpgradeBeaconOptions,
   UpgradeProxyOptions,
   ValidationOptions,
@@ -37,6 +38,13 @@ export interface UpgradesAPI {
   };
   beacon: {
     getImplementationAddress(beacon: AddressLike): Promise<string>;
+  };
+  admin: {
+    transferProxyAdminOwnership(
+      proxy: AddressLike,
+      newOwner: string,
+      opts?: TransferProxyAdminOwnershipOptions,
+    ): Promise<void>;
   };
   trc1967: { IMPL_SLOT: string; ADMIN_SLOT: string; BEACON_SLOT: string };
 }

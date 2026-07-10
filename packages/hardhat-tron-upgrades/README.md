@@ -55,6 +55,9 @@ await upgrades.erc1967.getImplementationAddress(box);
 await upgrades.erc1967.getAdminAddress(box);
 await upgrades.erc1967.getBeaconAddress(p1);
 await upgrades.beacon.getImplementationAddress(beacon);
+
+// v5 transparent proxies: hand ProxyAdmin ownership to a new account
+await upgrades.admin.transferProxyAdminOwnership(box, newOwner);
 ```
 
 ## How it works
@@ -122,6 +125,9 @@ validates on demand, because compilation is owned by the bridge.
 - Manifests from plugin versions before the upstream schema are refused with
   a migration error (they recorded contract names — the drift-prone baseline
   this version removes).
+- `admin.changeProxyAdmin` is not applicable: v5 transparent proxies use an
+  immutable admin. Transfer that ProxyAdmin's ownership with
+  `admin.transferProxyAdminOwnership` instead.
 - Requires the consumer to compile the ported proxy contracts (see above).
 
 ## Development
