@@ -27,6 +27,12 @@ const ubox = await upgrades.deployProxy('MyUUPSBox', [owner, 42n], { kind: 'uups
 // → deploy v2 → re-point → verify slot
 const boxV2 = await upgrades.upgradeProxy(box, 'BoxV2');
 
+// prepare without re-pointing (for governance or multisig execution)
+const prepared = await upgrades.prepareUpgrade(box, 'BoxV3');
+
+// deploy and register an implementation without a proxy
+const implementation = await upgrades.deployImplementation('BoxV1');
+
 // beacon: one upgrade moves a whole fleet of proxies atomically
 const beacon = await upgrades.deployBeacon('MyBox');
 const p1 = await upgrades.deployBeaconProxy(beacon, 'MyBox', [owner, 1n]);

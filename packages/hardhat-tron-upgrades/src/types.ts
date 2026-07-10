@@ -2,7 +2,9 @@ import type { AddressLike } from './utils/ethers';
 import type {
   DeployBeaconOptions,
   DeployBeaconProxyOptions,
+  DeployImplementationOptions,
   DeployProxyOptions,
+  PrepareUpgradeOptions,
   UpgradeBeaconOptions,
   UpgradeProxyOptions,
   ValidationOptions,
@@ -20,6 +22,12 @@ export interface UpgradesAPI {
   ): Promise<any>;
   upgradeBeacon(beacon: AddressLike, name: string, opts?: UpgradeBeaconOptions): Promise<any>;
   forceImport(address: AddressLike, name: string, opts?: ValidationOptions): Promise<any>;
+  deployImplementation(name: string, opts?: DeployImplementationOptions): Promise<string>;
+  prepareUpgrade(
+    reference: AddressLike,
+    name: string,
+    opts?: PrepareUpgradeOptions,
+  ): Promise<string>;
   validateImplementation(name: string, opts?: ValidationOptions): Promise<void>;
   validateUpgrade(from: string, to: string, opts?: ValidationOptions): Promise<void>;
   erc1967: {

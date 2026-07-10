@@ -23,6 +23,8 @@ export interface DeployBeaconProxyOptions {
 export interface UpgradeBeaconOptions {
   owner?: unknown;
 }
+export interface DeployImplementationOptions extends ValidationOptions {}
+export interface PrepareUpgradeOptions extends ValidationOptions {}
 
 const KINDS: ProxyKind[] = ['transparent', 'uups'];
 
