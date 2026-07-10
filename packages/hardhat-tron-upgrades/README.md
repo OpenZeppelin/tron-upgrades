@@ -73,6 +73,12 @@ await upgrades.beacon.getImplementationAddress(beacon);
 - If a proxy has no deployment record (fresh network, lost manifest), pass
   `{ from, kind }` explicitly; conflicting record/`opts.kind` values throw.
 - The manifest is a minimal deployment record, not the upstream format.
+- **Upgrade validation currently relies on the local manifest.** If a proxy or
+  beacon is upgraded outside this plugin (governance, multisig, another
+  checkout), do not perform another plugin-driven upgrade until its current
+  implementation has been reconciled — validation would otherwise compare
+  against a stale baseline. Chain-first validation and `forceImport` are
+  planned.
 - Requires the consumer to compile the ported proxy contracts (see above).
 
 ## Development
