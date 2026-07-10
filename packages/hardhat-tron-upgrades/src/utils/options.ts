@@ -11,7 +11,6 @@ export interface DeployProxyOptions {
 }
 export interface UpgradeProxyOptions {
   kind?: ProxyKind;
-  from?: string;
   owner?: unknown; // a bridge signer (carries .tronWeb); default = deployer key
   call?: string;
 }
@@ -22,7 +21,6 @@ export interface DeployBeaconProxyOptions {
   initializer?: string | false;
 }
 export interface UpgradeBeaconOptions {
-  from?: string;
   owner?: unknown;
 }
 

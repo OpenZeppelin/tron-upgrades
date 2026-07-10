@@ -4,9 +4,10 @@ import {
   FQN,
   deployerAddress,
   ethersOf,
-  readManifest,
+  getManifest,
+  recordImpl,
+  txHashOf,
   validateImplementation,
-  writeManifest,
 } from './utils';
 
 export function makeDeployBeacon(hre: HardhatRuntimeEnvironment) {
@@ -15,21 +16,19 @@ export function makeDeployBeacon(hre: HardhatRuntimeEnvironment) {
     opts: DeployBeaconOptions = {},
   ): Promise<any> {
     const ethers = ethersOf(hre);
-    await validateImplementation(hre, contractName, { kind: 'beacon' });
+    const manifest = await getManifest(hre);
+    const contract = await validateImplementation(hre, contractName, { kind: 'beacon' });
 
     const impl = await ethers.deployContract(contractName);
     const implAddress = await impl.getAddress();
 
     const owner = opts.initialOwner ?? deployerAddress(hre);
     const beacon = await ethers.deployContract(FQN.beacon, [implAddress, owner]);
-    const beaconAddress = await beacon.getAddress();
 
-    const manifest = readManifest(hre);
-    manifest.beacons[beaconAddress.toLowerCase()] = {
-      contract: contractName,
-      implementation: implAddress,
-    };
-    writeManifest(hre, manifest);
+    // Only the implementation is recorded (with its layout) — beacons need no
+    // manifest section: upgradeBeacon reads beacon.implementation() from the
+    // chain and finds the layout here by address.
+    await recordImpl(manifest, contract, implAddress, txHashOf(impl));
 
     return beacon;
   };

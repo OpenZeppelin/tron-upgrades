@@ -3,11 +3,11 @@ import {
   type AddressLike,
   type DeployBeaconProxyOptions,
   FQN,
+  core,
   ethersOf,
   getInitializerData,
-  readManifest,
+  getManifest,
   resolveAddress,
-  writeManifest,
 } from './utils';
 
 export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
@@ -19,6 +19,7 @@ export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
   ): Promise<any> {
     const ethers = ethersOf(hre);
     const beaconAddress = await resolveAddress(beacon);
+    const manifest = await getManifest(hre);
 
     // Preflight the implementation ABI before ANY chain interaction — a bad
     // contract name must fail here, not after a proxy is deployed and recorded.
@@ -34,12 +35,7 @@ export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
     const proxy = await ethers.deployContract(FQN.beaconProxy, [beaconAddress, initData]);
     const proxyAddress = await proxy.getAddress();
 
-    const manifest = readManifest(hre);
-    manifest.proxies[proxyAddress.toLowerCase()] = {
-      kind: 'beacon',
-      beacon: beaconAddress,
-    };
-    writeManifest(hre, manifest);
+    await core().addProxyToManifest('beacon', proxyAddress, manifest);
 
     return ethers.getContractAt(contractName, proxyAddress);
   };

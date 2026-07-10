@@ -3,12 +3,14 @@ import {
   type DeployProxyOptions,
   FQN,
   checkKind,
+  core,
   deployerAddress,
   ethersOf,
   getInitializerData,
-  readManifest,
+  getManifest,
+  recordImpl,
+  txHashOf,
   validateImplementation,
-  writeManifest,
 } from './utils';
 
 export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
@@ -27,7 +29,10 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
       // an uninitialized UUPS proxy cannot be deployed through this path.)
       throw new Error(`initializer: false is not supported for kind "uups"`);
     }
-    await validateImplementation(hre, contractName, { kind });
+    // Resolve the manifest before any chain write: a legacy manifest file is a
+    // deterministic error and must fail here, not after deployments.
+    const manifest = await getManifest(hre);
+    const contract = await validateImplementation(hre, contractName, { kind });
 
     const impl = await ethers.deployContract(contractName);
     const implAddress = await impl.getAddress();
@@ -43,13 +48,8 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
     }
     const proxyAddress = await proxy.getAddress();
 
-    const manifest = readManifest(hre);
-    manifest.proxies[proxyAddress.toLowerCase()] = {
-      kind,
-      contract: contractName,
-      implementation: implAddress,
-    };
-    writeManifest(hre, manifest);
+    await recordImpl(manifest, contract, implAddress, txHashOf(impl));
+    await core().addProxyToManifest(kind, proxyAddress, manifest);
 
     return ethers.getContractAt(contractName, proxyAddress);
   };

@@ -1,16 +1,11 @@
 'use strict';
 
 const { expect } = require('chai');
-const fs = require('node:fs');
-const path = require('node:path');
-const { ethers, upgrades, network, config } = require('hardhat');
+const { ethers, upgrades } = require('hardhat');
+const { readManifest, proxyRecord, implEntry } = require('./_manifest-helper');
 
 describe('hre.upgrades API (plugin)', function () {
   this.timeout(240_000);
-
-  function manifestFile() {
-    return path.join(config.paths.root, '.openzeppelin', `${network.name}.json`);
-  }
 
   it('deployProxy → use → upgradeProxy, in plugin API calls', async () => {
     const [owner] = await ethers.getSigners();
@@ -21,11 +16,17 @@ describe('hre.upgrades API (plugin)', function () {
     expect(await box.value()).to.equal(42n);
     expect(await box.version()).to.equal('v1');
 
-    // the deployment record exists and knows what backs the proxy
-    const manifest = JSON.parse(fs.readFileSync(manifestFile(), 'utf8'));
-    expect(manifest.proxies[boxAddress.toLowerCase()].contract).to.equal('TestBoxV1');
+    // the proxy is recorded with its kind, and the implementation actually
+    // installed on-chain is registered WITH its storage layout
+    const implV1 = await upgrades.erc1967.getImplementationAddress(box);
+    const manifest = await readManifest();
+    expect(proxyRecord(manifest, boxAddress).kind).to.equal('transparent');
+    const entryV1 = implEntry(manifest, implV1);
+    expect(entryV1, 'installed implementation must be registered').to.not.equal(undefined);
+    expect(entryV1.layout).to.have.property('storage');
 
-    // one call: validate compatibility + deploy v2 + re-point + verify slot
+    // one call: read current impl from chain + validate against ITS stored
+    // layout + deploy v2 + re-point + verify slot
     const boxV2 = await upgrades.upgradeProxy(box, 'TestBoxV2');
     expect(await boxV2.getAddress()).to.equal(boxAddress); // same address
     expect(await boxV2.value()).to.equal(42n); // state preserved
@@ -33,9 +34,17 @@ describe('hre.upgrades API (plugin)', function () {
     await boxV2.increment();
     expect(await boxV2.value()).to.equal(43n);
 
-    // manifest followed the upgrade
-    const updated = JSON.parse(fs.readFileSync(manifestFile(), 'utf8'));
-    expect(updated.proxies[boxAddress.toLowerCase()].contract).to.equal('TestBoxV2');
+    // manifest followed the upgrade: the NEW on-chain implementation is
+    // registered too (with its own layout, under its own version key)
+    const implV2 = await upgrades.erc1967.getImplementationAddress(box);
+    const updated = await readManifest();
+    expect(implV2.toLowerCase()).to.not.equal(implV1.toLowerCase());
+    expect(implEntry(updated, implV2), 'v2 implementation must be registered').to.not.equal(
+      undefined,
+    );
+    expect(implEntry(updated, implV1), 'v1 entry is kept, not overwritten').to.not.equal(
+      undefined,
+    );
   });
 
   it('refuses an unsafe upgrade BEFORE touching the chain', async () => {

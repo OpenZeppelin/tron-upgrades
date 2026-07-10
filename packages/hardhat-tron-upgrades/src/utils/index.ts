@@ -1,4 +1,5 @@
 export * from './core';
+export * from './deploy';
 export * from './ethers';
 export * from './factories';
 export * from './initializer-data';

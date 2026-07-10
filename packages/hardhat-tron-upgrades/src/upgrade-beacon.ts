@@ -3,11 +3,15 @@ import {
   type AddressLike,
   FQN,
   type UpgradeBeaconOptions,
+  core,
   ethersOf,
-  readManifest,
+  getManifest,
+  layoutForAddress,
+  providerOf,
+  recordImpl,
   resolveAddress,
-  validateUpgrade,
-  writeManifest,
+  txHashOf,
+  validateImplementation,
 } from './utils';
 
 export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
@@ -18,17 +22,19 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
   ): Promise<any> {
     const ethers = ethersOf(hre);
     const beaconAddress = await resolveAddress(beacon);
+    const manifest = await getManifest(hre);
 
-    const manifest = readManifest(hre);
-    const record = manifest.beacons[beaconAddress.toLowerCase()];
-    const fromContractName = opts.from ?? record?.contract;
-    if (!fromContractName) {
-      throw new Error(
-        `No deployment record for beacon ${beaconAddress} on network "${hre.network.name}" — pass opts.from with the current implementation's contract name.`,
-      );
-    }
+    // Chain first: ask the beacon what it points at now, then look that
+    // address up in the manifest for the layout baseline.
+    const { getImplementationAddressFromBeacon, assertStorageUpgradeSafe } = core();
+    const currentImplAddress = await getImplementationAddressFromBeacon(
+      providerOf(hre),
+      beaconAddress,
+    );
+    const currentLayout = await layoutForAddress(manifest, currentImplAddress);
 
-    await validateUpgrade(hre, fromContractName, newContractName, { kind: 'beacon' });
+    const newContract = await validateImplementation(hre, newContractName, { kind: 'beacon' });
+    assertStorageUpgradeSafe(currentLayout, newContract.layout, false);
 
     const beaconContract = await ethers.getContractAt(FQN.beacon, beaconAddress);
     const newImpl = await ethers.deployContract(newContractName);
@@ -45,11 +51,7 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
       );
     }
 
-    manifest.beacons[beaconAddress.toLowerCase()] = {
-      contract: newContractName,
-      implementation: newImplAddress,
-    };
-    writeManifest(hre, manifest);
+    await recordImpl(manifest, newContract, newImplAddress, txHashOf(newImpl));
 
     return beaconContract;
   };
