@@ -33,6 +33,13 @@ const prepared = await upgrades.prepareUpgrade(box, 'BoxV3');
 // deploy and register an implementation without a proxy
 const implementation = await upgrades.deployImplementation('BoxV1');
 
+// implementations are reused by version by default; constructor arguments
+// participate in that version key
+await upgrades.deployImplementation('BoxWithCtor', {
+  constructorArgs: [42n],
+  redeployImplementation: 'onchange', // 'always' | 'never'
+});
+
 // beacon: one upgrade moves a whole fleet of proxies atomically
 const beacon = await upgrades.deployBeacon('MyBox');
 const p1 = await upgrades.deployBeaconProxy(beacon, 'MyBox', [owner, 1n]);
@@ -74,6 +81,9 @@ await upgrades.beacon.getImplementationAddress(beacon);
   storage layouts (repeated deploys of the same version merge into
   `allAddresses`), proxies with their kind. It is a safety artifact, not just
   bookkeeping — keep it for real networks.
+- **Implementation reuse** follows the upstream version key and defaults to
+  `redeployImplementation: 'onchange'`. Use `'always'` to force a fresh
+  deployment or `'never'` to require a previously deployed version.
 - **Unknown implementations are a hard stop.** If the chain reports an
   implementation address the manifest has never seen (e.g. the proxy was
   upgraded by governance, a multisig, or another checkout), the upgrade

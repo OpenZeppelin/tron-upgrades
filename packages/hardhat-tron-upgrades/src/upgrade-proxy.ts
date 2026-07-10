@@ -16,10 +16,9 @@ import {
   layoutForAddress,
   providerOf,
   proxyRecordOf,
-  recordImpl,
   resolveAddress,
+  resolveImplementation,
   slotToAddress,
-  txHashOf,
   validateImplementation,
 } from './utils';
 
@@ -79,7 +78,7 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
     const currentImplAddress = await getImplementationAddress(providerOf(hre), proxyAddress);
     const currentLayout = await layoutForAddress(manifest, currentImplAddress);
 
-    const newContract = await validateImplementation(hre, newContractName, { kind });
+    const newContract = await validateImplementation(hre, newContractName, { ...opts, kind });
     assertStorageUpgradeSafe(currentLayout, newContract.layout, false);
 
     // Resolve the upgrade authority BEFORE deploying the new implementation,
@@ -126,12 +125,9 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
             : proxyAsUups.upgradeTo(newImplAddress);
     }
 
-    const newImpl = await ethers.deployContract(newContractName);
-    const newImplAddress = await newImpl.getAddress();
-    // Register BEFORE pressing the button: if the process dies between the
-    // upgrade transaction and a later write, the chain would point at an
-    // implementation the manifest never saw — self-inflicted drift.
-    await recordImpl(manifest, newContract, newImplAddress, txHashOf(newImpl));
+    const newImplAddress = (
+      await resolveImplementation(hre, newContractName, opts, newContract)
+    ).address;
 
     await upgrade(newImplAddress);
 

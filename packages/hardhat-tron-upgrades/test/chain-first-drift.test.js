@@ -22,8 +22,12 @@ describe('chain-first validation — drift hard stops and merge semantics', func
 
   it('T6: same-version double deploy merges; BOTH proxies upgrade afterwards', async () => {
     const [owner] = await ethers.getSigners();
-    const p1 = await upgrades.deployProxy('TestBoxV1', [owner.address, 1n]);
-    const p2 = await upgrades.deployProxy('TestBoxV1', [owner.address, 2n]);
+    const p1 = await upgrades.deployProxy('TestBoxV1', [owner.address, 1n], {
+      redeployImplementation: 'always',
+    });
+    const p2 = await upgrades.deployProxy('TestBoxV1', [owner.address, 2n], {
+      redeployImplementation: 'always',
+    });
     const i1 = await upgrades.erc1967.getImplementationAddress(p1);
     const i2 = await upgrades.erc1967.getImplementationAddress(p2);
     expect(i1.toLowerCase()).to.not.equal(i2.toLowerCase()); // two real deploys (reuse comes later)

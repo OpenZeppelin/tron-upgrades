@@ -4,15 +4,13 @@ import {
   type PrepareUpgradeOptions,
   type ValidationKind,
   core,
-  ethersOf,
   getManifest,
   isBeaconContract,
   layoutForAddress,
   providerOf,
   proxyRecordOf,
-  recordImpl,
   resolveAddress,
-  txHashOf,
+  resolveImplementation,
   validateImplementation,
 } from './utils';
 
@@ -57,9 +55,6 @@ export function makePrepareUpgrade(hre: HardhatRuntimeEnvironment) {
     const currentLayout = await layoutForAddress(manifest, currentImplAddress);
     const contract = await validateImplementation(hre, newContractName, { ...opts, kind });
     assertStorageUpgradeSafe(currentLayout, contract.layout, false);
-    const impl = await ethersOf(hre).deployContract(newContractName);
-    const address = await impl.getAddress();
-    await recordImpl(manifest, contract, address, txHashOf(impl));
-    return address;
+    return (await resolveImplementation(hre, newContractName, opts, contract)).address;
   };
 }

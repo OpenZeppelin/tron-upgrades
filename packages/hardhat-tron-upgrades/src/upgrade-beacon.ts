@@ -8,9 +8,8 @@ import {
   getManifest,
   layoutForAddress,
   providerOf,
-  recordImpl,
   resolveAddress,
-  txHashOf,
+  resolveImplementation,
   validateImplementation,
 } from './utils';
 
@@ -33,15 +32,16 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
     );
     const currentLayout = await layoutForAddress(manifest, currentImplAddress);
 
-    const newContract = await validateImplementation(hre, newContractName, { kind: 'beacon' });
+    const newContract = await validateImplementation(hre, newContractName, {
+      ...opts,
+      kind: 'beacon',
+    });
     assertStorageUpgradeSafe(currentLayout, newContract.layout, false);
 
     const beaconContract = await ethers.getContractAt(FQN.beacon, beaconAddress);
-    const newImpl = await ethers.deployContract(newContractName);
-    const newImplAddress = await newImpl.getAddress();
-    // Register BEFORE re-pointing the beacon (record-before-switch): a crash
-    // after upgradeTo must not leave the fleet on an unregistered implementation.
-    await recordImpl(manifest, newContract, newImplAddress, txHashOf(newImpl));
+    const newImplAddress = (
+      await resolveImplementation(hre, newContractName, opts, newContract)
+    ).address;
 
     const withOwner = (c: any) => (opts.owner ? c.connect(opts.owner) : c);
     await withOwner(beaconContract).upgradeTo(newImplAddress);

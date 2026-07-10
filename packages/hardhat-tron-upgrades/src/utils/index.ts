@@ -1,6 +1,7 @@
 export * from './beacon';
 export * from './core';
 export * from './deploy';
+export * from './deploy-impl';
 export * from './errors';
 export * from './ethers';
 export * from './factories';

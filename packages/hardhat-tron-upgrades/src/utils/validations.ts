@@ -7,7 +7,7 @@ import type { ValidationOptions } from './options';
 export async function upgradeableContractFor(
   hre: HardhatRuntimeEnvironment,
   contractName: string,
-  opts: ValidationOptions = {},
+  opts: ValidationOptions & { constructorArgs?: unknown[] } = {},
 ) {
   const {
     UpgradeableContract,
@@ -31,7 +31,9 @@ export async function upgradeableContractFor(
     buildInfo.input,
   );
   const unlinkedBytecode = getUnlinkedBytecode(validations, artifact.bytecode);
-  const version = getVersion(unlinkedBytecode, artifact.bytecode);
+  const { Interface } = require('ethers');
+  const encodedArgs = new Interface(artifact.abi).encodeDeploy(opts.constructorArgs ?? []);
+  const version = getVersion(unlinkedBytecode, artifact.bytecode, encodedArgs);
 
   // `kind` matters: upgrades-core only surfaces the missing
   // upgradeTo/upgradeToAndCall error when validating as 'uups'.

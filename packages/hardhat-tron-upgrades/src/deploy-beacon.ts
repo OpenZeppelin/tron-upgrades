@@ -5,8 +5,7 @@ import {
   deployerAddress,
   ethersOf,
   getManifest,
-  recordImpl,
-  txHashOf,
+  resolveImplementation,
   validateImplementation,
 } from './utils';
 
@@ -17,15 +16,10 @@ export function makeDeployBeacon(hre: HardhatRuntimeEnvironment) {
   ): Promise<any> {
     const ethers = ethersOf(hre);
     const manifest = await getManifest(hre);
-    const contract = await validateImplementation(hre, contractName, { kind: 'beacon' });
-
-    const impl = await ethers.deployContract(contractName);
-    const implAddress = await impl.getAddress();
-    // Register BEFORE the beacon exists (record-before-switch, upstream
-    // ordering). Only the implementation is recorded (with its layout) —
-    // beacons need no manifest section: upgradeBeacon reads
-    // beacon.implementation() from the chain and finds the layout by address.
-    await recordImpl(manifest, contract, implAddress, txHashOf(impl));
+    const contract = await validateImplementation(hre, contractName, { ...opts, kind: 'beacon' });
+    const implAddress = (
+      await resolveImplementation(hre, contractName, opts, contract)
+    ).address;
 
     const owner = opts.initialOwner ?? deployerAddress(hre);
     const beacon = await ethers.deployContract(FQN.beacon, [implAddress, owner]);

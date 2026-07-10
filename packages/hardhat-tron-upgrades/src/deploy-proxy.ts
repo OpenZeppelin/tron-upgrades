@@ -8,8 +8,7 @@ import {
   ethersOf,
   getInitializerData,
   getManifest,
-  recordImpl,
-  txHashOf,
+  resolveImplementation,
   validateImplementation,
 } from './utils';
 
@@ -32,16 +31,13 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
     // Resolve the manifest before any chain write: a legacy manifest file is a
     // deterministic error and must fail here, not after deployments.
     const manifest = await getManifest(hre);
-    const contract = await validateImplementation(hre, contractName, { kind });
+    const contract = await validateImplementation(hre, contractName, { ...opts, kind });
+    const implementation = await resolveImplementation(hre, contractName, opts, contract);
+    const implAddress = implementation.address;
 
-    const impl = await ethers.deployContract(contractName);
-    const implAddress = await impl.getAddress();
-    // Register BEFORE the proxy exists: if anything below fails, the manifest
-    // must already know the implementation the chain will end up pointing at —
-    // otherwise the plugin manufactures its own drift (upstream ordering).
-    await recordImpl(manifest, contract, implAddress, txHashOf(impl));
-
-    const initData = getInitializerData(impl.interface, initializer, args);
+    const { Interface } = require('ethers');
+    const iface = new Interface(contract.artifact.abi);
+    const initData = getInitializerData(iface, initializer, args);
 
     let proxy;
     if (kind === 'transparent') {

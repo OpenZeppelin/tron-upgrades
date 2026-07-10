@@ -8,7 +8,7 @@ import { upgradeableContractFor } from './validations';
 export async function validateImplementation(
   hre: HardhatRuntimeEnvironment,
   contractName: string,
-  opts: ValidationOptions = {},
+  opts: ValidationOptions & { constructorArgs?: unknown[] } = {},
 ): Promise<any> {
   const data = await upgradeableContractFor(hre, contractName, opts);
   const { contract } = data;
