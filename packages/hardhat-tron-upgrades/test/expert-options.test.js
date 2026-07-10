@@ -89,7 +89,6 @@ describe('validation and transaction options', function () {
     const [owner] = await ethers.getSigners();
     await expect(
       upgrades.deployProxy('TestBoxUUPSV1', [owner.address, 45n], {
-        kind: 'uups',
         initialOwner: owner.address,
       }),
     ).to.be.rejectedWith(/initialOwner.*uups/i);

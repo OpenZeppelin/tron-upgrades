@@ -84,7 +84,7 @@ describe('hre.upgrades API — uups kind', function () {
 
     let error = null;
     try {
-      await upgrades.upgradeProxy(box, 'TestBoxUUPSV2MissingUpgradeFunction');
+      await upgrades.upgradeProxy(box, 'TestBoxUUPSV2MissingUpgradeFunction', { kind: 'uups' });
     } catch (e) {
       error = e;
     }
@@ -127,7 +127,7 @@ describe('hre.upgrades API — uups kind', function () {
     expect(await getSlot(boxAddress, IMPL_SLOT)).to.equal(slotBefore);
   });
 
-  it('a lost proxy record needs only {kind}: the implementation is found on-chain', async () => {
+  it('a lost proxy record recovers by inferring kind from the new implementation', async () => {
     const [owner] = await ethers.getSigners();
     const box = await upgrades.deployProxy('TestBoxUUPSV1', [owner.address, 5n], { kind: 'uups' });
     const boxAddress = await box.getAddress();
@@ -139,19 +139,9 @@ describe('hre.upgrades API — uups kind', function () {
     );
     await writeManifest(manifest);
 
-    // without kind: defaults to transparent, which must fail loudly (no admin)
-    let error = null;
-    try {
-      await upgrades.upgradeProxy(box, 'TestBoxUUPSV2');
-    } catch (e) {
-      error = e;
-    }
-    expect(error, 'expected the transparent-path fallback to fail').to.not.equal(null);
-    expect(error.message).to.match(/admin|transparent/i);
-
-    // with explicit kind alone it succeeds: the current implementation is
-    // read from the chain and its layout found BY ADDRESS — no name hint
-    const boxV2 = await upgrades.upgradeProxy(box, 'TestBoxUUPSV2', { kind: 'uups' });
+    // The new implementation's signatures infer UUPS; the current
+    // implementation is still found on-chain and its layout found BY ADDRESS.
+    const boxV2 = await upgrades.upgradeProxy(box, 'TestBoxUUPSV2');
     expect(await boxV2.version()).to.equal('v2');
     expect(await boxV2.value()).to.equal(5n);
   });

@@ -5,6 +5,7 @@ import {
   BEACON_SLOT,
   FQN,
   IMPL_SLOT,
+  type ProxyKind,
   type UpgradeProxyOptions,
   ZERO_ADDRESS,
   assertStorageCompatible,
@@ -21,6 +22,7 @@ import {
   resolveImplementation,
   slotToAddress,
   txOverridesOf,
+  upgradeableContractFor,
   validateImplementation,
 } from './utils';
 
@@ -67,19 +69,23 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
     const manifest = await getManifest(hre);
 
     const record = await proxyRecordOf(manifest, proxyAddress);
-    if (record && opts.kind && record.kind !== opts.kind) {
-      throw new Error(
-        `Proxy ${proxyAddress} is recorded as "${record.kind}" but opts.kind says "${opts.kind}"`,
-      );
-    }
-    const kind = record?.kind ?? opts.kind ?? 'transparent';
-    if (kind === 'beacon') {
-      const beaconAddress = slotToAddress(await getSlot(hre, proxyAddress, BEACON_SLOT));
+    const beaconAddress = slotToAddress(await getSlot(hre, proxyAddress, BEACON_SLOT));
+    if (beaconAddress !== ZERO_ADDRESS) {
       throw new Error(
         `Proxy ${proxyAddress} is a beacon proxy — its implementation lives on the beacon. ` +
           `Call upgradeBeacon("${beaconAddress}", ...) instead.`,
       );
     }
+    const draft = await upgradeableContractFor(hre, newContractName, opts);
+    const kindOpts: any = { ...opts };
+    await core().processProxyKind(
+      providerOf(hre),
+      proxyAddress,
+      kindOpts,
+      draft.validations,
+      draft.version,
+    );
+    const kind = kindOpts.kind as ProxyKind;
     checkKind(kind);
 
     // Chain first: the proxy's 1967 implementation slot is the only truth

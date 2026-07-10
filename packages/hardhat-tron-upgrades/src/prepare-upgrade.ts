@@ -9,7 +9,7 @@ import {
   isBeaconContract,
   layoutForAddress,
   providerOf,
-  proxyRecordOf,
+  upgradeableContractFor,
   resolveAddress,
   resolveImplementation,
   validateImplementation,
@@ -39,13 +39,16 @@ export function makePrepareUpgrade(hre: HardhatRuntimeEnvironment) {
       kind = 'beacon';
       currentImplAddress = await getImplementationAddressFromBeacon(provider, referenceAddress);
     } else {
-      const record = await proxyRecordOf(manifest, referenceAddress);
-      if (record && opts.kind && record.kind !== opts.kind) {
-        throw new Error(
-          `Proxy ${referenceAddress} is recorded as "${record.kind}" but opts.kind says "${opts.kind}"`,
-        );
-      }
-      kind = (record?.kind ?? opts.kind ?? 'transparent') as ValidationKind;
+      const draft = await upgradeableContractFor(hre, newContractName, opts);
+      const kindOpts: any = { ...opts };
+      await core().processProxyKind(
+        provider,
+        referenceAddress,
+        kindOpts,
+        draft.validations,
+        draft.version,
+      );
+      kind = kindOpts.kind;
       currentImplAddress = await getImplementationAddress(provider, referenceAddress);
     }
 

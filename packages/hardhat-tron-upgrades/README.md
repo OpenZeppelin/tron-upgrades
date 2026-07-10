@@ -19,9 +19,9 @@ const { upgrades } = require('hardhat');
 // validate → deploy implementation → deploy proxy (+ admin) → initialize → record
 const box = await upgrades.deployProxy('BoxV1', [owner, 42n]);
 
-// uups: same API — the upgrade mechanism lives in the implementation
-// (it must inherit UUPSUpgradeable from the ported library)
-const ubox = await upgrades.deployProxy('MyUUPSBox', [owner, 42n], { kind: 'uups' });
+// uups: inferred from the implementation's public upgrade function
+// (explicit { kind: 'uups' } is also supported)
+const ubox = await upgrades.deployProxy('MyUUPSBox', [owner, 42n]);
 
 // validate layout compatibility (+ upgrade-mechanism presence for uups)
 // → deploy v2 → re-point → verify slot
@@ -101,8 +101,8 @@ await upgrades.admin.transferProxyAdminOwnership(box, newOwner);
   upgraded by governance, a multisig, or another checkout), the upgrade
   refuses to guess and asks you to register it first with
   `await upgrades.forceImport(proxyAddress, 'CurrentImplementation')`. A lost
-  PROXY record alone is recoverable: pass `{ kind }` and the implementation is
-  found on-chain.
+  PROXY record alone is recoverable because the implementation is found
+  on-chain and the kind is inferred from validation data.
 
 ## Architecture
 
@@ -126,8 +126,8 @@ validates on demand, because compilation is owned by the bridge.
 
 - Proxy kinds: `transparent`, `uups`, and `beacon` — all supported
   (`deployProxy`/`upgradeProxy`, `deployBeacon`/`deployBeaconProxy`/`upgradeBeacon`).
-- `kind` must be explicit for UUPS — upstream-style inference from the
-  implementation's validation data is a planned follow-up.
+- Proxy kind is inferred from the implementation's public upgrade-function
+  signatures. An explicit `kind` overrides inference and conflicts are rejected.
 - `initializer: false` is not supported for `uups` (the ported `TRC1967Proxy`
   rejects empty constructor data); the plugin throws a clear error. Beacon
   proxies DO support it (uninitialized deploy, upstream parity).

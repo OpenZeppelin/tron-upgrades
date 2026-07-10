@@ -11,6 +11,7 @@ import {
   getManifest,
   resolveImplementation,
   txOverridesOf,
+  upgradeableContractFor,
   validateImplementation,
 } from './utils';
 
@@ -21,7 +22,8 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
     opts: DeployProxyOptions = {},
   ): Promise<any> {
     const ethers = ethersOf(hre);
-    const kind = opts.kind ?? 'transparent';
+    const draft = await upgradeableContractFor(hre, contractName, opts);
+    const kind = opts.kind ?? core().inferProxyKind(draft.validations, draft.version);
     checkKind(kind);
     txOverridesOf(opts);
     if (kind === 'uups' && opts.initialOwner !== undefined) {
