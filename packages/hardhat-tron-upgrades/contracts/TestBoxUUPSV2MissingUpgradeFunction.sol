@@ -3,11 +3,11 @@ pragma solidity ^0.8.26;
 
 import {Initializable} from "openzeppelin-tron-solidity/contracts/proxy/utils/Initializable.sol";
 
-/// Negative fixture: storage-compatible with BoxUUPSV1 but does NOT inherit
+/// Negative fixture: storage-compatible with TestBoxUUPSV1 but does NOT inherit
 /// UUPSUpgradeable — it has no upgrade mechanism. Upgrading a UUPS proxy to
 /// this contract would brick it permanently, so the upgrade-safety validation
 /// must reject it before anything reaches the chain.
-contract BoxUUPSV2NoButton is Initializable {
+contract TestBoxUUPSV2MissingUpgradeFunction is Initializable {
     uint256 public value;
     address public owner;
     uint256 public incrementCount;

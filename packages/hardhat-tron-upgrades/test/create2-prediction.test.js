@@ -22,7 +22,7 @@ describe('Deterministic clone address prediction on TVM', function () {
   this.timeout(240_000);
 
   it('library prediction == 0x41 off-chain computation == actual deployment', async () => {
-    const impl = await ethers.deployContract('BoxV1');
+    const impl = await ethers.deployContract('TestBoxV1');
     const factory = await ethers.deployContract('CloneFactory');
     const implAddr = (await impl.getAddress()).toLowerCase();
     const factoryAddr = (await factory.getAddress()).toLowerCase();
@@ -43,7 +43,7 @@ describe('Deterministic clone address prediction on TVM', function () {
     // the clone actually lands on the predicted address and runs
     const tx = await factory.deployClone(implAddr, salt);
     await expect(tx).to.emit(factory, 'CloneDeployed').withArgs(ethers.getAddress(predicted));
-    const cloneBox = await ethers.getContractAt('BoxV1', ethers.getAddress(predicted));
+    const cloneBox = await ethers.getContractAt('TestBoxV1', ethers.getAddress(predicted));
     expect(await cloneBox.version()).to.equal('v1');
   });
 });

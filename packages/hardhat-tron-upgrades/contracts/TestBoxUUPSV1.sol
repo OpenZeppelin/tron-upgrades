@@ -6,7 +6,7 @@ import {UUPSUpgradeable} from "openzeppelin-tron-solidity/contracts/proxy/utils/
 
 /// UUPS-style upgradeable implementation: the upgrade mechanism
 /// (upgradeToAndCall) is inherited into this contract's bytecode.
-contract BoxUUPSV1 is Initializable, UUPSUpgradeable {
+contract TestBoxUUPSV1 is Initializable, UUPSUpgradeable {
     uint256 public value;
     address public owner;
 

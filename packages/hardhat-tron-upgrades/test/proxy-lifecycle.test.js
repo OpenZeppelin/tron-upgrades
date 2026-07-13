@@ -54,8 +54,8 @@ describe('Transparent proxy lifecycle on TVM', function () {
   it('deploys, verifies 1967 slots, upgrades, and preserves state', async () => {
     const [owner] = await ethers.getSigners();
 
-    const implV1 = await ethers.deployContract('BoxV1');
-    const implV2 = await ethers.deployContract('BoxV2');
+    const implV1 = await ethers.deployContract('TestBoxV1');
+    const implV2 = await ethers.deployContract('TestBoxV2');
     const v1Addr = await implV1.getAddress();
     const v2Addr = await implV2.getAddress();
 
@@ -68,7 +68,7 @@ describe('Transparent proxy lifecycle on TVM', function () {
     const proxyAddr = await proxy.getAddress();
 
     // calls are forwarded to the implementation
-    const boxV1 = await ethers.getContractAt('BoxV1', proxyAddr);
+    const boxV1 = await ethers.getContractAt('TestBoxV1', proxyAddr);
     expect(await boxV1.value()).to.equal(42n);
     expect(await boxV1.version()).to.equal('v1');
 
@@ -84,7 +84,7 @@ describe('Transparent proxy lifecycle on TVM', function () {
     await admin.connect(owner).upgradeAndCall(proxyAddr, v2Addr, '0x');
 
     // state preserved, new logic live, slot re-pointed
-    const boxV2 = await ethers.getContractAt('BoxV2', proxyAddr);
+    const boxV2 = await ethers.getContractAt('TestBoxV2', proxyAddr);
     expect(await boxV2.value()).to.equal(42n);
     expect(await boxV2.version()).to.equal('v2');
     await boxV2.increment();
@@ -100,8 +100,8 @@ describe('Beacon proxy lifecycle on TVM', function () {
   it('two proxies upgrade atomically when the beacon re-points', async () => {
     const [owner] = await ethers.getSigners();
 
-    const implV1 = await ethers.deployContract('BoxV1');
-    const implV2 = await ethers.deployContract('BoxV2');
+    const implV1 = await ethers.deployContract('TestBoxV1');
+    const implV2 = await ethers.deployContract('TestBoxV2');
 
     const beacon = await ethers.deployContract(UPGRADEABLE_BEACON, [
       await implV1.getAddress(),
@@ -113,8 +113,8 @@ describe('Beacon proxy lifecycle on TVM', function () {
     const proxyA = await ethers.deployContract(BEACON_PROXY, [beaconAddr, init(1n)]);
     const proxyB = await ethers.deployContract(BEACON_PROXY, [beaconAddr, init(2n)]);
 
-    const a1 = await ethers.getContractAt('BoxV1', await proxyA.getAddress());
-    const b1 = await ethers.getContractAt('BoxV1', await proxyB.getAddress());
+    const a1 = await ethers.getContractAt('TestBoxV1', await proxyA.getAddress());
+    const b1 = await ethers.getContractAt('TestBoxV1', await proxyB.getAddress());
     expect(await a1.version()).to.equal('v1');
     expect(await b1.value()).to.equal(2n);
 
@@ -125,8 +125,8 @@ describe('Beacon proxy lifecycle on TVM', function () {
 
     // one upgrade, both proxies move
     await beacon.connect(owner).upgradeTo(await implV2.getAddress());
-    const a2 = await ethers.getContractAt('BoxV2', await proxyA.getAddress());
-    const b2 = await ethers.getContractAt('BoxV2', await proxyB.getAddress());
+    const a2 = await ethers.getContractAt('TestBoxV2', await proxyA.getAddress());
+    const b2 = await ethers.getContractAt('TestBoxV2', await proxyB.getAddress());
     expect(await a2.version()).to.equal('v2');
     expect(await b2.version()).to.equal('v2');
     expect(await a2.value()).to.equal(1n); // state preserved per-proxy

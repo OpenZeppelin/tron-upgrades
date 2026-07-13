@@ -107,9 +107,11 @@ npm test              # builds TypeScript, boots a Dockerized TRON node, runs th
 npm run test:examples # consumer E2E: examples/ install the packed tarballs like an npm user
 ```
 
-Test fixtures live in `contracts/` (upstream-plugin pattern) and are excluded
-from the published package via the `files` whitelist — only `dist/` and
-`contracts/Proxies.sol` ship.
+Package tests use the `TestBox*` fixtures in `contracts/`. The standalone
+consumer example owns separate `Box*` contracts under `examples/BoxUpgrades`,
+matching upstream's separation between package fixtures and example contracts.
+Package fixtures are excluded from the published package via the `files`
+whitelist; only `dist/` and `contracts/Proxies.sol` ship.
 
 ## License
 

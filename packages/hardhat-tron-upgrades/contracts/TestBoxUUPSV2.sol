@@ -4,9 +4,9 @@ pragma solidity ^0.8.26;
 import {Initializable} from "openzeppelin-tron-solidity/contracts/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "openzeppelin-tron-solidity/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-/// Layout-compatible upgrade of BoxUUPSV1: existing variables unchanged and
+/// Layout-compatible upgrade of TestBoxUUPSV1: existing variables unchanged and
 /// in the same order, new variable appended, upgrade mechanism retained.
-contract BoxUUPSV2 is Initializable, UUPSUpgradeable {
+contract TestBoxUUPSV2 is Initializable, UUPSUpgradeable {
     uint256 public value;
     address public owner;
     uint256 public incrementCount; // appended — safe

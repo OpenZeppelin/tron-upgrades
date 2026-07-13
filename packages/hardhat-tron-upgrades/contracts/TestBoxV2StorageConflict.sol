@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-/// Deliberately layout-INCOMPATIBLE upgrade of BoxV1: `owner` and `value`
+/// Deliberately layout-INCOMPATIBLE upgrade of TestBoxV1: `owner` and `value`
 /// are swapped, so v1's slot 0 (uint256 value) would be read as an address.
-/// The upgrade-safety validator must reject BoxV1 -> BoxV2Broken.
-contract BoxV2Broken {
+/// The upgrade-safety validator must reject TestBoxV1 -> TestBoxV2StorageConflict.
+contract TestBoxV2StorageConflict {
     address public owner; // was slot 1 — now slot 0: INCOMPATIBLE
     uint256 public value; // was slot 0 — now slot 1: INCOMPATIBLE
     bool private _initialized;

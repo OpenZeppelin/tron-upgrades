@@ -45,7 +45,7 @@ describe('hre.upgrades API — uups kind', function () {
 
   it('deploys a uups proxy: calls forwarded, slot set, manifest records kind', async () => {
     const [owner] = await ethers.getSigners();
-    const box = await upgrades.deployProxy('BoxUUPSV1', [owner.address, 42n], { kind: 'uups' });
+    const box = await upgrades.deployProxy('TestBoxUUPSV1', [owner.address, 42n], { kind: 'uups' });
     const boxAddress = await box.getAddress();
 
     expect(await box.value()).to.equal(42n);
@@ -56,16 +56,16 @@ describe('hre.upgrades API — uups kind', function () {
 
     const record = readManifest().proxies[boxAddress.toLowerCase()];
     expect(record.kind).to.equal('uups');
-    expect(record.contract).to.equal('BoxUUPSV1');
+    expect(record.contract).to.equal('TestBoxUUPSV1');
     expect(record.implementation.toLowerCase()).to.equal(ethers.getAddress(implAddress).toLowerCase());
   });
 
   it('upgrades V1 → V2 through the implementation-borne upgrade function', async () => {
     const [owner] = await ethers.getSigners();
-    const box = await upgrades.deployProxy('BoxUUPSV1', [owner.address, 42n], { kind: 'uups' });
+    const box = await upgrades.deployProxy('TestBoxUUPSV1', [owner.address, 42n], { kind: 'uups' });
     const boxAddress = await box.getAddress();
 
-    const boxV2 = await upgrades.upgradeProxy(box, 'BoxUUPSV2');
+    const boxV2 = await upgrades.upgradeProxy(box, 'TestBoxUUPSV2');
     expect(await boxV2.getAddress()).to.equal(boxAddress); // same address
     expect(await boxV2.value()).to.equal(42n); // state preserved
     expect(await boxV2.version()).to.equal('v2'); // new logic live
@@ -75,18 +75,18 @@ describe('hre.upgrades API — uups kind', function () {
 
     const record = readManifest().proxies[boxAddress.toLowerCase()];
     expect(record.kind).to.equal('uups');
-    expect(record.contract).to.equal('BoxUUPSV2');
+    expect(record.contract).to.equal('TestBoxUUPSV2');
   });
 
   it('anti-brick: refuses an upgrade to an implementation without the upgrade function', async () => {
     const [owner] = await ethers.getSigners();
-    const box = await upgrades.deployProxy('BoxUUPSV1', [owner.address, 7n], { kind: 'uups' });
+    const box = await upgrades.deployProxy('TestBoxUUPSV1', [owner.address, 7n], { kind: 'uups' });
     const boxAddress = await box.getAddress();
     const slotBefore = await getSlot(boxAddress, IMPL_SLOT);
 
     let error = null;
     try {
-      await upgrades.upgradeProxy(box, 'BoxUUPSV2NoButton');
+      await upgrades.upgradeProxy(box, 'TestBoxUUPSV2MissingUpgradeFunction');
     } catch (e) {
       error = e;
     }
@@ -97,14 +97,14 @@ describe('hre.upgrades API — uups kind', function () {
     expect(await box.version()).to.equal('v1');
     expect(await box.value()).to.equal(7n);
     expect(await getSlot(boxAddress, IMPL_SLOT)).to.equal(slotBefore);
-    expect(readManifest().proxies[boxAddress.toLowerCase()].contract).to.equal('BoxUUPSV1');
+    expect(readManifest().proxies[boxAddress.toLowerCase()].contract).to.equal('TestBoxUUPSV1');
   });
 
   it('kind-aware validation: refuses to deploy a buttonless implementation as uups', async () => {
     const [owner] = await ethers.getSigners();
     let error = null;
     try {
-      await upgrades.deployProxy('BoxV1', [owner.address, 1n], { kind: 'uups' });
+      await upgrades.deployProxy('TestBoxV1', [owner.address, 1n], { kind: 'uups' });
     } catch (e) {
       error = e;
     }
@@ -114,13 +114,13 @@ describe('hre.upgrades API — uups kind', function () {
 
   it('wrong signer: on-chain authorization rejects a non-owner upgrade', async () => {
     const [owner, stranger] = await ethers.getSigners();
-    const box = await upgrades.deployProxy('BoxUUPSV1', [owner.address, 9n], { kind: 'uups' });
+    const box = await upgrades.deployProxy('TestBoxUUPSV1', [owner.address, 9n], { kind: 'uups' });
     const boxAddress = await box.getAddress();
     const slotBefore = await getSlot(boxAddress, IMPL_SLOT);
 
     let error = null;
     try {
-      await upgrades.upgradeProxy(box, 'BoxUUPSV2', { owner: stranger });
+      await upgrades.upgradeProxy(box, 'TestBoxUUPSV2', { owner: stranger });
     } catch (e) {
       error = e;
     }
@@ -132,7 +132,7 @@ describe('hre.upgrades API — uups kind', function () {
 
   it('recordless upgrade works with explicit {from, kind}; without kind it fails clearly', async () => {
     const [owner] = await ethers.getSigners();
-    const box = await upgrades.deployProxy('BoxUUPSV1', [owner.address, 5n], { kind: 'uups' });
+    const box = await upgrades.deployProxy('TestBoxUUPSV1', [owner.address, 5n], { kind: 'uups' });
     const boxAddress = await box.getAddress();
 
     // simulate a lost record
@@ -143,7 +143,7 @@ describe('hre.upgrades API — uups kind', function () {
     // without kind: defaults to transparent, which must fail loudly (no admin)
     let error = null;
     try {
-      await upgrades.upgradeProxy(box, 'BoxUUPSV2', { from: 'BoxUUPSV1' });
+      await upgrades.upgradeProxy(box, 'TestBoxUUPSV2', { from: 'TestBoxUUPSV1' });
     } catch (e) {
       error = e;
     }
@@ -151,7 +151,7 @@ describe('hre.upgrades API — uups kind', function () {
     expect(error.message).to.match(/admin|transparent/i);
 
     // with explicit kind: takes the uups path and succeeds
-    const boxV2 = await upgrades.upgradeProxy(box, 'BoxUUPSV2', { from: 'BoxUUPSV1', kind: 'uups' });
+    const boxV2 = await upgrades.upgradeProxy(box, 'TestBoxUUPSV2', { from: 'TestBoxUUPSV1', kind: 'uups' });
     expect(await boxV2.version()).to.equal('v2');
     expect(await boxV2.value()).to.equal(5n);
   });

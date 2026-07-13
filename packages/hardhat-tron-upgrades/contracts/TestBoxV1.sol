@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 /// Minimal upgradeable-style implementation: initializer instead of
 /// constructor, storage layout that V2 must preserve.
-contract BoxV1 {
+contract TestBoxV1 {
     uint256 public value;
     address public owner;
     bool private _initialized;

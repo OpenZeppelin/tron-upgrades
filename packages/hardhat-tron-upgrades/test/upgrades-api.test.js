@@ -16,17 +16,17 @@ describe('hre.upgrades API (plugin)', function () {
     const [owner] = await ethers.getSigners();
 
     // one call: validate + deploy impl + deploy proxy + initialize + record
-    const box = await upgrades.deployProxy('BoxV1', [owner.address, 42n]);
+    const box = await upgrades.deployProxy('TestBoxV1', [owner.address, 42n]);
     const boxAddress = await box.getAddress();
     expect(await box.value()).to.equal(42n);
     expect(await box.version()).to.equal('v1');
 
     // the deployment record exists and knows what backs the proxy
     const manifest = JSON.parse(fs.readFileSync(manifestFile(), 'utf8'));
-    expect(manifest.proxies[boxAddress.toLowerCase()].contract).to.equal('BoxV1');
+    expect(manifest.proxies[boxAddress.toLowerCase()].contract).to.equal('TestBoxV1');
 
     // one call: validate compatibility + deploy v2 + re-point + verify slot
-    const boxV2 = await upgrades.upgradeProxy(box, 'BoxV2');
+    const boxV2 = await upgrades.upgradeProxy(box, 'TestBoxV2');
     expect(await boxV2.getAddress()).to.equal(boxAddress); // same address
     expect(await boxV2.value()).to.equal(42n); // state preserved
     expect(await boxV2.version()).to.equal('v2'); // new logic live
@@ -35,16 +35,16 @@ describe('hre.upgrades API (plugin)', function () {
 
     // manifest followed the upgrade
     const updated = JSON.parse(fs.readFileSync(manifestFile(), 'utf8'));
-    expect(updated.proxies[boxAddress.toLowerCase()].contract).to.equal('BoxV2');
+    expect(updated.proxies[boxAddress.toLowerCase()].contract).to.equal('TestBoxV2');
   });
 
   it('refuses an unsafe upgrade BEFORE touching the chain', async () => {
     const [owner] = await ethers.getSigners();
-    const box = await upgrades.deployProxy('BoxV1', [owner.address, 7n]);
+    const box = await upgrades.deployProxy('TestBoxV1', [owner.address, 7n]);
 
     let error = null;
     try {
-      await upgrades.upgradeProxy(box, 'BoxV2Broken');
+      await upgrades.upgradeProxy(box, 'TestBoxV2StorageConflict');
     } catch (e) {
       error = e;
     }
@@ -57,11 +57,11 @@ describe('hre.upgrades API (plugin)', function () {
   });
 
   it('validateUpgrade is exposed standalone (CI use)', async () => {
-    await upgrades.validateUpgrade('BoxV1', 'BoxV2'); // must not throw
+    await upgrades.validateUpgrade('TestBoxV1', 'TestBoxV2'); // must not throw
 
     let error = null;
     try {
-      await upgrades.validateUpgrade('BoxV1', 'BoxV2Broken');
+      await upgrades.validateUpgrade('TestBoxV1', 'TestBoxV2StorageConflict');
     } catch (e) {
       error = e;
     }

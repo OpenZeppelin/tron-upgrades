@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-/// Layout-compatible upgrade of BoxV1: existing variables unchanged and in
+/// Layout-compatible upgrade of TestBoxV1: existing variables unchanged and in
 /// the same order; new variable appended at the end.
-contract BoxV2 {
+contract TestBoxV2 {
     uint256 public value;
     address public owner;
     bool private _initialized;

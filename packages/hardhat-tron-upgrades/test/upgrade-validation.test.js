@@ -19,12 +19,15 @@ describe('Upgrade-safety validation over tron-solc build-info', function () {
   let v1, v2, v2broken;
 
   before(async () => {
-    v1 = await loadContract('contracts/BoxV1.sol:BoxV1', 'BoxV1');
-    v2 = await loadContract('contracts/BoxV2.sol:BoxV2', 'BoxV2');
-    v2broken = await loadContract('contracts/BoxV2Broken.sol:BoxV2Broken', 'BoxV2Broken');
+    v1 = await loadContract('contracts/TestBoxV1.sol:TestBoxV1', 'TestBoxV1');
+    v2 = await loadContract('contracts/TestBoxV2.sol:TestBoxV2', 'TestBoxV2');
+    v2broken = await loadContract(
+      'contracts/TestBoxV2StorageConflict.sol:TestBoxV2StorageConflict',
+      'TestBoxV2StorageConflict',
+    );
   });
 
-  it('parses tron-solc build-info and finds no unsafe patterns in BoxV1', () => {
+  it('parses tron-solc build-info and finds no unsafe patterns in TestBoxV1', () => {
     const report = v1.getErrorReport();
     expect(report.ok, report.explain()).to.equal(true);
   });
