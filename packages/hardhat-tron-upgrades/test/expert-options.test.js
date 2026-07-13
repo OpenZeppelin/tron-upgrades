@@ -94,6 +94,47 @@ describe('validation and transaction options', function () {
     ).to.be.rejectedWith(/initialOwner.*uups/i);
   });
 
+  it('rejects a ProxyAdmin contract as initialOwner unless explicitly skipped', async () => {
+    const [owner] = await ethers.getSigners();
+    const box = await upgrades.deployProxy('TestBoxV1', [owner.address, 46n]);
+    const adminAddress = await upgrades.erc1967.getAdminAddress(box);
+
+    await expect(
+      upgrades.deployProxy('TestBoxV1', [owner.address, 47n], { initialOwner: adminAddress }),
+    ).to.be.rejectedWith(/must not be a ProxyAdmin contract/);
+
+    const skipped = await upgrades.deployProxy('TestBoxV1', [owner.address, 48n], {
+      initialOwner: adminAddress,
+      unsafeSkipProxyAdminCheck: true,
+    });
+    expect(await skipped.value()).to.equal(48n);
+  });
+
+  it('uninitialized deploys fail before the chain for TRC1967-based kinds, work for beacons', async () => {
+    // The ported TRC1967Proxy (inherited by the transparent proxy) rejects
+    // empty constructor data, so upstream's missing-default-initializer
+    // tolerance cannot apply to transparent or uups — deterministic errors,
+    // no transactions sent.
+    await expect(upgrades.deployProxy('TestBoxV3')).to.be.rejectedWith(
+      /initializer: false is not supported for kind "transparent"/,
+    );
+    await expect(upgrades.deployProxy('TestBoxUUPSV3', [], { kind: 'uups' })).to.be.rejectedWith(
+      /initializer: false is not supported for kind "uups"/,
+    );
+
+    // An explicitly named missing initializer is always an error.
+    await expect(upgrades.deployProxy('TestBoxV3', [], { initializer: 'setUp' })).to.be.rejectedWith(
+      /no initializer function matching/,
+    );
+
+    // BeaconProxy accepts empty data: a contract without an initialize
+    // function deploys uninitialized (upstream parity).
+    const beacon = await upgrades.deployBeacon('TestBoxV3');
+    const box = await upgrades.deployBeaconProxy(beacon, 'TestBoxV3');
+    expect(await box.version()).to.equal('v3');
+    expect(await box.value()).to.equal(0n);
+  });
+
   it('exposes silenceWarnings from upgrades-core', async () => {
     expect(upgrades.silenceWarnings).to.be.a('function');
     upgrades.silenceWarnings();

@@ -15,6 +15,7 @@ export interface TxOverrides {
 export interface ImplementationOptions extends ValidationOptions {
   constructorArgs?: unknown[];
   redeployImplementation?: 'always' | 'never' | 'onchange';
+  useDeployedImplementation?: boolean;
   timeout?: number;
   pollingInterval?: number;
   txOverrides?: TxOverrides;
@@ -23,6 +24,7 @@ export interface DeployProxyOptions extends ImplementationOptions {
   kind?: ProxyKind;
   initializer?: string | false;
   initialOwner?: string;
+  unsafeSkipProxyAdminCheck?: boolean;
 }
 export interface UpgradeProxyOptions extends ImplementationOptions {
   kind?: ProxyKind;

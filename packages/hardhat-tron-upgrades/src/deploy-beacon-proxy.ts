@@ -31,9 +31,9 @@ export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
     const iface = new Interface(artifact.abi);
 
     // Unlike the ported TRC1967Proxy, BeaconProxy accepts empty constructor
-    // data — initializer: false deploys an uninitialized proxy (upstream parity).
-    const initializer = opts.initializer ?? 'initialize';
-    const initData = getInitializerData(iface, initializer, args);
+    // data — initializer: false (or a contract without an initializer)
+    // deploys an uninitialized proxy (upstream parity).
+    const initData = getInitializerData(iface, args, opts.initializer);
 
     const proxy = await deployContractWithOptions(
       hre,

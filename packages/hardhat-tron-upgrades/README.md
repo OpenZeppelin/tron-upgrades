@@ -138,9 +138,11 @@ transparent proxy has an immutable admin), and the Hardhat 3-only surfaces
   (`deployProxy`/`upgradeProxy`, `deployBeacon`/`deployBeaconProxy`/`upgradeBeacon`).
 - Proxy kind is inferred from the implementation's public upgrade-function
   signatures. An explicit `kind` overrides inference and conflicts are rejected.
-- `initializer: false` is not supported for `uups` (the ported `TRC1967Proxy`
-  rejects empty constructor data); the plugin throws a clear error. Beacon
-  proxies DO support it (uninitialized deploy, upstream parity).
+- Uninitialized proxies are not supported for `transparent` or `uups`: the
+  ported `TRC1967Proxy` (which the transparent proxy inherits) rejects empty
+  constructor data, so both `initializer: false` and a contract without a
+  default initializer fail with a clear error BEFORE any transaction. Beacon
+  proxies DO support uninitialized deploys (upstream parity).
 - Manifests from plugin versions before the upstream schema are refused with
   a migration error (they recorded contract names — the drift-prone baseline
   this version removes).
@@ -162,6 +164,8 @@ to TVM. Differences are explicit:
 | Chain-first manifests, implementation reuse, constructor arguments | Supported |
 | Kind inference and conflict detection | Supported |
 | `unsafeAllow`, `unsafeAllowRenames`, `unsafeSkipStorageCheck` | Supported |
+| `useDeployedImplementation` (legacy reuse flag) | Supported; conflicts with `redeployImplementation`, as upstream |
+| `initialOwner` ProxyAdmin guard + `unsafeSkipProxyAdminCheck` | Supported |
 | `upgradeProxy` `call: { fn, args }` | Supported |
 | `deployImplementation` / `prepareUpgrade` `getTxResponse` | Supported |
 | `txOverrides.value`, `txOverrides.gasLimit` | Supported and translated by the TRON bridge |

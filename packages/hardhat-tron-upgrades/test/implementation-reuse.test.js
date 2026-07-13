@@ -54,6 +54,32 @@ describe('implementation reuse', function () {
     expect(implEntry(await readManifest(), replacement)).to.not.equal(undefined);
   });
 
+  it('useDeployedImplementation reuses an existing implementation and rejects an unknown one', async () => {
+    const first = await upgrades.deployImplementation('TestBoxWithCtor', { constructorArgs: [108n] });
+    const reused = await upgrades.deployImplementation('TestBoxWithCtor', {
+      constructorArgs: [108n],
+      useDeployedImplementation: true,
+    });
+    expect(reused).to.equal(first);
+
+    await expect(
+      upgrades.deployImplementation('TestBoxWithCtor', {
+        constructorArgs: [109n],
+        useDeployedImplementation: true,
+      }),
+    ).to.be.rejectedWith(/useDeployedImplementation option was set to true/);
+  });
+
+  it('useDeployedImplementation conflicts with redeployImplementation', async () => {
+    await expect(
+      upgrades.deployImplementation('TestBoxWithCtor', {
+        constructorArgs: [110n],
+        useDeployedImplementation: true,
+        redeployImplementation: 'always',
+      }),
+    ).to.be.rejectedWith(/cannot both be set/);
+  });
+
   it('same constructor arguments produce the same reusable version key', async () => {
     const first = await upgrades.deployImplementation('TestBoxWithCtor', { constructorArgs: [105n] });
     const second = await upgrades.deployImplementation('TestBoxWithCtor', { constructorArgs: [105n] });

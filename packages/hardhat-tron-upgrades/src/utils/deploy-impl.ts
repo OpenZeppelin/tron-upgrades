@@ -13,13 +13,20 @@ export async function resolveImplementation(
   validated?: any,
 ): Promise<{ address: string; contract: any; txResponse?: any }> {
   txOverridesOf(opts);
+  if (opts.useDeployedImplementation && opts.redeployImplementation !== undefined) {
+    throw new Error(
+      'The useDeployedImplementation and redeployImplementation options cannot both be set at the same time',
+    );
+  }
   await getManifest(hre); // legacy-format preflight before any deployment
   const contract = validated ?? (await validateImplementation(hre, contractName, opts));
-  const mode = opts.redeployImplementation ?? 'onchange';
+  const mode = opts.redeployImplementation ?? (opts.useDeployedImplementation ? 'never' : 'onchange');
   const deploy = async () => {
     if (mode === 'never') {
       throw new Error(
-        `The implementation contract ${contractName} was not previously deployed on this network`,
+        opts.useDeployedImplementation
+          ? `The useDeployedImplementation option was set to true but the implementation contract ${contractName} was not previously deployed on this network`
+          : `The implementation contract ${contractName} was not previously deployed on this network`,
       );
     }
     const impl = await deployContractWithOptions(
