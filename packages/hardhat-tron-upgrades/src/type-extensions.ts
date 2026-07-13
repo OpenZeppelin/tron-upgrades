@@ -1,4 +1,4 @@
-import type { UpgradesAPI } from './upgrades';
+import type { UpgradesAPI } from './types';
 
 declare module 'hardhat/types/runtime' {
   interface HardhatRuntimeEnvironment {

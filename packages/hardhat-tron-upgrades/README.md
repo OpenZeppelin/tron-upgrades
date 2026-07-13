@@ -61,6 +61,24 @@ await upgrades.beacon.getImplementationAddress(beacon);
   `upgradeProxy` knows which contract currently backs a proxy (not yet
   compatible with the upstream manifest schema).
 
+## Architecture
+
+The source mirrors upstream `@openzeppelin/hardhat-upgrades` v3.x (the
+Hardhat 2 line): one module per operation (`deploy-proxy.ts`,
+`upgrade-proxy.ts`, `deploy-beacon.ts`, `deploy-beacon-proxy.ts`,
+`upgrade-beacon.ts`, `validate-implementation.ts`, `validate-upgrade.ts`),
+each exporting a `make*` factory, composed onto `hre.upgrades` in `index.ts`
+— the same place upstream v3.x composes. Shared internals live in `utils/`;
+two of them are TRON-specific by design: `utils/manifest.ts` (deployment
+records) and `utils/slots.ts` (ERC-1967 slot reads through the TronWeb
+bridge). Import direction is enforced by `npm run check:architecture`:
+operations import utils, never each other.
+
+One deliberate difference from upstream: no compile-task hooks. Upstream
+v3.x caches validations at compile time (and recompiles modified contracts
+for namespaced-storage checks); this plugin reads `tron-solc` build-info and
+validates on demand, because compilation is owned by the bridge.
+
 ## Current limitations
 
 - Proxy kinds: `transparent`, `uups`, and `beacon` — all fully supported

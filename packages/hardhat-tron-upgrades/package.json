@@ -12,9 +12,10 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "test": "npm run build && hardhat test",
+    "test": "npm run build && npm run check:architecture && hardhat test",
     "prepack": "tsc -b",
-    "test:examples": "node scripts/test-examples.cjs"
+    "test:examples": "node scripts/test-examples.cjs",
+    "check:architecture": "node scripts/check-architecture.cjs"
   },
   "dependencies": {
     "@openzeppelin/upgrades-core": "^1.46.0"
