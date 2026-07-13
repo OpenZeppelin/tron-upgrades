@@ -80,6 +80,35 @@ describe('implementation reuse', function () {
     ).to.be.rejectedWith(/cannot both be set/);
   });
 
+  it('useDeployedImplementation flows through deployProxy and prepareUpgrade', async () => {
+    const [owner] = await ethers.getSigners();
+    await expect(
+      upgrades.deployProxy('TestBoxWithCtor', [owner.address, 3n], {
+        constructorArgs: [111n],
+        useDeployedImplementation: true,
+      }),
+    ).to.be.rejectedWith(/useDeployedImplementation option was set to true/);
+
+    const implAddress = await upgrades.deployImplementation('TestBoxWithCtor', {
+      constructorArgs: [111n],
+    });
+    const proxy = await upgrades.deployProxy('TestBoxWithCtor', [owner.address, 3n], {
+      constructorArgs: [111n],
+      useDeployedImplementation: true,
+    });
+    expect((await upgrades.erc1967.getImplementationAddress(proxy)).toLowerCase()).to.equal(
+      implAddress.toLowerCase(),
+    );
+
+    const preparedTarget = await upgrades.deployImplementation('TestBoxV2');
+    const prepared = await upgrades.prepareUpgrade(
+      await upgrades.deployProxy('TestBoxV1', [owner.address, 4n]),
+      'TestBoxV2',
+      { useDeployedImplementation: true },
+    );
+    expect(prepared.toLowerCase()).to.equal(preparedTarget.toLowerCase());
+  });
+
   it('same constructor arguments produce the same reusable version key', async () => {
     const first = await upgrades.deployImplementation('TestBoxWithCtor', { constructorArgs: [105n] });
     const second = await upgrades.deployImplementation('TestBoxWithCtor', { constructorArgs: [105n] });

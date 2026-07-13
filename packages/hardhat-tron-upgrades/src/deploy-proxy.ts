@@ -45,7 +45,13 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
     const iface = new Interface(contract.artifact.abi);
     const initData = getInitializerData(iface, args, opts.initializer);
     if (initData === '0x') {
-      throw new Error(`initializer: false is not supported for kind "${kind}"`);
+      throw new Error(
+        opts.initializer === false
+          ? `initializer: false is not supported for kind "${kind}" — the ported TRC1967Proxy rejects empty initialization data`
+          : `Uninitialized deployment is not supported for kind "${kind}": the contract has no ` +
+            `default initializer and the ported TRC1967Proxy rejects empty initialization data. ` +
+            `Add an initializer function or use a beacon proxy.`,
+      );
     }
 
     const implementation = await resolveImplementation(hre, contractName, opts, contract);

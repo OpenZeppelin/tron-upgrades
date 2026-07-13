@@ -41,6 +41,30 @@ describe('deployImplementation and prepareUpgrade', function () {
     expect(await boxV3.value()).to.equal(22n);
   });
 
+  it('prepares against a bare implementation address with an explicit kind (upstream parity)', async () => {
+    const implAddress = await upgrades.deployImplementation('TestBoxV1');
+    const prepared = await upgrades.prepareUpgrade(implAddress, 'TestBoxV2', {
+      kind: 'transparent',
+    });
+    expect(prepared.toLowerCase()).to.not.equal(implAddress.toLowerCase());
+    expect(implEntry(await readManifest(), prepared)).to.not.equal(undefined);
+  });
+
+  it('rejects a bare implementation address without an explicit kind', async () => {
+    const implAddress = await upgrades.deployImplementation('TestBoxV1');
+    await expect(upgrades.prepareUpgrade(implAddress, 'TestBoxV2')).to.be.rejectedWith(
+      /pass opts\.kind/,
+    );
+  });
+
+  it('classifies by 1967 slots: a proxy whose implementation exposes implementation() stays a proxy', async () => {
+    const [owner] = await ethers.getSigners();
+    const box = await upgrades.deployProxy('TestBoxWithImplementationFn', [owner.address, 24n]);
+    const prepared = await upgrades.prepareUpgrade(box, 'TestBoxV2');
+    expect(implEntry(await readManifest(), prepared)).to.not.equal(undefined);
+    expect(await upgrades.erc1967.getBeaconAddress(box)).to.equal(ethers.ZeroAddress);
+  });
+
   it('accepts either a beacon or one of its proxies as the prepare reference', async () => {
     const [owner] = await ethers.getSigners();
     const beacon = await upgrades.deployBeacon('TestBoxV1');

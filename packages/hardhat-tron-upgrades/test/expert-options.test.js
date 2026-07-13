@@ -116,10 +116,10 @@ describe('validation and transaction options', function () {
     // tolerance cannot apply to transparent or uups — deterministic errors,
     // no transactions sent.
     await expect(upgrades.deployProxy('TestBoxV3')).to.be.rejectedWith(
-      /initializer: false is not supported for kind "transparent"/,
+      /Uninitialized deployment is not supported for kind "transparent"/,
     );
     await expect(upgrades.deployProxy('TestBoxUUPSV3', [], { kind: 'uups' })).to.be.rejectedWith(
-      /initializer: false is not supported for kind "uups"/,
+      /Uninitialized deployment is not supported for kind "uups"/,
     );
 
     // An explicitly named missing initializer is always an error.
