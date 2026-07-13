@@ -1,4 +1,6 @@
-'use strict';
+import fs from 'node:fs';
+import hre from 'hardhat';
+import path from 'node:path';
 
 // Root-level mocha hook: wait until TRE has actually funded the deployer
 // account before any test runs.
@@ -10,9 +12,6 @@
 // Upstream fix candidate: waitForReady should also poll account existence.
 // Reported symptom observed 2026-07-03; see hardhat-tron src/tre/lifecycle.js.
 
-const fs = require('node:fs');
-const path = require('node:path');
-const hre = require('hardhat');
 
 before(async function () {
   this.timeout(90_000);

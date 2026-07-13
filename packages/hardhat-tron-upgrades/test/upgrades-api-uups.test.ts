@@ -1,7 +1,8 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
+import { implEntry, proxyRecord, readManifest, writeManifest } from './_manifest-helper';
 
-const { expect } = require('chai');
-const { ethers, upgrades } = require('hardhat');
+const { ethers, upgrades } = hre;
 
 const IMPL_SLOT = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
 
@@ -30,7 +31,6 @@ function slotAddress(slotValue) {
   return '0x' + slotValue.slice(-40).toLowerCase();
 }
 
-const { readManifest, writeManifest, proxyRecord, implEntry } = require('./_manifest-helper');
 
 describe('hre.upgrades API — uups kind', function () {
   this.timeout(240_000);
@@ -82,7 +82,7 @@ describe('hre.upgrades API — uups kind', function () {
     const boxAddress = await box.getAddress();
     const slotBefore = await getSlot(boxAddress, IMPL_SLOT);
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeProxy(box, 'TestBoxUUPSV2MissingUpgradeFunction', { kind: 'uups' });
     } catch (e) {
@@ -99,7 +99,7 @@ describe('hre.upgrades API — uups kind', function () {
 
   it('kind-aware validation: refuses to deploy a buttonless implementation as uups', async () => {
     const [owner] = await ethers.getSigners();
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.deployProxy('TestBoxV1', [owner.address, 1n], { kind: 'uups' });
     } catch (e) {
@@ -115,7 +115,7 @@ describe('hre.upgrades API — uups kind', function () {
     const boxAddress = await box.getAddress();
     const slotBefore = await getSlot(boxAddress, IMPL_SLOT);
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeProxy(box, 'TestBoxUUPSV2', { owner: stranger });
     } catch (e) {

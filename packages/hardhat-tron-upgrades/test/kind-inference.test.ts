@@ -1,8 +1,8 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
+import { proxyRecord, readManifest } from './_manifest-helper';
 
-const { expect } = require('chai');
-const { ethers, upgrades } = require('hardhat');
-const { readManifest, proxyRecord } = require('./_manifest-helper');
+const { ethers, upgrades } = hre;
 
 describe('proxy kind inference', function () {
   this.timeout(240_000);

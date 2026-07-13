@@ -1,8 +1,8 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
+import { implEntry, readManifest, writeManifest } from './_manifest-helper';
 
-const { expect } = require('chai');
-const { ethers, upgrades } = require('hardhat');
-const { readManifest, writeManifest, implEntry } = require('./_manifest-helper');
+const { ethers, upgrades } = hre;
 
 describe('implementation reuse', function () {
   this.timeout(240_000);

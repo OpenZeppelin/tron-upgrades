@@ -1,8 +1,8 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
+import { implEntry, proxyRecord, readManifest } from './_manifest-helper';
 
-const { expect } = require('chai');
-const { ethers, upgrades } = require('hardhat');
-const { readManifest, proxyRecord, implEntry } = require('./_manifest-helper');
+const { ethers, upgrades } = hre;
 
 describe('hre.upgrades API — beacon kind', function () {
   this.timeout(240_000);
@@ -64,7 +64,7 @@ describe('hre.upgrades API — beacon kind', function () {
     await upgrades.deployBeaconProxy(beacon, 'TestBoxV1', [owner.address, 3n]);
     const implBefore = await upgrades.beacon.getImplementationAddress(beacon);
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeBeacon(beacon, 'TestBoxV2StorageConflict');
     } catch (e) {
@@ -80,7 +80,7 @@ describe('hre.upgrades API — beacon kind', function () {
     const beacon = await upgrades.deployBeacon('TestBoxV1');
     const a = await upgrades.deployBeaconProxy(beacon, 'TestBoxV1', [owner.address, 4n]);
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeProxy(a, 'TestBoxV2');
     } catch (e) {
@@ -111,14 +111,14 @@ describe('hre.upgrades API — beacon kind', function () {
     const beacon = await upgrades.deployBeacon('TestBoxV1');
     const proxiesBefore = (await readManifest()).proxies.length;
 
-    let error = null;
+    let error: any = null;
     try {
-      await upgrades.deployBeaconProxy(beacon, 'TestBoxV1Typo', [], { initializer: false });
+      await upgrades.deployBeaconProxy(beacon, 'TestTestBoxV1Typo', [], { initializer: false });
     } catch (e) {
       error = e;
     }
     expect(error, 'expected the bad name to be rejected').to.not.equal(null);
-    expect(error.message).to.match(/TestBoxV1Typo|not found|artifact/i);
+    expect(error.message).to.match(/TestTestBoxV1Typo|not found|artifact/i);
     // nothing was deployed, nothing was recorded
     expect((await readManifest()).proxies.length).to.equal(proxiesBefore);
   });

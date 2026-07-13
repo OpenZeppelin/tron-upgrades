@@ -1,4 +1,10 @@
-'use strict';
+import fs from 'node:fs';
+import hre from 'hardhat';
+import path from 'node:path';
+import { expect } from 'chai';
+import { implEntry, readManifest } from './_manifest-helper';
+
+const { ethers, upgrades, config, network } = hre;
 
 // The central safety claims of chain-first validation, tested EXPLICITLY:
 //   - an implementation installed outside the plugin is a hard stop
@@ -8,11 +14,6 @@
 // Plus the UUPS interface dispatch: a current implementation exposing only
 // the v4 upgradeTo(address) entry point must still be upgradeable.
 
-const { expect } = require('chai');
-const fs = require('node:fs');
-const path = require('node:path');
-const { ethers, upgrades, config, network } = require('hardhat');
-const { readManifest, implEntry } = require('./_manifest-helper');
 
 const ADMIN_FQN =
   'openzeppelin-tron-solidity/contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin';
@@ -64,7 +65,7 @@ describe('chain-first validation — drift hard stops and merge semantics', func
     await admin.upgradeAndCall(boxAddress, await rogue.getAddress(), '0x');
     expect(await box.version()).to.equal('v2'); // the drift is real
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeProxy(box, 'TestBoxV2');
     } catch (e) {
@@ -90,7 +91,7 @@ describe('chain-first validation — drift hard stops and merge semantics', func
     await box.upgradeToAndCall(await rogue.getAddress(), '0x');
     expect(await box.version()).to.equal('v2');
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeProxy(box, 'TestBoxUUPSV2');
     } catch (e) {
@@ -117,7 +118,7 @@ describe('chain-first validation — drift hard stops and merge semantics', func
       (await rogue.getAddress()).toLowerCase(),
     );
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeBeacon(beacon, 'TestBoxV2');
     } catch (e) {

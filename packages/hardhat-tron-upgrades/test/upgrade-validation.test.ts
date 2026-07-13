@@ -1,8 +1,6 @@
-'use strict';
-
-const { expect } = require('chai');
-const hre = require('hardhat');
-const { UpgradeableContract } = require('@openzeppelin/upgrades-core');
+import hre from 'hardhat';
+import { UpgradeableContract } from '@openzeppelin/upgrades-core';
+import { expect } from 'chai';
 
 // The upgrade-safety validator consumes compiler build-info (AST + storage
 // layout). These tests feed it tron-solc output and check that both the
