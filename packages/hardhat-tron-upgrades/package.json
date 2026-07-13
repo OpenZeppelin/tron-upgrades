@@ -11,11 +11,13 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -b",
-    "test": "npm run build && npm run check:architecture && hardhat test",
+    "build": "npm run clean && tsc -b --force",
+    "test": "npm run build && npm run check:architecture && npm run check:types && hardhat test",
     "prepack": "tsc -b",
     "test:examples": "node scripts/test-examples.cjs",
-    "check:architecture": "node scripts/check-architecture.cjs"
+    "check:architecture": "node scripts/check-architecture.cjs",
+    "clean": "rm -rf dist",
+    "check:types": "tsc -p tsconfig.typetest.json"
   },
   "dependencies": {
     "@openzeppelin/upgrades-core": "^1.46.0"

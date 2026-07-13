@@ -122,6 +122,16 @@ v3.x caches validations at compile time (and recompiles modified contracts
 for namespaced-storage checks); this plugin reads `tron-solc` build-info and
 validates on demand, because compilation is owned by the bridge.
 
+Upstream surfaces that intentionally have no counterpart here: `defender/*`
+(no TRON deployment backend), `verify-proxy*` and the Etherscan API helpers
+(Tronscan verification is separate future work), the typed `ContractFactory`
+overloads (`utils/factories.ts` typed variants, `utils/contract-types.ts`,
+`utils/attach-abi.ts` — this API is artifact-name based),
+`scripts/migrate-oz-cli-project.ts`, `admin.changeProxyAdmin` (the ported v5
+transparent proxy has an immutable admin), and the Hardhat 3-only surfaces
+(`hooks/`, `compile-task-action.ts`, `verify-plugin.ts`,
+`utils/npmFilesToBuild.ts`).
+
 ## Current limitations
 
 - Proxy kinds: `transparent`, `uups`, and `beacon` — all supported

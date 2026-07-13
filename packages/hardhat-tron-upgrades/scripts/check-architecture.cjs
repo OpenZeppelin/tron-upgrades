@@ -26,12 +26,14 @@ const topLevel = fs
   .filter((name) => name.endsWith('.ts'))
   .map((name) => path.join(srcDir, name));
 const utilsDir = path.join(srcDir, 'utils');
-const utilsFiles = fs.existsSync(utilsDir)
-  ? fs
-      .readdirSync(utilsDir)
-      .filter((name) => name.endsWith('.ts'))
-      .map((name) => path.join(utilsDir, name))
-  : [];
+function walk(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return walk(full);
+    return entry.name.endsWith('.ts') ? [full] : [];
+  });
+}
+const utilsFiles = fs.existsSync(utilsDir) ? walk(utilsDir) : [];
 
 const operationFiles = new Set(
   topLevel.filter((file) => !NON_OPERATIONS.has(path.basename(file))),
@@ -55,10 +57,13 @@ function moduleSpecifiers(file) {
     }
     if (
       ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.Identifier &&
-      node.expression.text === 'require' &&
-      node.arguments.length === 1 &&
-      ts.isStringLiteral(node.arguments[0])
+      node.arguments.length >= 1 &&
+      ts.isStringLiteral(node.arguments[0]) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (node.expression.kind === ts.SyntaxKind.Identifier && node.expression.text === 'require') ||
+        (ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.expression.kind === ts.SyntaxKind.Identifier &&
+          node.expression.expression.text === 'require'))
     ) {
       specifiers.push(node.arguments[0].text);
     }
@@ -92,6 +97,19 @@ for (const file of [...topLevel, ...utilsFiles]) {
         violations.push(`utils module ${from} imports operation module ${to}`);
       }
     }
+  }
+}
+
+const indexImports = new Set(
+  moduleSpecifiers(path.join(srcDir, 'index.ts'))
+    .map((specifier) => resolveRelative(path.join(srcDir, 'index.ts'), specifier))
+    .filter(Boolean),
+);
+for (const operation of operationFiles) {
+  if (!indexImports.has(operation)) {
+    violations.push(
+      `index.ts does not compose operation module ${path.relative(srcDir, operation)}`,
+    );
   }
 }
 
