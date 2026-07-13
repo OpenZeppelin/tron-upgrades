@@ -2,13 +2,23 @@ node_modules/
 dist/
 coverage/
 
-# Hardhat (sandbox)
-sandbox/artifacts/
-sandbox/cache/
-sandbox/.openzeppelin/
+# Hardhat (examples + package tests)
+packages/hardhat-tron-upgrades/examples/*/artifacts/
+packages/hardhat-tron-upgrades/examples/*/cache/
+packages/hardhat-tron-upgrades/examples/*/.openzeppelin/
+packages/hardhat-tron-upgrades/examples/*/*.tgz
+packages/hardhat-tron-upgrades/dist/
+packages/hardhat-tron-upgrades/artifacts/
+packages/hardhat-tron-upgrades/cache/
+packages/hardhat-tron-upgrades/.openzeppelin/
 
 # local agent instructions (never commit)
 CLAUDE.local.md
+
+# private keys and local env (never commit)
+packages/hardhat-tron-upgrades/examples/*/.testnet-key
+.env
+.env.*
 
 .DS_Store
 *.log
