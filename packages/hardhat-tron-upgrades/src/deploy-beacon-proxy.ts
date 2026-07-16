@@ -3,11 +3,13 @@ import {
   type AddressLike,
   type DeployBeaconProxyOptions,
   FQN,
+  core,
+  deployContractWithOptions,
   ethersOf,
   getInitializerData,
-  readManifest,
+  getManifest,
   resolveAddress,
-  writeManifest,
+  txOverridesOf,
 } from './utils';
 
 export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
@@ -18,7 +20,9 @@ export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
     opts: DeployBeaconProxyOptions = {},
   ): Promise<any> {
     const ethers = ethersOf(hre);
+    txOverridesOf(opts);
     const beaconAddress = await resolveAddress(beacon);
+    const manifest = await getManifest(hre);
 
     // Preflight the implementation ABI before ANY chain interaction — a bad
     // contract name must fail here, not after a proxy is deployed and recorded.
@@ -27,19 +31,19 @@ export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
     const iface = new Interface(artifact.abi);
 
     // Unlike the ported TRC1967Proxy, BeaconProxy accepts empty constructor
-    // data — initializer: false deploys an uninitialized proxy (upstream parity).
-    const initializer = opts.initializer ?? 'initialize';
-    const initData = getInitializerData(iface, initializer, args);
+    // data — initializer: false (or a contract without an initializer)
+    // deploys an uninitialized proxy (upstream parity).
+    const initData = getInitializerData(iface, args, opts.initializer);
 
-    const proxy = await ethers.deployContract(FQN.beaconProxy, [beaconAddress, initData]);
+    const proxy = await deployContractWithOptions(
+      hre,
+      FQN.beaconProxy,
+      [beaconAddress, initData],
+      opts,
+    );
     const proxyAddress = await proxy.getAddress();
 
-    const manifest = readManifest(hre);
-    manifest.proxies[proxyAddress.toLowerCase()] = {
-      kind: 'beacon',
-      beacon: beaconAddress,
-    };
-    writeManifest(hre, manifest);
+    await core().addProxyToManifest('beacon', proxyAddress, manifest);
 
     return ethers.getContractAt(contractName, proxyAddress);
   };

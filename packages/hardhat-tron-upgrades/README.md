@@ -19,13 +19,31 @@ const { upgrades } = require('hardhat');
 // validate → deploy implementation → deploy proxy (+ admin) → initialize → record
 const box = await upgrades.deployProxy('BoxV1', [owner, 42n]);
 
-// uups: same API — the upgrade mechanism lives in the implementation
-// (it must inherit UUPSUpgradeable from the ported library)
-const ubox = await upgrades.deployProxy('MyUUPSBox', [owner, 42n], { kind: 'uups' });
+// uups: inferred from the implementation's public upgrade function
+// (explicit { kind: 'uups' } is also supported)
+const ubox = await upgrades.deployProxy('MyUUPSBox', [owner, 42n]);
 
 // validate layout compatibility (+ upgrade-mechanism presence for uups)
 // → deploy v2 → re-point → verify slot
 const boxV2 = await upgrades.upgradeProxy(box, 'BoxV2');
+
+// optional post-upgrade call, encoded against BoxV2
+await upgrades.upgradeProxy(box, 'BoxV2', {
+  call: { fn: 'increment', args: [] },
+});
+
+// prepare without re-pointing (for governance or multisig execution)
+const prepared = await upgrades.prepareUpgrade(box, 'BoxV3');
+
+// deploy and register an implementation without a proxy
+const implementation = await upgrades.deployImplementation('BoxV1');
+
+// implementations are reused by version by default; constructor arguments
+// participate in that version key
+await upgrades.deployImplementation('BoxWithCtor', {
+  constructorArgs: [42n],
+  redeployImplementation: 'onchange', // 'always' | 'never'
+});
 
 // beacon: one upgrade moves a whole fleet of proxies atomically
 const beacon = await upgrades.deployBeacon('MyBox');
@@ -35,13 +53,16 @@ await upgrades.upgradeBeacon(beacon, 'MyBoxV2'); // p1 AND p2 now run V2
 
 // unsafe upgrades are rejected BEFORE anything touches the chain:
 await upgrades.upgradeProxy(box, 'BoxV2Broken'); // throws: storage layout incompatible
-await upgrades.upgradeProxy(ubox, 'NoButtonBox'); // throws: missing upgradeToAndCall (anti-brick)
+await upgrades.upgradeProxy(ubox, 'NoButtonBox'); // throws: missing upgrade mechanism (anti-brick)
 
 // inspection helpers (raw 1967 slots / beacon call)
 await upgrades.erc1967.getImplementationAddress(box);
 await upgrades.erc1967.getAdminAddress(box);
 await upgrades.erc1967.getBeaconAddress(p1);
 await upgrades.beacon.getImplementationAddress(beacon);
+
+// v5 transparent proxies: hand ProxyAdmin ownership to a new account
+await upgrades.admin.transferProxyAdminOwnership(box, newOwner);
 ```
 
 ## How it works
@@ -57,9 +78,31 @@ await upgrades.beacon.getImplementationAddress(beacon);
   import "@openzeppelin/hardhat-tron-upgrades/contracts/Proxies.sol";
   ```
 
-- **Deployment records** are written to `.openzeppelin/<network>.json` so
-  `upgradeProxy` knows which contract currently backs a proxy (not yet
-  compatible with the upstream manifest schema).
+- **Chain-first validation.** Before any upgrade, the plugin reads the
+  implementation CURRENTLY installed on-chain (the ERC-1967 slot for
+  transparent/uups proxies, `implementation()` for beacons) and validates the
+  new contract against the storage layout stored **for that exact address** in
+  the manifest — never against a locally recorded contract name, which could
+  drift the moment the proxy is upgraded outside this plugin.
+- **The manifest** uses the upstream `.openzeppelin` schema
+  (`unknown-<chainId>.json`): implementations keyed by version hash with their
+  storage layouts (repeated deploys of the same version merge into
+  `allAddresses`), proxies with their kind. It is a safety artifact, not just
+  bookkeeping — keep it for real networks.
+- **Implementation reuse** follows the upstream version key and defaults to
+  `redeployImplementation: 'onchange'`. Use `'always'` to force a fresh
+  deployment or `'never'` to require a previously deployed version.
+- **Expert options** include `unsafeAllow`, `unsafeAllowRenames`,
+  `unsafeSkipStorageCheck`, `txOverrides: { value, gasLimit }`, and
+  `getTxResponse` on implementation preparation APIs. Unsupported EVM-only
+  transaction fields are rejected rather than silently ignored.
+- **Unknown implementations are a hard stop.** If the chain reports an
+  implementation address the manifest has never seen (e.g. the proxy was
+  upgraded by governance, a multisig, or another checkout), the upgrade
+  refuses to guess and asks you to register it first with
+  `await upgrades.forceImport(proxyAddress, 'CurrentImplementation')`. A lost
+  PROXY record alone is recoverable because the implementation is found
+  on-chain and the kind is inferred from validation data.
 
 ## Architecture
 
@@ -79,25 +122,71 @@ v3.x caches validations at compile time (and recompiles modified contracts
 for namespaced-storage checks); this plugin reads `tron-solc` build-info and
 validates on demand, because compilation is owned by the bridge.
 
+Upstream surfaces that intentionally have no counterpart here: `defender/*`
+(no TRON deployment backend), `verify-proxy*` and the Etherscan API helpers
+(Tronscan verification is separate future work), the typed `ContractFactory`
+overloads (`utils/factories.ts` typed variants, `utils/contract-types.ts`,
+`utils/attach-abi.ts` — this API is artifact-name based),
+`scripts/migrate-oz-cli-project.ts`, `admin.changeProxyAdmin` (the ported v5
+transparent proxy has an immutable admin), and the Hardhat 3-only surfaces
+(`hooks/`, `compile-task-action.ts`, `verify-plugin.ts`,
+`utils/npmFilesToBuild.ts`).
+
 ## Current limitations
 
-- Proxy kinds: `transparent`, `uups`, and `beacon` — all fully supported
+- Proxy kinds: `transparent`, `uups`, and `beacon` — all supported
   (`deployProxy`/`upgradeProxy`, `deployBeacon`/`deployBeaconProxy`/`upgradeBeacon`).
-- `kind` must be explicit for UUPS — upstream-style inference from the
-  implementation's bytecode is a planned follow-up.
-- `initializer: false` is not supported for `uups` (the ported `TRC1967Proxy`
-  rejects empty constructor data); the plugin throws a clear error. Beacon
-  proxies DO support it (uninitialized deploy, upstream parity).
-- If a proxy has no deployment record (fresh network, lost manifest), pass
-  `{ from, kind }` explicitly; conflicting record/`opts.kind` values throw.
-- The manifest is a minimal deployment record, not the upstream format.
-- **Upgrade validation currently relies on the local manifest.** If a proxy or
-  beacon is upgraded outside this plugin (governance, multisig, another
-  checkout), do not perform another plugin-driven upgrade until its current
-  implementation has been reconciled — validation would otherwise compare
-  against a stale baseline. Chain-first validation and `forceImport` are
-  planned.
+- Proxy kind is inferred from the implementation's public upgrade-function
+  signatures. An explicit `kind` overrides inference and conflicts are rejected.
+- Uninitialized proxies are not supported for `transparent` or `uups`: the
+  ported `TRC1967Proxy` (which the transparent proxy inherits) rejects empty
+  constructor data, so both `initializer: false` and a contract without a
+  default initializer fail with a clear error BEFORE any transaction. Beacon
+  proxies DO support uninitialized deploys (upstream parity).
+- Manifests from plugin versions before the upstream schema are refused with
+  a migration error (they recorded contract names — the drift-prone baseline
+  this version removes).
+- `admin.changeProxyAdmin` is not applicable: v5 transparent proxies use an
+  immutable admin. Transfer that ProxyAdmin's ownership with
+  `admin.transferProxyAdminOwnership` instead.
 - Requires the consumer to compile the ported proxy contracts (see above).
+
+## Upstream parity
+
+This package follows `@openzeppelin/hardhat-upgrades` semantics where they map
+to TVM. Differences are explicit:
+
+| Surface | Status on TRON |
+|---|---|
+| Transparent, UUPS, and beacon deploy/upgrade | Supported |
+| One module per operation (upstream file architecture) | Mirrored — see Architecture |
+| `deployImplementation`, `prepareUpgrade`, `forceImport` | Supported |
+| Chain-first manifests, implementation reuse, constructor arguments | Supported |
+| Kind inference and conflict detection | Supported |
+| `unsafeAllow`, `unsafeAllowRenames`, `unsafeSkipStorageCheck` | Supported |
+| `useDeployedImplementation` (legacy reuse flag) | Supported; conflicts with `redeployImplementation`, as upstream |
+| `initialOwner` ProxyAdmin guard + `unsafeSkipProxyAdminCheck` | Supported |
+| `upgradeProxy` `call: { fn, args }` | Supported |
+| `deployImplementation` / `prepareUpgrade` `getTxResponse` | Supported |
+| `txOverrides.value`, `txOverrides.gasLimit` | Supported and translated by the TRON bridge |
+| EVM-only transaction fields (`gasPrice`, `nonce`, EIP-1559 fields) | Rejected as unmappable |
+| `admin.transferProxyAdminOwnership` | Supported |
+| `admin.changeProxyAdmin` | N/A: the ported v5 transparent proxy has an immutable admin |
+| Typed `ContractFactory` overloads and typed contract returns | Different by design: this API is artifact-name based |
+| Custom `proxyFactory` / `deployFunction` | N/A: deployment is owned by the TronWeb bridge |
+| Defender deployment/approval APIs | N/A: no TRON deployment backend |
+| `deployContract` helper | N/A: use the bridge's `hre.ethers.deployContract` |
+| Etherscan verification integration | N/A; Tronscan verification is future work |
+
+For Nile demo deployments, rebuild a fresh checkout's local manifest with:
+
+```bash
+npx hardhat run scripts/reimport-nile.js --network nile
+```
+
+Local TRE manifests are intentionally ephemeral. Before mainnet use, keep
+public-network manifests in version control or another durable deployment
+repository; losing them intentionally stops future upgrades until re-imported.
 
 ## Development
 

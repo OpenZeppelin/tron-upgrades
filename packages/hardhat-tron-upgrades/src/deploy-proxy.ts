@@ -3,12 +3,18 @@ import {
   type DeployProxyOptions,
   FQN,
   checkKind,
+  core,
+  deployContractWithOptions,
   deployerAddress,
   ethersOf,
   getInitializerData,
-  readManifest,
+  getManifest,
+  isOptionalCallRevert,
+  providerOf,
+  resolveImplementation,
+  txOverridesOf,
+  upgradeableContractFor,
   validateImplementation,
-  writeManifest,
 } from './utils';
 
 export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
@@ -18,38 +24,73 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
     opts: DeployProxyOptions = {},
   ): Promise<any> {
     const ethers = ethersOf(hre);
-    const kind = opts.kind ?? 'transparent';
+    const draft = await upgradeableContractFor(hre, contractName, opts);
+    const kind = opts.kind ?? core().inferProxyKind(draft.validations, draft.version);
     checkKind(kind);
-    const initializer = opts.initializer ?? 'initialize';
-    if (kind === 'uups' && initializer === false) {
-      // Deterministic option error — reject before anything reaches the
-      // chain. (The ported TRC1967Proxy rejects empty constructor data, so
-      // an uninitialized UUPS proxy cannot be deployed through this path.)
-      throw new Error(`initializer: false is not supported for kind "uups"`);
+    txOverridesOf(opts);
+    if (kind === 'uups' && opts.initialOwner !== undefined) {
+      throw new Error(`initialOwner is not supported for kind "uups"`);
     }
-    await validateImplementation(hre, contractName, { kind });
+    // Resolve the manifest before any chain write: a legacy manifest file is a
+    // deterministic error and must fail here, not after deployments.
+    const manifest = await getManifest(hre);
+    const contract = await validateImplementation(hre, contractName, { ...opts, kind });
 
-    const impl = await ethers.deployContract(contractName);
-    const implAddress = await impl.getAddress();
+    // Deterministic option error — reject before anything reaches the chain.
+    // The ported TRC1967Proxy (which the transparent proxy inherits) rejects
+    // empty constructor data, so an uninitialized proxy cannot be deployed
+    // for either kind — whether initialization was skipped explicitly or the
+    // contract has no default initializer. Beacon proxies do support it.
+    const { Interface } = require('ethers');
+    const iface = new Interface(contract.artifact.abi);
+    const initData = getInitializerData(iface, args, opts.initializer);
+    if (initData === '0x') {
+      throw new Error(
+        opts.initializer === false
+          ? `initializer: false is not supported for kind "${kind}" — the ported TRC1967Proxy rejects empty initialization data`
+          : `Uninitialized deployment is not supported for kind "${kind}": the contract has no ` +
+            `default initializer and the ported TRC1967Proxy rejects empty initialization data. ` +
+            `Add an initializer function or use a beacon proxy.`,
+      );
+    }
 
-    const initData = getInitializerData(impl.interface, initializer, args);
+    const implementation = await resolveImplementation(hre, contractName, opts, contract);
+    const implAddress = implementation.address;
 
     let proxy;
     if (kind === 'transparent') {
       const owner = opts.initialOwner ?? deployerAddress(hre);
-      proxy = await ethers.deployContract(FQN.transparent, [implAddress, owner, initData]);
+      // A ProxyAdmin as initialOwner is almost always a v4-era mistake: the
+      // v5 transparent proxy deploys its OWN admin, owned by initialOwner.
+      // The owner() probe rejects on TVM for EOAs (no-code call) — that
+      // simply means "not a ProxyAdmin".
+      let ownerIsProxyAdmin = false;
+      if (!opts.unsafeSkipProxyAdminCheck) {
+        try {
+          ownerIsProxyAdmin = await core().inferProxyAdmin(providerOf(hre), owner);
+        } catch (e) {
+          if (!isOptionalCallRevert(e)) throw e;
+        }
+      }
+      if (ownerIsProxyAdmin) {
+        throw new Error(
+          '`initialOwner` must not be a ProxyAdmin contract. If the contract at ' +
+            `${owner} is able to call functions on an actual ProxyAdmin, skip this check ` +
+            'with the `unsafeSkipProxyAdminCheck` option.',
+        );
+      }
+      proxy = await deployContractWithOptions(
+        hre,
+        FQN.transparent,
+        [implAddress, owner, initData],
+        opts,
+      );
     } else {
-      proxy = await ethers.deployContract(FQN.trc1967, [implAddress, initData]);
+      proxy = await deployContractWithOptions(hre, FQN.trc1967, [implAddress, initData], opts);
     }
     const proxyAddress = await proxy.getAddress();
 
-    const manifest = readManifest(hre);
-    manifest.proxies[proxyAddress.toLowerCase()] = {
-      kind,
-      contract: contractName,
-      implementation: implAddress,
-    };
-    writeManifest(hre, manifest);
+    await core().addProxyToManifest(kind, proxyAddress, manifest);
 
     return ethers.getContractAt(contractName, proxyAddress);
   };

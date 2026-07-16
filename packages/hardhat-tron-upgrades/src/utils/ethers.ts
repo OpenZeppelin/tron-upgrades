@@ -8,6 +8,10 @@ export function ethersOf(hre: HardhatRuntimeEnvironment): any {
   return (hre as any).ethers;
 }
 
+export function providerOf(hre: HardhatRuntimeEnvironment): any {
+  return (hre as any).network.provider;
+}
+
 // The deployer (network accounts[0]) as an EVM-style checksummed address.
 // Deliberately avoids hre.ethers.getSigners(): the bridge's signer setup
 // funds accounts via the tre_setAccountBalance cheatcode, which only exists

@@ -1,4 +1,6 @@
-'use strict';
+import fs from 'node:fs';
+import hre from 'hardhat';
+import path from 'node:path';
 
 // Root-level mocha hook: wait until TRE has actually funded the deployer
 // account before any test runs.
@@ -10,10 +12,17 @@
 // Upstream fix candidate: waitForReady should also poll account existence.
 // Reported symptom observed 2026-07-03; see hardhat-tron src/tre/lifecycle.js.
 
-const hre = require('hardhat');
 
 before(async function () {
   this.timeout(90_000);
+
+  // A fresh TRE chain replays the same deterministic addresses as the
+  // previous run, so a persisted manifest would resolve those addresses to
+  // STALE layout entries. TRE manifests are ephemeral by policy — start clean.
+  if (hre.network.name === 'tre') {
+    fs.rmSync(path.join(hre.config.paths.root, '.openzeppelin'), { recursive: true, force: true });
+  }
+
   const { tronWeb, address } = hre.tre.makeTronWeb();
   const deadline = Date.now() + 75_000;
   for (;;) {

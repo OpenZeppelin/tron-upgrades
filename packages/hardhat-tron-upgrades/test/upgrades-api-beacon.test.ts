@@ -1,14 +1,8 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
+import { implEntry, proxyRecord, readManifest } from './_manifest-helper';
 
-const { expect } = require('chai');
-const fs = require('node:fs');
-const path = require('node:path');
-const { ethers, upgrades, network, config } = require('hardhat');
-
-function readManifest() {
-  const p = path.join(config.paths.root, '.openzeppelin', `${network.name}.json`);
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
-}
+const { ethers, upgrades } = hre;
 
 describe('hre.upgrades API — beacon kind', function () {
   this.timeout(240_000);
@@ -29,17 +23,16 @@ describe('hre.upgrades API — beacon kind', function () {
     expect((await upgrades.erc1967.getBeaconAddress(a)).toLowerCase()).to.equal(
       beaconAddress.toLowerCase(),
     );
-    // the beacon getter agrees with the manifest
-    const manifest = readManifest();
-    const beaconRecord = manifest.beacons[beaconAddress.toLowerCase()];
-    expect(beaconRecord.contract).to.equal('TestBoxV1');
-    expect((await upgrades.beacon.getImplementationAddress(beacon)).toLowerCase()).to.equal(
-      beaconRecord.implementation.toLowerCase(),
-    );
-    // proxy records carry the kind and their beacon
-    const proxyRecord = manifest.proxies[(await a.getAddress()).toLowerCase()];
-    expect(proxyRecord.kind).to.equal('beacon');
-    expect(proxyRecord.beacon.toLowerCase()).to.equal(beaconAddress.toLowerCase());
+    // beacons need no manifest section: the beacon's current implementation
+    // is read from the chain and must be registered (with its layout)
+    const manifest = await readManifest();
+    const beaconImpl = await upgrades.beacon.getImplementationAddress(beacon);
+    const entry = implEntry(manifest, beaconImpl);
+    expect(entry, "the beacon's implementation must be registered").to.not.equal(undefined);
+    expect(entry.layout).to.have.property('storage');
+    // proxy records carry the kind
+    expect(proxyRecord(manifest, await a.getAddress()).kind).to.equal('beacon');
+    expect(proxyRecord(manifest, await b.getAddress()).kind).to.equal('beacon');
   });
 
   it('one beacon upgrade moves every proxy, preserving per-proxy state', async () => {
@@ -60,10 +53,9 @@ describe('hre.upgrades API — beacon kind', function () {
     expect(await a2.value()).to.equal(11n);
     expect(await b2.value()).to.equal(20n); // b untouched by a's tx
 
-    // manifest followed
-    expect(readManifest().beacons[(await beacon.getAddress()).toLowerCase()].contract).to.equal(
-      'TestBoxV2',
-    );
+    // manifest followed: the beacon's NEW on-chain implementation is registered
+    const implV2 = await upgrades.beacon.getImplementationAddress(beacon);
+    expect(implEntry(await readManifest(), implV2)).to.not.equal(undefined);
   });
 
   it('rejects a layout-incompatible beacon upgrade off-chain', async () => {
@@ -72,7 +64,7 @@ describe('hre.upgrades API — beacon kind', function () {
     await upgrades.deployBeaconProxy(beacon, 'TestBoxV1', [owner.address, 3n]);
     const implBefore = await upgrades.beacon.getImplementationAddress(beacon);
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeBeacon(beacon, 'TestBoxV2StorageConflict');
     } catch (e) {
@@ -88,7 +80,7 @@ describe('hre.upgrades API — beacon kind', function () {
     const beacon = await upgrades.deployBeacon('TestBoxV1');
     const a = await upgrades.deployBeaconProxy(beacon, 'TestBoxV1', [owner.address, 4n]);
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeProxy(a, 'TestBoxV2');
     } catch (e) {
@@ -107,9 +99,8 @@ describe('hre.upgrades API — beacon kind', function () {
     const tAdmin = await upgrades.erc1967.getAdminAddress(t);
     expect(tImpl).to.not.equal(ethers.ZeroAddress);
     expect(tAdmin).to.not.equal(ethers.ZeroAddress);
-    expect(tImpl.toLowerCase()).to.equal(
-      readManifest().proxies[(await t.getAddress()).toLowerCase()].implementation.toLowerCase(),
-    );
+    // the slot getter and the manifest agree: the on-chain impl is registered
+    expect(implEntry(await readManifest(), tImpl)).to.not.equal(undefined);
 
     const u = await upgrades.deployProxy('TestBoxUUPSV1', [owner.address, 6n], { kind: 'uups' });
     expect(await upgrades.erc1967.getAdminAddress(u)).to.equal(ethers.ZeroAddress); // uups: no admin
@@ -118,18 +109,18 @@ describe('hre.upgrades API — beacon kind', function () {
 
   it('a bad contract name fails before any deploy or record — even with initializer: false', async () => {
     const beacon = await upgrades.deployBeacon('TestBoxV1');
-    const proxiesBefore = Object.keys(readManifest().proxies).length;
+    const proxiesBefore = (await readManifest()).proxies.length;
 
-    let error = null;
+    let error: any = null;
     try {
-      await upgrades.deployBeaconProxy(beacon, 'TestBoxV1Typo', [], { initializer: false });
+      await upgrades.deployBeaconProxy(beacon, 'TestTestBoxV1Typo', [], { initializer: false });
     } catch (e) {
       error = e;
     }
     expect(error, 'expected the bad name to be rejected').to.not.equal(null);
-    expect(error.message).to.match(/TestBoxV1Typo|not found|artifact/i);
+    expect(error.message).to.match(/TestTestBoxV1Typo|not found|artifact/i);
     // nothing was deployed, nothing was recorded
-    expect(Object.keys(readManifest().proxies).length).to.equal(proxiesBefore);
+    expect((await readManifest()).proxies.length).to.equal(proxiesBefore);
   });
 
   it('supports initializer: false — uninitialized beacon proxy, initialized later', async () => {

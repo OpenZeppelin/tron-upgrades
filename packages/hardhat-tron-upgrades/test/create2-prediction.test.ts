@@ -1,7 +1,7 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
 
-const { expect } = require('chai');
-const { ethers } = require('hardhat');
+const { ethers } = hre;
 
 // TVM computes CREATE2 addresses with a 0x41 prefix (TIP-26), not 0xff.
 function computeCreate2(prefix, deployer, salt, initCodeHash) {

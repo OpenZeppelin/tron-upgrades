@@ -2,7 +2,10 @@ import type { AddressLike } from './utils/ethers';
 import type {
   DeployBeaconOptions,
   DeployBeaconProxyOptions,
+  DeployImplementationOptions,
   DeployProxyOptions,
+  PrepareUpgradeOptions,
+  TransferProxyAdminOwnershipOptions,
   UpgradeBeaconOptions,
   UpgradeProxyOptions,
   ValidationOptions,
@@ -19,6 +22,14 @@ export interface UpgradesAPI {
     opts?: DeployBeaconProxyOptions,
   ): Promise<any>;
   upgradeBeacon(beacon: AddressLike, name: string, opts?: UpgradeBeaconOptions): Promise<any>;
+  forceImport(address: AddressLike, name: string, opts?: ValidationOptions): Promise<any>;
+  deployImplementation(name: string, opts?: DeployImplementationOptions): Promise<any>;
+  prepareUpgrade(
+    reference: AddressLike,
+    name: string,
+    opts?: PrepareUpgradeOptions,
+  ): Promise<any>;
+  silenceWarnings(): void;
   validateImplementation(name: string, opts?: ValidationOptions): Promise<void>;
   validateUpgrade(from: string, to: string, opts?: ValidationOptions): Promise<void>;
   erc1967: {
@@ -28,6 +39,13 @@ export interface UpgradesAPI {
   };
   beacon: {
     getImplementationAddress(beacon: AddressLike): Promise<string>;
+  };
+  admin: {
+    transferProxyAdminOwnership(
+      proxy: AddressLike,
+      newOwner: string,
+      opts?: TransferProxyAdminOwnershipOptions,
+    ): Promise<void>;
   };
   trc1967: { IMPL_SLOT: string; ADMIN_SLOT: string; BEACON_SLOT: string };
 }

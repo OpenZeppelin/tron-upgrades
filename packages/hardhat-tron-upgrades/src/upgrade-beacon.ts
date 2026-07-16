@@ -3,11 +3,16 @@ import {
   type AddressLike,
   FQN,
   type UpgradeBeaconOptions,
+  assertStorageCompatible,
+  core,
   ethersOf,
-  readManifest,
+  getManifest,
+  layoutForAddress,
+  providerOf,
   resolveAddress,
-  validateUpgrade,
-  writeManifest,
+  resolveImplementation,
+  txOverridesOf,
+  validateImplementation,
 } from './utils';
 
 export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
@@ -18,24 +23,33 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
   ): Promise<any> {
     const ethers = ethersOf(hre);
     const beaconAddress = await resolveAddress(beacon);
+    const manifest = await getManifest(hre);
 
-    const manifest = readManifest(hre);
-    const record = manifest.beacons[beaconAddress.toLowerCase()];
-    const fromContractName = opts.from ?? record?.contract;
-    if (!fromContractName) {
-      throw new Error(
-        `No deployment record for beacon ${beaconAddress} on network "${hre.network.name}" — pass opts.from with the current implementation's contract name.`,
-      );
-    }
+    // Chain first: ask the beacon what it points at now, then look that
+    // address up in the manifest for the layout baseline.
+    const { getImplementationAddressFromBeacon } = core();
+    const currentImplAddress = await getImplementationAddressFromBeacon(
+      providerOf(hre),
+      beaconAddress,
+    );
+    const currentLayout = await layoutForAddress(manifest, currentImplAddress);
 
-    await validateUpgrade(hre, fromContractName, newContractName, { kind: 'beacon' });
+    const newContract = await validateImplementation(hre, newContractName, {
+      ...opts,
+      kind: 'beacon',
+    });
+    assertStorageCompatible(currentLayout, newContract.layout, opts);
 
     const beaconContract = await ethers.getContractAt(FQN.beacon, beaconAddress);
-    const newImpl = await ethers.deployContract(newContractName);
-    const newImplAddress = await newImpl.getAddress();
+    const newImplAddress = (
+      await resolveImplementation(hre, newContractName, opts, newContract)
+    ).address;
 
     const withOwner = (c: any) => (opts.owner ? c.connect(opts.owner) : c);
-    await withOwner(beaconContract).upgradeTo(newImplAddress);
+    const txOverrides = txOverridesOf(opts);
+    await (txOverrides
+      ? withOwner(beaconContract).upgradeTo(newImplAddress, txOverrides)
+      : withOwner(beaconContract).upgradeTo(newImplAddress));
 
     // trust, but verify: the beacon must now point at the new implementation
     const current = (await beaconContract.implementation()).toLowerCase();
@@ -44,12 +58,6 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
         `Beacon upgrade transaction succeeded but the beacon points at ${current}, expected ${newImplAddress}`,
       );
     }
-
-    manifest.beacons[beaconAddress.toLowerCase()] = {
-      contract: newContractName,
-      implementation: newImplAddress,
-    };
-    writeManifest(hre, manifest);
 
     return beaconContract;
   };

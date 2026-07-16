@@ -1,9 +1,8 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
+import { implEntry, proxyRecord, readManifest, writeManifest } from './_manifest-helper';
 
-const { expect } = require('chai');
-const fs = require('node:fs');
-const path = require('node:path');
-const { ethers, upgrades, network, config } = require('hardhat');
+const { ethers, upgrades } = hre;
 
 const IMPL_SLOT = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
 
@@ -32,13 +31,6 @@ function slotAddress(slotValue) {
   return '0x' + slotValue.slice(-40).toLowerCase();
 }
 
-function manifestFile() {
-  return path.join(config.paths.root, '.openzeppelin', `${network.name}.json`);
-}
-
-function readManifest() {
-  return JSON.parse(fs.readFileSync(manifestFile(), 'utf8'));
-}
 
 describe('hre.upgrades API — uups kind', function () {
   this.timeout(240_000);
@@ -54,10 +46,12 @@ describe('hre.upgrades API — uups kind', function () {
     const implAddress = slotAddress(await getSlot(boxAddress, IMPL_SLOT));
     expect(implAddress).to.not.equal('0x' + '0'.repeat(40));
 
-    const record = readManifest().proxies[boxAddress.toLowerCase()];
-    expect(record.kind).to.equal('uups');
-    expect(record.contract).to.equal('TestBoxUUPSV1');
-    expect(record.implementation.toLowerCase()).to.equal(ethers.getAddress(implAddress).toLowerCase());
+    const manifest = await readManifest();
+    expect(proxyRecord(manifest, boxAddress).kind).to.equal('uups');
+    // the on-chain implementation is registered with its storage layout
+    const entry = implEntry(manifest, implAddress);
+    expect(entry, 'installed implementation must be registered').to.not.equal(undefined);
+    expect(entry.layout).to.have.property('storage');
   });
 
   it('upgrades V1 → V2 through the implementation-borne upgrade function', async () => {
@@ -73,9 +67,13 @@ describe('hre.upgrades API — uups kind', function () {
     expect(await boxV2.value()).to.equal(43n);
     expect(await boxV2.incrementCount()).to.equal(1n);
 
-    const record = readManifest().proxies[boxAddress.toLowerCase()];
-    expect(record.kind).to.equal('uups');
-    expect(record.contract).to.equal('TestBoxUUPSV2');
+    const manifest = await readManifest();
+    expect(proxyRecord(manifest, boxAddress).kind).to.equal('uups');
+    // the NEW on-chain implementation is registered
+    const implV2 = slotAddress(await getSlot(boxAddress, IMPL_SLOT));
+    expect(implEntry(manifest, implV2), 'v2 implementation must be registered').to.not.equal(
+      undefined,
+    );
   });
 
   it('anti-brick: refuses an upgrade to an implementation without the upgrade function', async () => {
@@ -84,25 +82,24 @@ describe('hre.upgrades API — uups kind', function () {
     const boxAddress = await box.getAddress();
     const slotBefore = await getSlot(boxAddress, IMPL_SLOT);
 
-    let error = null;
+    let error: any = null;
     try {
-      await upgrades.upgradeProxy(box, 'TestBoxUUPSV2MissingUpgradeFunction');
+      await upgrades.upgradeProxy(box, 'TestBoxUUPSV2MissingUpgradeFunction', { kind: 'uups' });
     } catch (e) {
       error = e;
     }
     expect(error, 'expected the upgrade to be rejected').to.not.equal(null);
     expect(error.message).to.match(/upgradeTo/i); // names the missing mechanism
 
-    // proxy untouched: logic, state, slot and manifest all unchanged
+    // proxy untouched: logic, state and slot all unchanged
     expect(await box.version()).to.equal('v1');
     expect(await box.value()).to.equal(7n);
     expect(await getSlot(boxAddress, IMPL_SLOT)).to.equal(slotBefore);
-    expect(readManifest().proxies[boxAddress.toLowerCase()].contract).to.equal('TestBoxUUPSV1');
   });
 
   it('kind-aware validation: refuses to deploy a buttonless implementation as uups', async () => {
     const [owner] = await ethers.getSigners();
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.deployProxy('TestBoxV1', [owner.address, 1n], { kind: 'uups' });
     } catch (e) {
@@ -118,7 +115,7 @@ describe('hre.upgrades API — uups kind', function () {
     const boxAddress = await box.getAddress();
     const slotBefore = await getSlot(boxAddress, IMPL_SLOT);
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeProxy(box, 'TestBoxUUPSV2', { owner: stranger });
     } catch (e) {
@@ -130,28 +127,21 @@ describe('hre.upgrades API — uups kind', function () {
     expect(await getSlot(boxAddress, IMPL_SLOT)).to.equal(slotBefore);
   });
 
-  it('recordless upgrade works with explicit {from, kind}; without kind it fails clearly', async () => {
+  it('a lost proxy record recovers by inferring kind from the new implementation', async () => {
     const [owner] = await ethers.getSigners();
     const box = await upgrades.deployProxy('TestBoxUUPSV1', [owner.address, 5n], { kind: 'uups' });
     const boxAddress = await box.getAddress();
 
-    // simulate a lost record
-    const manifest = readManifest();
-    delete manifest.proxies[boxAddress.toLowerCase()];
-    fs.writeFileSync(manifestFile(), JSON.stringify(manifest, null, 2) + '\n');
+    // simulate a lost proxy record (the impls entries survive)
+    const manifest = await readManifest();
+    manifest.proxies = manifest.proxies.filter(
+      (p) => p.address.toLowerCase() !== boxAddress.toLowerCase(),
+    );
+    await writeManifest(manifest);
 
-    // without kind: defaults to transparent, which must fail loudly (no admin)
-    let error = null;
-    try {
-      await upgrades.upgradeProxy(box, 'TestBoxUUPSV2', { from: 'TestBoxUUPSV1' });
-    } catch (e) {
-      error = e;
-    }
-    expect(error, 'expected the transparent-path fallback to fail').to.not.equal(null);
-    expect(error.message).to.match(/admin|transparent/i);
-
-    // with explicit kind: takes the uups path and succeeds
-    const boxV2 = await upgrades.upgradeProxy(box, 'TestBoxUUPSV2', { from: 'TestBoxUUPSV1', kind: 'uups' });
+    // The new implementation's signatures infer UUPS; the current
+    // implementation is still found on-chain and its layout found BY ADDRESS.
+    const boxV2 = await upgrades.upgradeProxy(box, 'TestBoxUUPSV2');
     expect(await boxV2.version()).to.equal('v2');
     expect(await boxV2.value()).to.equal(5n);
   });

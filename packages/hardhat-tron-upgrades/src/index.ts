@@ -11,9 +11,13 @@
 import './type-extensions';
 import { extendEnvironment } from 'hardhat/config';
 import type { HardhatRuntimeEnvironment } from 'hardhat/types';
+import { makeTransferProxyAdminOwnership } from './admin';
 import { makeDeployBeacon } from './deploy-beacon';
 import { makeDeployBeaconProxy } from './deploy-beacon-proxy';
+import { makeDeployImplementation } from './deploy-implementation';
 import { makeDeployProxy } from './deploy-proxy';
+import { makeForceImport } from './force-import';
+import { makePrepareUpgrade } from './prepare-upgrade';
 import type { UpgradesAPI } from './types';
 import { makeUpgradeBeacon } from './upgrade-beacon';
 import { makeUpgradeProxy } from './upgrade-proxy';
@@ -23,6 +27,7 @@ import {
   BEACON_SLOT,
   FQN,
   IMPL_SLOT,
+  core,
   ethersOf,
   getSlot,
   resolveAddress,
@@ -40,6 +45,10 @@ export function makeUpgrades(hre: HardhatRuntimeEnvironment): UpgradesAPI {
     deployBeacon: makeDeployBeacon(hre),
     deployBeaconProxy: makeDeployBeaconProxy(hre),
     upgradeBeacon: makeUpgradeBeacon(hre),
+    forceImport: makeForceImport(hre),
+    deployImplementation: makeDeployImplementation(hre),
+    prepareUpgrade: makePrepareUpgrade(hre),
+    silenceWarnings: () => core().silenceWarnings(),
     validateImplementation: makeValidateImplementation(hre),
     validateUpgrade: makeValidateUpgrade(hre),
     erc1967: {
@@ -53,6 +62,9 @@ export function makeUpgrades(hre: HardhatRuntimeEnvironment): UpgradesAPI {
         return b.implementation();
       },
     },
+    admin: {
+      transferProxyAdminOwnership: makeTransferProxyAdminOwnership(hre),
+    },
     trc1967: { IMPL_SLOT, ADMIN_SLOT, BEACON_SLOT },
   };
 }
@@ -62,4 +74,18 @@ extendEnvironment((hre) => {
 });
 
 export type { UpgradesAPI } from './types';
-export type { DeployProxyOptions, UpgradeProxyOptions } from './utils/options';
+export type {
+  ProxyKind,
+  ValidationKind,
+  ValidationOptions,
+  TxOverrides,
+  ImplementationOptions,
+  DeployProxyOptions,
+  UpgradeProxyOptions,
+  DeployBeaconOptions,
+  DeployBeaconProxyOptions,
+  UpgradeBeaconOptions,
+  DeployImplementationOptions,
+  PrepareUpgradeOptions,
+  TransferProxyAdminOwnershipOptions,
+} from './utils/options';

@@ -14,6 +14,7 @@ const path = require('node:path');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const pkgDir = path.resolve(__dirname, '..');
 const exampleDir = path.join(pkgDir, 'examples', 'BoxUpgrades');
+const installedRoot = path.join(exampleDir, 'node_modules', '@openzeppelin', 'hardhat-tron-upgrades');
 
 const run = (args, cwd) => execFileSync(npm, args, { cwd, stdio: 'inherit' });
 
@@ -37,15 +38,15 @@ if (!fs.existsSync(archive)) {
 }
 
 // 3. Lockfile-verified install (plugin resolves to the committed vendor
-//    tarball), then override the plugin with the archive we just packed.
-//    `--no-save --force` is required: with an unchanged version, a plain
-//    install reports "up to date" and leaves stale code in node_modules.
+//    tarball), then replace only the installed plugin with the archive we just
+//    packed. npm does not re-extract a changed file dependency when its
+//    package name, version, and resolved path are unchanged, even with --force.
 run(['install'], exampleDir);
-run(['install', '--no-save', '--force', `./${packed.filename}`], exampleDir);
+fs.rmSync(installedRoot, { recursive: true, force: true });
+run(['install', '--no-save', `./${packed.filename}`], exampleDir);
 
 // 4. Prove the override took: every dist file installed in the example must
 //    be byte-identical to the corresponding entry in the fresh archive.
-const installedRoot = path.join(exampleDir, 'node_modules', '@openzeppelin', 'hardhat-tron-upgrades');
 const entries = execFileSync('tar', ['-tf', archive], { encoding: 'utf8' })
   .split('\n')
   .filter((e) => e.startsWith('package/dist/'));
