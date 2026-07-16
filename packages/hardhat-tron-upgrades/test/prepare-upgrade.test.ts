@@ -1,8 +1,8 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
+import { implEntry, readManifest } from './_manifest-helper';
 
-const { expect } = require('chai');
-const { ethers, upgrades } = require('hardhat');
-const { readManifest, implEntry } = require('./_manifest-helper');
+const { ethers, upgrades } = hre;
 
 describe('deployImplementation and prepareUpgrade', function () {
   this.timeout(240_000);

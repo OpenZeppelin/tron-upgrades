@@ -1,8 +1,8 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
+import { implEntry, readManifest } from './_manifest-helper';
 
-const { expect } = require('chai');
-const { ethers, upgrades } = require('hardhat');
-const { readManifest, implEntry } = require('./_manifest-helper');
+const { ethers, upgrades } = hre;
 
 describe('validation and transaction options', function () {
   this.timeout(240_000);
@@ -80,7 +80,7 @@ describe('validation and transaction options', function () {
       getTxResponse: true,
     });
     expect(prepareTx.hash).to.match(/^0x[0-9a-f]{64}$/i);
-    expect(Object.values((await readManifest()).impls).some((entry) => entry.txHash === prepareTx.hash)).to.equal(
+    expect(Object.values<any>((await readManifest()).impls).some((entry) => entry.txHash === prepareTx.hash)).to.equal(
       true,
     );
   });

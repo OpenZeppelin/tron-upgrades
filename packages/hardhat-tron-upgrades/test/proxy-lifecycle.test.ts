@@ -1,7 +1,7 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
 
-const { expect } = require('chai');
-const { ethers } = require('hardhat');
+const { ethers } = hre;
 
 // ERC-1967 well-known slots (also used by the TRC1967 port).
 const IMPL_SLOT = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
@@ -81,7 +81,7 @@ describe('Transparent proxy lifecycle on TVM', function () {
 
     // upgrade through the ProxyAdmin
     const admin = await ethers.getContractAt(PROXY_ADMIN, ethers.getAddress(adminAddr));
-    await admin.connect(owner).upgradeAndCall(proxyAddr, v2Addr, '0x');
+    await (admin.connect(owner) as any).upgradeAndCall(proxyAddr, v2Addr, '0x');
 
     // state preserved, new logic live, slot re-pointed
     const boxV2 = await ethers.getContractAt('TestBoxV2', proxyAddr);
@@ -124,7 +124,7 @@ describe('Beacon proxy lifecycle on TVM', function () {
     );
 
     // one upgrade, both proxies move
-    await beacon.connect(owner).upgradeTo(await implV2.getAddress());
+    await (beacon.connect(owner) as any).upgradeTo(await implV2.getAddress());
     const a2 = await ethers.getContractAt('TestBoxV2', await proxyA.getAddress());
     const b2 = await ethers.getContractAt('TestBoxV2', await proxyB.getAddress());
     expect(await a2.version()).to.equal('v2');

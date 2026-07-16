@@ -1,7 +1,7 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
 
-const { expect } = require('chai');
-const { ethers, upgrades } = require('hardhat');
+const { ethers, upgrades } = hre;
 
 const PROXY_ADMIN_FQN =
   'openzeppelin-tron-solidity/contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin';

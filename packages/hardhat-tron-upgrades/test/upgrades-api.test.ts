@@ -1,8 +1,8 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
+import { implEntry, proxyRecord, readManifest } from './_manifest-helper';
 
-const { expect } = require('chai');
-const { ethers, upgrades } = require('hardhat');
-const { readManifest, proxyRecord, implEntry } = require('./_manifest-helper');
+const { ethers, upgrades } = hre;
 
 describe('hre.upgrades API (plugin)', function () {
   this.timeout(240_000);
@@ -51,7 +51,7 @@ describe('hre.upgrades API (plugin)', function () {
     const [owner] = await ethers.getSigners();
     const box = await upgrades.deployProxy('TestBoxV1', [owner.address, 7n]);
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.upgradeProxy(box, 'TestBoxV2StorageConflict');
     } catch (e) {
@@ -68,7 +68,7 @@ describe('hre.upgrades API (plugin)', function () {
   it('validateUpgrade is exposed standalone (CI use)', async () => {
     await upgrades.validateUpgrade('TestBoxV1', 'TestBoxV2'); // must not throw
 
-    let error = null;
+    let error: any = null;
     try {
       await upgrades.validateUpgrade('TestBoxV1', 'TestBoxV2StorageConflict');
     } catch (e) {

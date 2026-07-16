@@ -1,8 +1,8 @@
-'use strict';
+import hre from 'hardhat';
+import { expect } from 'chai';
+import { implEntry, proxyRecord, readManifest } from './_manifest-helper';
 
-const { expect } = require('chai');
-const { ethers, upgrades } = require('hardhat');
-const { readManifest, proxyRecord, implEntry } = require('./_manifest-helper');
+const { ethers, upgrades } = hre;
 
 const PROXY_ROOT = 'openzeppelin-tron-solidity/contracts/proxy';
 const FQN = {
