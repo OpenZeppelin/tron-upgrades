@@ -11,10 +11,8 @@ export async function validateImplementation(
   opts: ValidationOptions & { constructorArgs?: unknown[] } = {},
 ): Promise<any> {
   const data = await upgradeableContractFor(hre, contractName, opts);
-  const { contract } = data;
-  const report = contract.getErrorReport();
-  if (!report.ok) {
-    throw new Error(`${contractName} is not upgrade-safe:\n${report.explain()}`);
+  if (!data.errorReport.ok) {
+    throw new Error(`${contractName} is not upgrade-safe:\n${data.errorReport.explain()}`);
   }
   return data;
 }
@@ -34,15 +32,14 @@ export async function validateUpgrade(
   // candidate. A candidate that dropped its upgrade function self-infers
   // 'transparent', which makes upgrades-core suppress the missing-upgradeTo
   // error and would let a UUPS proxy be upgraded to a bricking implementation.
-  const { inferProxyKind } = core();
+  const { inferProxyKind, getStorageUpgradeReport, withValidationDefaults } = core();
   const kind = opts.kind ?? inferProxyKind(from.validations, from.version);
   const to = await upgradeableContractFor(hre, toContractName, { ...opts, kind });
-  const errors = to.contract.getErrorReport();
-  if (!errors.ok) {
-    throw new Error(`${toContractName} is not upgrade-safe:\n${errors.explain()}`);
+  if (!to.errorReport.ok) {
+    throw new Error(`${toContractName} is not upgrade-safe:\n${to.errorReport.explain()}`);
   }
   if (opts.unsafeSkipStorageCheck) return;
-  const layout = from.contract.getStorageUpgradeReport(to.contract, opts);
+  const layout = getStorageUpgradeReport(from.layout, to.layout, withValidationDefaults(opts));
   if (!layout.ok) {
     throw new Error(
       `Storage layout of ${toContractName} is incompatible with ${fromContractName}:\n${layout.explain()}`,
