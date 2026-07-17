@@ -189,6 +189,30 @@ Local TRE manifests are intentionally ephemeral. Before mainnet use, keep
 public-network manifests in version control or another durable deployment
 repository; losing them intentionally stops future upgrades until re-imported.
 
+## Namespaced storage (ERC-7201 and TRC-7201)
+
+Namespaced storage structs are recognized under both annotation prefixes:
+
+- `@custom:storage-location erc7201:<id>` — the ERC-7201 convention used by
+  the OpenZeppelin upstream Solidity libraries.
+- `@custom:storage-location trc7201:<id>` — the TIP-7201 convention used by
+  the TRON contract libraries.
+
+TIP-7201 derives the storage slot with the identical formula as ERC-7201
+(`keccak256(abi.encode(uint256(keccak256(bytes(id))) - 1)) & ~0xff`, hashing
+the namespace id without the prefix), so a given namespace id resolves to the
+same slot under either annotation. Validation is slot-aware for both: struct
+member reorders and repacks are rejected, while trailing appends and members
+that fill intra-slot padding are accepted. A codebase that mixes `erc7201:`-
+and `trc7201:`-annotated contracts is validated correctly, each namespace on
+its own annotation.
+
+Compatibility note: mixing the two annotation prefixes across contracts in one
+codebase is supported by this plugin's validation. That is separate from mixing
+the underlying Solidity libraries — do not combine the OpenZeppelin upstream
+upgradeable libraries and the TRON contract libraries in the same contract, as
+their initializers, namespaces, and inheritance are not designed to interoperate.
+
 ## Development
 
 ```bash
