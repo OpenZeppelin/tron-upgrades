@@ -1,5 +1,4 @@
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { core } from './core';
@@ -29,40 +28,22 @@ function checkNoLegacyManifest(hre: HardhatRuntimeEnvironment): void {
   }
 }
 
-// The TRE instance id when the runtime exposes one, else undefined. Feature-
-// detected so a hardhat-tron without instanceId (or any non-TRE network) keeps
-// the current manifest naming byte-for-byte.
-async function treInstanceId(hre: HardhatRuntimeEnvironment): Promise<string | undefined> {
-  const tre = (hre as any).tre;
-  if (tre && typeof tre.instanceId === 'function') {
-    return tre.instanceId();
-  }
-  return undefined;
-}
-
-async function chainIdOf(provider: any): Promise<number> {
-  return parseInt(await provider.send('eth_chainId', []), 16);
-}
-
-// Builds the upgrades-core Manifest for the active network. On a TRE instance
-// (detected via hre.tre.instanceId) the manifest is keyed by chain + instance
-// and stored in the OS temp dir, mirroring upstream's dev-instance handling, so
-// a restarted local chain — same chainId, new instance — gets a fresh manifest
-// instead of reusing a stale one. Every other network keeps the default naming
-// via Manifest.forNetwork.
+// Builds the upgrades-core Manifest for the active network via
+// Manifest.forNetwork, which resolves a dev instance by probing the provider's
+// hardhat_metadata / anvil_metadata RPC. On a TRE that reports an instance id
+// through that RPC (see @openzeppelin/hardhat-tron's provider), forNetwork keys
+// the manifest by chain + instance and stores it in the OS temp dir, so a
+// restarted local chain — same chainId, new instance — gets a fresh manifest
+// instead of reusing a stale one. Crucially this is the SAME resolution
+// upgrades-core performs for its own internal manifest reads/writes (implementation
+// and layout records in fetchOrDeployGetDeployment, proxy-kind records in
+// processProxyKind), so the plugin's records and upgrades-core's records land in
+// one instance-qualified manifest instead of splitting across two. A network
+// that does not report metadata (any non-TRE network, or a TRE without the seam)
+// keeps the default chain-id naming, byte-for-byte.
 export async function manifestForHre(hre: HardhatRuntimeEnvironment): Promise<any> {
   const { Manifest } = core();
-  const provider = providerOf(hre);
-  const instanceId = await treInstanceId(hre);
-  if (instanceId !== undefined) {
-    const chainId = await chainIdOf(provider);
-    return new Manifest(
-      chainId,
-      { networkName: 'tre', instanceId, forkedNetwork: null },
-      os.tmpdir(),
-    );
-  }
-  return Manifest.forNetwork(provider);
+  return Manifest.forNetwork(providerOf(hre));
 }
 
 export async function getManifest(hre: HardhatRuntimeEnvironment): Promise<any> {
