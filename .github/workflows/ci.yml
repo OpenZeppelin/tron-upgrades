@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build, typecheck, and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build --workspaces --if-present
+
+      # Fast, TRE-independent checks first so architecture/type violations
+      # fail quickly without waiting on the Docker-backed suite below.
+      - run: npm run check:architecture --workspace=@openzeppelin/hardhat-tron-upgrades
+      - run: npm run check:types --workspace=@openzeppelin/hardhat-tron-upgrades
+
+      # ubuntu-latest runners ship Docker preinstalled, so the full suite
+      # (including the TRE-backed hardhat tests) can run as-is. Pull the
+      # image up front so the pull time doesn't eat into the test timeout.
+      - run: docker pull tronbox/tre:dev
+
+      - run: npm test
+        timeout-minutes: 30
+
+  pack:
+    name: Package contents
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Assert published package ships dist + README only
+        run: |
+          npm pack --dry-run --json --workspace=@openzeppelin/hardhat-tron-upgrades > pack-manifest.json
+          cat pack-manifest.json
+
+          PATHS=$(jq -r '.[0].files[].path' pack-manifest.json)
+
+          echo "$PATHS" | grep -q '^dist/' || {
+            echo "::error::packed tarball does not ship dist/"
+            exit 1
+          }
+          echo "$PATHS" | grep -q '^README.md$' || {
+            echo "::error::packed tarball does not ship README.md"
+            exit 1
+          }
+
+          DISALLOWED=$(echo "$PATHS" | grep -E '^test/|tsconfig|^src/.*\.ts$' || true)
+          if [ -n "$DISALLOWED" ]; then
+            echo "::error::packed tarball ships test/tsconfig/src TypeScript sources:"
+            echo "$DISALLOWED"
+            exit 1
+          fi
+
+          echo "Package manifest OK: ships dist/ + README.md, no test/tsconfig/src sources"
