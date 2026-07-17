@@ -30,7 +30,13 @@ export async function validateUpgrade(
   opts: ValidationOptions = {},
 ): Promise<void> {
   const from = await upgradeableContractFor(hre, fromContractName, opts);
-  const to = await upgradeableContractFor(hre, toContractName, opts);
+  // When `kind` is omitted, infer it from the REFERENCE contract, never the
+  // candidate. A candidate that dropped its upgrade function self-infers
+  // 'transparent', which makes upgrades-core suppress the missing-upgradeTo
+  // error and would let a UUPS proxy be upgraded to a bricking implementation.
+  const { inferProxyKind } = core();
+  const kind = opts.kind ?? inferProxyKind(from.validations, from.version);
+  const to = await upgradeableContractFor(hre, toContractName, { ...opts, kind });
   const errors = to.contract.getErrorReport();
   if (!errors.ok) {
     throw new Error(`${toContractName} is not upgrade-safe:\n${errors.explain()}`);
