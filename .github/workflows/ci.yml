@@ -36,6 +36,34 @@ jobs:
       - run: npm test
         timeout-minutes: 30
 
+  examples:
+    name: Consumer example (packed tarball) E2E
+    runs-on: ubuntu-latest
+    # Run after the main suite so a source/type failure surfaces there first,
+    # and the heavier packed-tarball consumer run only spends time once the
+    # library itself is known good.
+    needs: test
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build --workspaces --if-present
+
+      # The example deploys through a real TRE, same as the main suite.
+      - run: docker pull tronbox/tre:dev
+
+      # Packs the current source, installs it into examples/BoxUpgrades over the
+      # committed vendor tarball, verifies the installed dist is byte-identical
+      # to the fresh pack, then runs the example's own upgrade suite.
+      - run: npm run test:examples --workspace=@openzeppelin/hardhat-tron-upgrades
+        timeout-minutes: 30
+
   pack:
     name: Package contents
     runs-on: ubuntu-latest
