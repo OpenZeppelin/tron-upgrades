@@ -38,7 +38,7 @@ import { makeValidateUpgrade } from './validate-upgrade';
 
 export function makeUpgrades(hre: HardhatRuntimeEnvironment): UpgradesAPI {
   const slotAddress = async (target: AddressLike, slot: string) =>
-    ethersOf(hre).getAddress(slotToAddress(await getSlot(hre, await resolveAddress(target), slot)));
+    ethersOf(hre).getAddress(slotToAddress(await getSlot(hre, await resolveAddress(hre, target), slot)));
   return {
     deployProxy: makeDeployProxy(hre),
     upgradeProxy: makeUpgradeProxy(hre),
@@ -58,7 +58,7 @@ export function makeUpgrades(hre: HardhatRuntimeEnvironment): UpgradesAPI {
     },
     beacon: {
       getImplementationAddress: async (beacon) => {
-        const b = await ethersOf(hre).getContractAt(FQN.beacon, await resolveAddress(beacon));
+        const b = await ethersOf(hre).getContractAt(FQN.beacon, await resolveAddress(hre, beacon));
         return b.implementation();
       },
     },

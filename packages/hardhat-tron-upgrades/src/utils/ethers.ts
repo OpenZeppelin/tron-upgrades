@@ -24,12 +24,31 @@ export function deployerAddress(hre: HardhatRuntimeEnvironment): string {
 }
 
 // Canonicalize every address entering the plugin to its EIP-55 checksummed
-// form. Hex addresses are case-insensitive, but upgrades-core's manifest
-// lookups compare address strings with `===`: a proxy or implementation passed
-// in a different casing than the manifest recorded would miss those lookups,
-// dropping the recorded proxy kind and implementation layout. Checksumming at
-// the boundary keeps the stored and looked-up forms identical.
-export async function resolveAddress(target: AddressLike): Promise<string> {
+// form. A TVM account has three interchangeable encodings — Base58Check
+// (`T...`), TRON-hex (`41` + 20 bytes), and EVM-hex (`0x` + 20 bytes) — and any
+// of them may reach a public entry point. ethers' getAddress only accepts the
+// EVM-hex form, so the TRON encodings are first rehydrated to `0x`-hex through
+// TronWeb (the same seam deployerAddress uses). Checksumming at the boundary
+// also keeps the stored and looked-up forms identical: upgrades-core's manifest
+// lookups compare address strings with `===`, so an address in a different
+// casing than the manifest recorded would otherwise miss those lookups,
+// dropping the recorded proxy kind and implementation layout.
+export async function resolveAddress(
+  hre: HardhatRuntimeEnvironment,
+  target: AddressLike,
+): Promise<string> {
   const { getAddress } = require('ethers');
-  return getAddress(typeof target === 'string' ? target : await target.getAddress());
+  const raw = typeof target === 'string' ? target : await target.getAddress();
+  if (raw.startsWith('0x') || raw.startsWith('0X')) {
+    return getAddress('0x' + raw.slice(2));
+  }
+  if (/^[0-9a-fA-F]{42}$/.test(raw) && !/^41[0-9a-fA-F]{40}$/.test(raw)) {
+    throw new Error(`Invalid TRON address ${raw}: native hex addresses must start with 41`);
+  }
+  const { tronWeb } = (hre as any).tre.makeTronWeb();
+  const hex = tronWeb.address.toHex(raw);
+  if (typeof hex !== 'string' || !/^41[0-9a-fA-F]{40}$/.test(hex)) {
+    throw new Error(`Invalid TRON address: ${raw}`);
+  }
+  return getAddress('0x' + hex.slice(2));
 }

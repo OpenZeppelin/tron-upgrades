@@ -21,7 +21,7 @@ export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
   ): Promise<any> {
     const ethers = ethersOf(hre);
     txOverridesOf(opts);
-    const beaconAddress = await resolveAddress(beacon);
+    const beaconAddress = await resolveAddress(hre, beacon);
     const manifest = await getManifest(hre);
 
     // Preflight the implementation ABI before ANY chain interaction — a bad

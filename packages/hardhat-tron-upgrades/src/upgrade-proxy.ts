@@ -65,7 +65,7 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
     opts: UpgradeProxyOptions = {},
   ): Promise<any> {
     const ethers = ethersOf(hre);
-    const proxyAddress = await resolveAddress(proxy);
+    const proxyAddress = await resolveAddress(hre, proxy);
     const manifest = await getManifest(hre);
 
     const record = await proxyRecordOf(manifest, proxyAddress);
