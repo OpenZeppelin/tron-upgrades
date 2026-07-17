@@ -19,10 +19,94 @@ import { core } from './core';
 // life of the process, and on disk beside the build-info so a later process
 // reuses it. `null` records that a build-info has no usable namespaced output
 // (compiler too old, or the recompile failed) so we never retry it.
+//
+// A disk-cached `null` is silent by construction: a later process reads it and
+// runs AST-only checks without recomputing, so any one-shot warning emitted at
+// compute time never fires again. To avoid users sitting silently degraded, the
+// fallback is announced on every run that actually USES a null result for a
+// build-info that has namespaces (deduped once per build-info id per process),
+// and an opt-in config flag turns the recompile failure into a hard error.
 
 type SolcOutput = any;
 
 const memoryCache = new Map<string, SolcOutput | null>();
+
+// Build-info ids already announced as degraded this process, so the fallback
+// warning is emitted once per id rather than on every validation call.
+const warnedFallbackIds = new Set<string>();
+
+// Warning sink, injectable so tests can observe emission independently of the
+// process-global silence flag in upgrades-core. Defaults to the standard
+// upgrades-core warning channel (which honors `silenceWarnings`).
+function defaultSink(title: string, lines: string[]): void {
+  core().logWarning(title, lines);
+}
+let warningSink: (title: string, lines: string[]) => void = defaultSink;
+
+export function setNamespacedWarningSink(
+  sink: ((title: string, lines: string[]) => void) | null,
+): void {
+  warningSink = sink ?? defaultSink;
+}
+
+function warnNamespacedFallback(buildInfoId: string, detailLines: string[] = []): void {
+  if (warnedFallbackIds.has(buildInfoId)) return;
+  warnedFallbackIds.add(buildInfoId);
+  warningSink(
+    'Namespaced (ERC-7201) storage validation is using AST-only fallback for build-info ' +
+      `${buildInfoId}; slot-level precision for namespace edits is reduced. Recompile to ` +
+      'restore full checks, or set tronUpgrades.namespacedCompileErrors to fail instead.',
+    detailLines,
+  );
+}
+
+// True when any source AST in the build-info carries a `@custom:storage-location`
+// annotation, i.e. the build-info actually declares namespaced storage and so
+// loses precision without the namespaced recompile.
+export function buildInfoHasNamespaces(buildInfo: any): boolean {
+  const sources = buildInfo?.output?.sources ?? {};
+  for (const source of Object.values<any>(sources)) {
+    if (astHasStorageLocation(source?.ast)) return true;
+  }
+  return false;
+}
+
+function astHasStorageLocation(node: any): boolean {
+  if (!node || typeof node !== 'object') return false;
+  const doc = node.documentation;
+  const text = typeof doc === 'string' ? doc : doc?.text;
+  if (typeof text === 'string' && text.includes('@custom:storage-location')) return true;
+  if (Array.isArray(node.nodes)) {
+    for (const child of node.nodes) {
+      if (astHasStorageLocation(child)) return true;
+    }
+  }
+  return false;
+}
+
+// Decides what happens when the namespaced recompile cannot produce usable
+// output: throw when the opt-in hard-error flag is set, otherwise warn once and
+// fall back to AST-only checks. Shared by the compute path and tests.
+export function reportNamespacedCompileFailure(
+  hre: HardhatRuntimeEnvironment,
+  buildInfoId: string,
+  errorLines: string[],
+): null {
+  if ((hre.config as any)?.tronUpgrades?.namespacedCompileErrors) {
+    throw new Error(
+      'Failed to compile the modified contracts for namespaced storage-layout validation ' +
+        `(build-info ${buildInfoId}). tronUpgrades.namespacedCompileErrors is enabled, so this ` +
+        'is a hard error instead of an AST-only fallback.' +
+        (errorLines.length ? `\n${errorLines.join('\n')}` : ''),
+    );
+  }
+  warnNamespacedFallback(buildInfoId, [
+    'Failed to compile the modified contracts for namespaced storage-layout validation; ' +
+      'falling back to AST-only checks for namespaced storage.',
+    ...errorLines,
+  ]);
+  return null;
+}
 
 function diskCachePath(hre: HardhatRuntimeEnvironment, buildInfoId: string): string {
   return path.join(hre.config.paths.artifacts, 'build-info', `${buildInfoId}.namespaced.json`);
@@ -57,7 +141,7 @@ async function computeNamespacedOutput(
   hre: HardhatRuntimeEnvironment,
   buildInfo: any,
 ): Promise<SolcOutput | null> {
-  const { isNamespaceSupported, makeNamespacedInput, trySanitizeNatSpec, logWarning } = core();
+  const { isNamespaceSupported, makeNamespacedInput, trySanitizeNatSpec } = core();
   const solcVersion: string = buildInfo.solcVersion;
   if (!isNamespaceSupported(solcVersion)) return null;
 
@@ -67,35 +151,35 @@ async function computeNamespacedOutput(
   const output = await compileNamespaced(hre, namespacedInput, solcVersion);
   const errors: any[] = (output?.errors ?? []).filter((e: any) => e.severity === 'error');
   if (errors.length > 0) {
-    // Fall back to AST-only namespace validation rather than aborting: the
-    // primary compilation already succeeded, so this only forfeits the extra
-    // slot-level precision for advanced namespace edits.
-    logWarning(
-      'Failed to compile the modified contracts for namespaced storage-layout validation; ' +
-        'falling back to AST-only checks for namespaced storage.',
+    // The primary compilation already succeeded, so a failed recompile only
+    // forfeits slot-level precision for advanced namespace edits — fall back to
+    // AST-only checks (or throw, when the hard-error flag is set).
+    return reportNamespacedCompileFailure(
+      hre,
+      buildInfo.id,
       errors.map((e: any) => e.formattedMessage ?? e.message),
     );
-    return null;
   }
   return output;
 }
 
-// Namespaced solc output for a build-info, or `undefined` when none applies.
-// Result is cached (memory + on disk) keyed by build-info id.
-export async function getNamespacedOutput(
+// Resolves the namespaced solc output for a build-info as `SolcOutput | null`
+// (`null` = no usable namespaced output), reading the memory/disk cache before
+// recomputing.
+async function resolveNamespacedOutput(
   hre: HardhatRuntimeEnvironment,
   buildInfo: any,
-): Promise<SolcOutput | undefined> {
+): Promise<SolcOutput | null> {
   const id: string = buildInfo.id;
   if (memoryCache.has(id)) {
-    return memoryCache.get(id) ?? undefined;
+    return memoryCache.get(id) ?? null;
   }
 
   const cachePath = diskCachePath(hre, id);
   try {
     const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
     memoryCache.set(id, cached);
-    return cached ?? undefined;
+    return cached ?? null;
   } catch {
     // Cache miss (or unreadable) — recompute below.
   }
@@ -107,6 +191,21 @@ export async function getNamespacedOutput(
     fs.writeFileSync(cachePath, JSON.stringify(output));
   } catch {
     // A missing on-disk cache only costs a recompile next process; ignore.
+  }
+  return output ?? null;
+}
+
+// Namespaced solc output for a build-info, or `undefined` when none applies.
+// Result is cached (memory + on disk) keyed by build-info id. When the result
+// is absent for a build-info that declares namespaces, the AST-only fallback is
+// announced (once per id per process) so a cached-null never degrades silently.
+export async function getNamespacedOutput(
+  hre: HardhatRuntimeEnvironment,
+  buildInfo: any,
+): Promise<SolcOutput | undefined> {
+  const output = await resolveNamespacedOutput(hre, buildInfo);
+  if (output === null && buildInfoHasNamespaces(buildInfo)) {
+    warnNamespacedFallback(buildInfo.id);
   }
   return output ?? undefined;
 }
