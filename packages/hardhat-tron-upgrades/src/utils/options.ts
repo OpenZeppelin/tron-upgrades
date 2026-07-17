@@ -35,6 +35,7 @@ export interface DeployBeaconOptions extends ImplementationOptions {
   initialOwner?: string;
 }
 export interface DeployBeaconProxyOptions {
+  kind?: 'beacon';
   initializer?: string | false;
   txOverrides?: TxOverrides;
 }

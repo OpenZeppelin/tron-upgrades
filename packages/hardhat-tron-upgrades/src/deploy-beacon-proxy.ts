@@ -3,6 +3,7 @@ import {
   type AddressLike,
   type DeployBeaconProxyOptions,
   FQN,
+  assertIsBeacon,
   core,
   deployContractWithOptions,
   ethersOf,
@@ -21,7 +22,18 @@ export function makeDeployBeaconProxy(hre: HardhatRuntimeEnvironment) {
   ): Promise<any> {
     const ethers = ethersOf(hre);
     txOverridesOf(opts);
+
+    // Reject a non-beacon kind and confirm the target is a beacon before any
+    // chain write — a bad kind or a non-beacon address must fail here, not
+    // after a proxy is deployed.
+    if (opts.kind !== undefined && opts.kind !== 'beacon') {
+      throw new Error(
+        `deployBeaconProxy deploys beacon proxies only, but kind '${opts.kind}' was requested. ` +
+          `Use deployProxy for transparent or uups proxies.`,
+      );
+    }
     const beaconAddress = await resolveAddress(hre, beacon);
+    await assertIsBeacon(hre, beaconAddress);
     const manifest = await getManifest(hre);
 
     // Preflight the implementation ABI before ANY chain interaction — a bad
