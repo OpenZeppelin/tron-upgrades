@@ -22,7 +22,7 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
     opts: UpgradeBeaconOptions = {},
   ): Promise<any> {
     const ethers = ethersOf(hre);
-    const beaconAddress = await resolveAddress(beacon);
+    const beaconAddress = await resolveAddress(hre, beacon);
     const manifest = await getManifest(hre);
 
     // Chain first: ask the beacon what it points at now, then look that

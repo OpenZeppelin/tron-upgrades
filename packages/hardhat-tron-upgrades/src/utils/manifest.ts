@@ -31,7 +31,63 @@ function checkNoLegacyManifest(hre: HardhatRuntimeEnvironment): void {
 export async function getManifest(hre: HardhatRuntimeEnvironment): Promise<any> {
   checkNoLegacyManifest(hre);
   const { Manifest } = core();
-  return Manifest.forNetwork(providerOf(hre));
+  const manifest = await Manifest.forNetwork(providerOf(hre));
+  await canonicalizeStoredAddresses(manifest);
+  return manifest;
+}
+
+// Migrate a manifest written before addresses were canonicalized. Records from
+// such a deployment can hold lowercase addresses, and upgrades-core compares
+// addresses with strict equality (Manifest.getProxyFromAddress /
+// getDeploymentFromAddress), reading the file itself rather than through this
+// plugin. A checksummed address arriving at a public entry point then misses a
+// lowercase record — dropping the recorded proxy kind (routing a transparent
+// proxy around its ProxyAdmin) and the recorded implementation layout. Rewrite
+// stored addresses to their EIP-55 form on load so every lookup, ours and
+// upstream's, matches. Only 0x-hex entries are touched, and only when a change
+// is needed, so an already-canonical manifest is read but never rewritten.
+async function canonicalizeStoredAddresses(manifest: any): Promise<void> {
+  const { getAddress } = require('ethers');
+  const canon = (a: any): any =>
+    typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a) ? getAddress(a) : a;
+
+  const rewrite = (data: any): boolean => {
+    let changed = false;
+    const fixAddress = (entry: any): void => {
+      if (entry && typeof entry.address === 'string') {
+        const canonical = canon(entry.address);
+        if (canonical !== entry.address) {
+          entry.address = canonical;
+          changed = true;
+        }
+      }
+    };
+    for (const proxy of data.proxies ?? []) fixAddress(proxy);
+    for (const key of Object.keys(data.impls ?? {})) {
+      const impl = data.impls[key];
+      if (!impl) continue;
+      fixAddress(impl);
+      if (Array.isArray(impl.allAddresses)) {
+        for (let i = 0; i < impl.allAddresses.length; i++) {
+          const canonical = canon(impl.allAddresses[i]);
+          if (canonical !== impl.allAddresses[i]) {
+            impl.allAddresses[i] = canonical;
+            changed = true;
+          }
+        }
+      }
+    }
+    fixAddress(data.admin);
+    return changed;
+  };
+
+  // Detect without holding the write lock; only rewrite (under lock, on a fresh
+  // read) when the on-disk manifest actually needs canonicalizing.
+  if (!rewrite(await manifest.read())) return;
+  await manifest.lockedRun(async () => {
+    const data = await manifest.read();
+    if (rewrite(data)) await manifest.write(data);
+  });
 }
 
 // Record an implementation deployment under its version key. Merge, never

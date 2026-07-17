@@ -20,7 +20,8 @@ export function makeTransferProxyAdminOwnership(hre: HardhatRuntimeEnvironment) 
   ): Promise<void> {
     const ethers = ethersOf(hre);
     const txOverrides = txOverridesOf(opts);
-    const proxyAddress = await resolveAddress(proxy);
+    const proxyAddress = await resolveAddress(hre, proxy);
+    const ownerAddress = await resolveAddress(hre, newOwner);
     const adminAddress = slotToAddress(await getSlot(hre, proxyAddress, ADMIN_SLOT));
     if (adminAddress === ZERO_ADDRESS) {
       throw new Error(`Proxy ${proxyAddress} has no admin slot and is not a transparent proxy`);
@@ -28,12 +29,12 @@ export function makeTransferProxyAdminOwnership(hre: HardhatRuntimeEnvironment) 
     let admin = await ethers.getContractAt(FQN.proxyAdmin, ethers.getAddress(adminAddress));
     if (opts.owner) admin = admin.connect(opts.owner);
     await (txOverrides
-      ? admin.transferOwnership(newOwner, txOverrides)
-      : admin.transferOwnership(newOwner));
+      ? admin.transferOwnership(ownerAddress, txOverrides)
+      : admin.transferOwnership(ownerAddress));
     const actualOwner = await admin.owner();
-    if (actualOwner.toLowerCase() !== newOwner.toLowerCase()) {
+    if (actualOwner.toLowerCase() !== ownerAddress.toLowerCase()) {
       throw new Error(
-        `ProxyAdmin ownership transfer succeeded but owner is ${actualOwner}, expected ${newOwner}`,
+        `ProxyAdmin ownership transfer succeeded but owner is ${actualOwner}, expected ${ownerAddress}`,
       );
     }
   };

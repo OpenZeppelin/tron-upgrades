@@ -11,6 +11,7 @@ import {
   getManifest,
   isOptionalCallRevert,
   providerOf,
+  resolveAddress,
   resolveImplementation,
   txOverridesOf,
   upgradeableContractFor,
@@ -59,7 +60,10 @@ export function makeDeployProxy(hre: HardhatRuntimeEnvironment) {
 
     let proxy;
     if (kind === 'transparent') {
-      const owner = opts.initialOwner ?? deployerAddress(hre);
+      const owner =
+        opts.initialOwner === undefined
+          ? deployerAddress(hre)
+          : await resolveAddress(hre, opts.initialOwner);
       // A ProxyAdmin as initialOwner is almost always a v4-era mistake: the
       // v5 transparent proxy deploys its OWN admin, owned by initialOwner.
       // The owner() probe rejects on TVM for EOAs (no-code call) — that

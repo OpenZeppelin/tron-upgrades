@@ -27,7 +27,7 @@ export function makeForceImport(hre: HardhatRuntimeEnvironment) {
     const ethers = ethersOf(hre);
     const provider = providerOf(hre);
     const manifest = await getManifest(hre);
-    const address = await resolveAddress(addressOrInstance);
+    const address = await resolveAddress(hre, addressOrInstance);
     const {
       NoContractImportError,
       addProxyToManifest,

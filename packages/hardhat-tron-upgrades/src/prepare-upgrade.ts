@@ -23,7 +23,7 @@ export function makePrepareUpgrade(hre: HardhatRuntimeEnvironment) {
   ): Promise<any> {
     const provider = providerOf(hre);
     const manifest = await getManifest(hre);
-    const referenceAddress = await resolveAddress(reference);
+    const referenceAddress = await resolveAddress(hre, reference);
     const { getBeaconAddress, getImplementationAddress, getImplementationAddressFromBeacon } =
       core();
 

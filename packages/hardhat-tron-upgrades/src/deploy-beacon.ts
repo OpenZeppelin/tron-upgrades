@@ -6,6 +6,7 @@ import {
   deployerAddress,
   ethersOf,
   getManifest,
+  resolveAddress,
   resolveImplementation,
   txOverridesOf,
   validateImplementation,
@@ -24,7 +25,10 @@ export function makeDeployBeacon(hre: HardhatRuntimeEnvironment) {
       await resolveImplementation(hre, contractName, opts, contract)
     ).address;
 
-    const owner = opts.initialOwner ?? deployerAddress(hre);
+    const owner =
+      opts.initialOwner === undefined
+        ? deployerAddress(hre)
+        : await resolveAddress(hre, opts.initialOwner);
     const beacon = await deployContractWithOptions(hre, FQN.beacon, [implAddress, owner], opts);
 
     return beacon;
