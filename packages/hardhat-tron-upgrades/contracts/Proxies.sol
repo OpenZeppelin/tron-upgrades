@@ -23,3 +23,13 @@ interface ITronUpgradesUUPS {
     function upgradeTo(address newImplementation) external;
     function upgradeToAndCall(address newImplementation, bytes calldata data) external payable;
 }
+
+/// v4-style ProxyAdmin entry points, for a transparent proxy imported from a v4
+/// deployment whose ProxyAdmin predates UPGRADE_INTERFACE_VERSION. v5 ProxyAdmin
+/// dropped `upgrade`; the plugin dispatches on the admin's reported version, so
+/// both a v4 admin (this interface) and a v5 admin remain callable. `upgrade` is
+/// used for a plain upgrade and `upgradeAndCall` when post-upgrade data is set.
+interface ITronUpgradesProxyAdminV4 {
+    function upgrade(address proxy, address implementation) external;
+    function upgradeAndCall(address proxy, address implementation, bytes calldata data) external payable;
+}
