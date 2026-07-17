@@ -161,6 +161,7 @@ to TVM. Differences are explicit:
 | Transparent, UUPS, and beacon deploy/upgrade | Supported |
 | One module per operation (upstream file architecture) | Mirrored — see Architecture |
 | `deployImplementation`, `prepareUpgrade`, `forceImport` | Supported |
+| `validateUpgrade` — a name pair, or a candidate against a deployed proxy / beacon / implementation reference | Supported |
 | Chain-first manifests, implementation reuse, constructor arguments | Supported |
 | Kind inference and conflict detection | Supported |
 | `unsafeAllow`, `unsafeAllowRenames`, `unsafeSkipStorageCheck` | Supported |
