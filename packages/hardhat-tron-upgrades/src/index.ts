@@ -9,6 +9,7 @@
 // composition below lives here for the same reason upstream's does.
 
 import './type-extensions';
+import './config';
 import { extendEnvironment } from 'hardhat/config';
 import type { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { makeTransferProxyAdminOwnership } from './admin';
