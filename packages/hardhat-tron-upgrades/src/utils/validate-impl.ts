@@ -1,6 +1,9 @@
 import type { HardhatRuntimeEnvironment } from 'hardhat/types';
+import { isBeaconContract } from './beacon';
 import { core } from './core';
-import type { ValidationOptions } from './options';
+import { type AddressLike, providerOf, resolveAddress } from './ethers';
+import { getManifest } from './manifest';
+import type { ValidationKind, ValidationOptions } from './options';
 import { upgradeableContractFor } from './validations';
 
 // Returns the validated UpgradeableContract: callers need its `version`
@@ -45,6 +48,84 @@ export async function validateUpgrade(
       `Storage layout of ${toContractName} is incompatible with ${fromContractName}:\n${layout.explain()}`,
     );
   }
+}
+
+// Resolve a DEPLOYED reference to the proxy kind and the address of the
+// implementation currently installed at it, WITHOUT deploying anything. The
+// detection order is upstream's: a 1967 proxy wins first — classification must
+// come from the proxy's slots, never from whether a delegated implementation()
+// call happens to succeed — then beacon proxies, then bare beacons, and finally
+// a bare implementation, which requires an explicit kind. `onMissingKind`
+// supplies the caller-specific requires-kind error for that last case. Shared
+// by prepareUpgrade (which then deploys) and the deployed-reference
+// validateUpgrade (which does not).
+export async function resolveReferenceImpl(
+  hre: HardhatRuntimeEnvironment,
+  referenceAddress: string,
+  newContractName: string,
+  opts: ValidationOptions,
+  onMissingKind: () => Error,
+): Promise<{ kind: ValidationKind; currentImplAddress: string }> {
+  const provider = providerOf(hre);
+  const { getBeaconAddress, getImplementationAddress, getImplementationAddressFromBeacon } = core();
+
+  if (await core().isTransparentOrUUPSProxy(provider, referenceAddress)) {
+    const draft = await upgradeableContractFor(hre, newContractName, opts);
+    const kindOpts: any = { ...opts };
+    await core().processProxyKind(
+      provider,
+      referenceAddress,
+      kindOpts,
+      draft.validations,
+      draft.version,
+    );
+    return {
+      kind: kindOpts.kind,
+      currentImplAddress: await getImplementationAddress(provider, referenceAddress),
+    };
+  }
+  if (await core().isBeaconProxy(provider, referenceAddress)) {
+    return {
+      kind: 'beacon',
+      currentImplAddress: await getImplementationAddressFromBeacon(
+        provider,
+        await getBeaconAddress(provider, referenceAddress),
+      ),
+    };
+  }
+  if (await isBeaconContract(hre, referenceAddress)) {
+    return {
+      kind: 'beacon',
+      currentImplAddress: await getImplementationAddressFromBeacon(provider, referenceAddress),
+    };
+  }
+  if (opts.kind === undefined) throw onMissingKind();
+  return { kind: opts.kind, currentImplAddress: referenceAddress };
+}
+
+// Deployed-reference validateUpgrade: validate `newContractName` against the
+// manifest-stored layout of the implementation installed at `reference` (a
+// proxy, beacon, beacon proxy, or bare implementation address) WITHOUT
+// deploying. An unregistered reference layout raises the upstream
+// forceImport-directing error via layoutForAddress.
+export async function validateUpgradeReference(
+  hre: HardhatRuntimeEnvironment,
+  reference: AddressLike,
+  newContractName: string,
+  opts: ValidationOptions = {},
+): Promise<void> {
+  const manifest = await getManifest(hre);
+  const referenceAddress = await resolveAddress(hre, reference);
+  const { kind, currentImplAddress } = await resolveReferenceImpl(
+    hre,
+    referenceAddress,
+    newContractName,
+    opts,
+    () => new (core().ValidateUpdateRequiresKindError)(),
+  );
+  const currentLayout = await layoutForAddress(manifest, currentImplAddress);
+  const contract = await validateImplementation(hre, newContractName, { ...opts, kind });
+  assertStorageCompatible(currentLayout, contract.layout, opts);
 }
 
 // Layout of the implementation at `implAddress`, found BY ADDRESS. Unknown

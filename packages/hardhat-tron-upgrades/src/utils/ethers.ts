@@ -52,3 +52,22 @@ export async function resolveAddress(
   }
   return getAddress('0x' + hex.slice(2));
 }
+
+// True when `target` denotes a DEPLOYED reference — a contract instance or an
+// address in any of the three TVM encodings — rather than a contract-artifact
+// name. This is the seam that lets one entry point accept either an address or
+// a contract name in the same argument position. Address-bearing objects and
+// the two hex forms are recognized without TronWeb; a Base58Check string is
+// confirmed through TronWeb, the same seam resolveAddress rehydrates it with.
+// A contract name matches none of these and routes to the name-based path.
+export function looksLikeAddress(hre: HardhatRuntimeEnvironment, target: AddressLike): boolean {
+  if (typeof target !== 'string') return true;
+  if (/^0[xX][0-9a-fA-F]{40}$/.test(target)) return true;
+  if (/^41[0-9a-fA-F]{40}$/.test(target)) return true;
+  try {
+    const { tronWeb } = (hre as any).tre.makeTronWeb();
+    return tronWeb.isAddress(target) === true;
+  } catch {
+    return false;
+  }
+}
