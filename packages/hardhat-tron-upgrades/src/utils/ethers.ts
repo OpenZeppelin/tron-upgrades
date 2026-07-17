@@ -23,6 +23,13 @@ export function deployerAddress(hre: HardhatRuntimeEnvironment): string {
   return ethersOf(hre).getAddress('0x' + hex21.slice(2));
 }
 
+// Canonicalize every address entering the plugin to its EIP-55 checksummed
+// form. Hex addresses are case-insensitive, but upgrades-core's manifest
+// lookups compare address strings with `===`: a proxy or implementation passed
+// in a different casing than the manifest recorded would miss those lookups,
+// dropping the recorded proxy kind and implementation layout. Checksumming at
+// the boundary keeps the stored and looked-up forms identical.
 export async function resolveAddress(target: AddressLike): Promise<string> {
-  return typeof target === 'string' ? target : await target.getAddress();
+  const { getAddress } = require('ethers');
+  return getAddress(typeof target === 'string' ? target : await target.getAddress());
 }
