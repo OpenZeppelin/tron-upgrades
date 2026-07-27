@@ -7,6 +7,7 @@ import {
   getNamespacedOutput,
   reportNamespacedCompileFailure,
   setNamespacedWarningSink,
+  warmNamespacedCache,
 } from '../src/utils/namespaced';
 import { resolveNamespacedCompileErrors } from '../src/config';
 
@@ -65,6 +66,18 @@ function tmpHre(setting: 'error' | 'warn' | 'ignore' = 'warn') {
   const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'ns-fallback-'));
   return {
     config: { paths: { artifacts }, tronUpgrades: { namespacedCompileErrors: setting } },
+    // Mirrors hre.artifacts.getBuildInfoPaths() for warmNamespacedCache tests:
+    // lists real build-info files, not the `.namespaced.json` cache entries.
+    artifacts: {
+      getBuildInfoPaths: async () => {
+        const dir = path.join(artifacts, 'build-info');
+        if (!fs.existsSync(dir)) return [];
+        return fs
+          .readdirSync(dir)
+          .filter((f) => f.endsWith('.json') && !f.endsWith('.namespaced.json'))
+          .map((f) => path.join(dir, f));
+      },
+    },
   } as any;
 }
 
@@ -72,6 +85,18 @@ function seedCache(hre: any, id: string, entry: unknown) {
   const dir = path.join(hre.config.paths.artifacts, 'build-info');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, `${id}.namespaced.json`), JSON.stringify(entry));
+}
+
+function writeBuildInfoFile(hre: any, id: string) {
+  const dir = path.join(hre.config.paths.artifacts, 'build-info');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(namespacedBuildInfo(id)));
+}
+
+function writeCorruptBuildInfoFile(hre: any, id: string) {
+  const dir = path.join(hre.config.paths.artifacts, 'build-info');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${id}.json`), '{ not valid json');
 }
 
 const failedEntry = { schema: 2, kind: 'compile-failed', errorLines: ['E: boom'] };
@@ -287,6 +312,22 @@ describe('Namespaced fallback surfacing', function () {
     } finally {
       spy.restore();
     }
+  });
+});
+
+describe('warmNamespacedCache', function () {
+  it('warmNamespacedCache propagates a cached compile failure under error', async function () {
+    const hre = tmpHre('error');
+    const id = 'bi-warm-strict';
+    writeBuildInfoFile(hre, id);
+    seedCache(hre, id, failedEntry);
+    await expect(warmNamespacedCache(hre as any)).to.be.rejectedWith(/boom/);
+  });
+
+  it('warmNamespacedCache still swallows unrelated per-file errors', async function () {
+    const hre = tmpHre('error');
+    writeCorruptBuildInfoFile(hre, 'bi-corrupt');
+    await warmNamespacedCache(hre as any);
   });
 });
 

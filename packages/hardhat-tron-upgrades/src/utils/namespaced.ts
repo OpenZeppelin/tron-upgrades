@@ -108,6 +108,18 @@ function astHasStorageLocation(node: any): boolean {
   return false;
 }
 
+// Thrown by the 'error' rule so warmNamespacedCache/compile.ts can distinguish
+// a deliberate hard-failure from an unrelated per-build-info warm-up error.
+export class NamespacedCompileError extends Error {
+  constructor(
+    readonly buildInfoId: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'NamespacedCompileError';
+  }
+}
+
 // Decides what happens when the namespaced recompile cannot produce usable
 // output: throw when the opt-in hard-error flag is set, otherwise warn once and
 // fall back to AST-only checks. Shared by the compute path and tests.
@@ -122,7 +134,8 @@ export function reportNamespacedCompileFailure(
     | 'ignore';
   switch (rule) {
     case 'error':
-      throw new Error(
+      throw new NamespacedCompileError(
+        buildInfoId,
         'Failed to compile the modified contracts for namespaced storage-layout validation ' +
           `(build-info ${buildInfoId}).` +
           (errorLines.length ? `\n${errorLines.join('\n')}` : '') +
@@ -259,13 +272,16 @@ export async function getNamespacedOutput(
 
 // Pre-warm the namespaced cache for every build-info produced by a compile, so
 // later deploy/upgrade/validate calls never pay the recompile cost inline.
+// Best-effort per build-info, EXCEPT a NamespacedCompileError (the 'error' rule),
+// which must propagate so the caller (src/compile.ts) can fail the compile.
 export async function warmNamespacedCache(hre: HardhatRuntimeEnvironment): Promise<void> {
   const paths: string[] = await hre.artifacts.getBuildInfoPaths();
   for (const p of paths) {
     try {
       const buildInfo = JSON.parse(fs.readFileSync(p, 'utf8'));
       await getNamespacedOutput(hre, buildInfo);
-    } catch {
+    } catch (e) {
+      if (e instanceof NamespacedCompileError) throw e;
       // Best-effort warm-up; the lazy path recomputes on demand if needed.
     }
   }
