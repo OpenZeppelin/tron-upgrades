@@ -18,7 +18,7 @@ module.exports = {
   },
   tre: {
     autoStart: true,
-    image: 'tronbox/tre:dev',
+    image: 'tronbox/tre:2.0.0',
     compiler: { target: 'tron' },
   },
   defaultNetwork: 'tre',
@@ -29,7 +29,7 @@ module.exports = {
       // Well-known TRE dev key — local tests only, never a real network.
       accounts: [
         process.env.TRE_PRIVATE_KEY ||
-          '0xdd23ca549a97cb330b011aebb674730df8b14acaee42d211ab45692699ab8ba5',
+          '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
       ],
     },
   },
