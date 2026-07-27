@@ -35,8 +35,22 @@ type NamespacedCacheEntry =
   | { schema: typeof CACHE_SCHEMA; kind: 'unsupported' }
   | { schema: typeof CACHE_SCHEMA; kind: 'compile-failed'; errorLines: string[] };
 
+// Validates the payload, not just the schema tag: an unrecognized `kind` (e.g.
+// a future schema-2 variant read by an older plugin) or a malformed known
+// `kind` must fall to the recompute path, never be guessed at.
 function isCacheEntry(v: unknown): v is NamespacedCacheEntry {
-  return typeof v === 'object' && v !== null && (v as any).schema === CACHE_SCHEMA;
+  if (typeof v !== 'object' || v === null || (v as any).schema !== CACHE_SCHEMA) return false;
+  const e = v as any;
+  switch (e.kind) {
+    case 'output':
+      return e.output != null;
+    case 'unsupported':
+      return true;
+    case 'compile-failed':
+      return Array.isArray(e.errorLines);
+    default:
+      return false;
+  }
 }
 
 const memoryCache = new Map<string, NamespacedCacheEntry>();
@@ -234,6 +248,11 @@ export async function getNamespacedOutput(
       return undefined;
     case 'compile-failed':
       reportNamespacedCompileFailure(hre, buildInfo.id, entry.errorLines);
+      return undefined;
+    default:
+      // Unreachable by construction (isCacheEntry rejects unknown kinds) — loud
+      // rather than silent if it ever is reached.
+      reportNamespacedCompileFailure(hre, buildInfo.id, ['Unrecognized namespaced cache entry.']);
       return undefined;
   }
 }

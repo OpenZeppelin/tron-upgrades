@@ -142,8 +142,13 @@ describe('Namespaced fallback surfacing', function () {
     const id = `disk-unsupported-error-${Date.now()}`;
     seedCache(hre, id, unsupportedEntry);
 
-    const out = await getNamespacedOutput(hre, namespacedBuildInfo(id));
-    expect(out).to.equal(undefined);
+    const spy = spyWarnings();
+    try {
+      const out = await getNamespacedOutput(hre, namespacedBuildInfo(id));
+      expect(out).to.equal(undefined);
+    } finally {
+      spy.restore();
+    }
   });
 
   it('discards a legacy schema-1 cache instead of trusting it', async () => {
@@ -154,6 +159,69 @@ describe('Namespaced fallback surfacing', function () {
 
     await getNamespacedOutput(hre, namespacedBuildInfo(id));
     expect(calls.length).to.be.greaterThan(0);
+  });
+
+  it('discards a legacy raw-output cache instead of trusting it', async () => {
+    const hre = tmpHre();
+    const id = `legacy-output-${Date.now()}`;
+    seedCache(hre, id, { contracts: {}, sources: {}, errors: [] });
+    const calls = stubCompile(hre, { errors: [] });
+
+    await getNamespacedOutput(hre, namespacedBuildInfo(id));
+    expect(calls.length).to.be.greaterThan(0);
+  });
+
+  it('discards a schema-2 entry with an unrecognized kind instead of guessing', async () => {
+    const hre = tmpHre('error');
+    const id = `bogus-kind-${Date.now()}`;
+    seedCache(hre, id, { schema: 2, kind: 'bogus' });
+    const calls = stubCompile(hre, { errors: [] });
+
+    await getNamespacedOutput(hre, namespacedBuildInfo(id));
+    expect(calls.length).to.be.greaterThan(0);
+  });
+
+  it('discards a malformed compile-failed entry instead of crashing', async () => {
+    const hre = tmpHre('error');
+    const id = `malformed-failed-${Date.now()}`;
+    seedCache(hre, id, { schema: 2, kind: 'compile-failed' });
+    const calls = stubCompile(hre, { errors: [] });
+
+    await getNamespacedOutput(hre, namespacedBuildInfo(id));
+    expect(calls.length).to.be.greaterThan(0);
+  });
+
+  it('warns once per build-info id per process', async () => {
+    const hre = tmpHre('warn');
+    const id = `dedup-${Date.now()}`;
+    seedCache(hre, id, unsupportedEntry);
+    const spy = spyWarnings();
+    try {
+      await getNamespacedOutput(hre, namespacedBuildInfo(id));
+      await getNamespacedOutput(hre, namespacedBuildInfo(id));
+      expect(spy.calls.length).to.equal(1);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it('stays quiet when an unsupported build-info has no namespaces', async () => {
+    const hre = tmpHre('warn');
+    const id = `nonamespace-${Date.now()}`;
+    seedCache(hre, id, unsupportedEntry);
+    const spy = spyWarnings();
+    try {
+      const out = await getNamespacedOutput(hre, {
+        id,
+        solcVersion: '0.8.26',
+        input: { sources: {} },
+        output: { sources: {} },
+      });
+      expect(out).to.equal(undefined);
+      expect(spy.calls.length).to.equal(0);
+    } finally {
+      spy.restore();
+    }
   });
 
   it('persists the failure sentinel an ignore run computes, and a later error run throws on it', async () => {
@@ -178,7 +246,12 @@ describe('Namespaced fallback surfacing', function () {
     const id = `warn-then-error-${Date.now()}`;
     const hreWarn = tmpHre('warn');
     seedCache(hreWarn, id, failedEntry);
-    await getNamespacedOutput(hreWarn, namespacedBuildInfo(id));
+    const spy = spyWarnings();
+    try {
+      await getNamespacedOutput(hreWarn, namespacedBuildInfo(id));
+    } finally {
+      spy.restore();
+    }
 
     const hreError = tmpHre('error');
     await expect(getNamespacedOutput(hreError, namespacedBuildInfo(id))).to.be.rejectedWith(/boom/);
