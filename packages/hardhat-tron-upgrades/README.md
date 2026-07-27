@@ -117,10 +117,13 @@ records) and `utils/slots.ts` (ERC-1967 slot reads through the TronWeb
 bridge). Import direction is enforced by `npm run check:architecture`:
 operations import utils, never each other.
 
-One deliberate difference from upstream: no compile-task hooks. Upstream
-v3.x caches validations at compile time (and recompiles modified contracts
-for namespaced-storage checks); this plugin reads `tron-solc` build-info and
-validates on demand, because compilation is owned by the bridge.
+One deliberate difference from upstream: validations are not cached at
+compile time. Upstream v3.x hooks the compile task to cache validations; this
+plugin reads `tron-solc` build-info and validates on demand at each
+deploy/upgrade/validate call, because compilation is owned by the bridge. The
+plugin does register one compile-task hook (`src/compile.ts`), but only to
+pre-warm the namespaced-storage recompile cache — see Namespaced storage
+below.
 
 Upstream surfaces that intentionally have no counterpart here: `defender/*`
 (no TRON deployment backend), `verify-proxy*` and the Etherscan API helpers
@@ -207,11 +210,62 @@ that fill intra-slot padding are accepted. A codebase that mixes `erc7201:`-
 and `trc7201:`-annotated contracts is validated correctly, each namespace on
 its own annotation.
 
+**Slot-aware validation needs a second compile.** Every build-info compiled
+with solc >= 0.8.20 gets an extra "namespaced" recompile that rewrites
+namespace struct members into ordinary storage variables so their slot and
+offset can be read back — this runs regardless of whether that build-info
+actually declares any `@custom:storage-location` struct. It runs once per
+build-info (cached on disk and in memory) right after `hardhat compile`, so
+later deploy/upgrade/validate calls don't pay for it inline. On an older
+solc, or if the recompile itself fails, validation falls back to AST-only
+namespace checks: slot/offset are unknown, so advanced-but-safe layout edits
+(e.g. a member inserted into intra-slot padding) may now be rejected when
+they would have passed under the full check. Edits that are genuinely unsafe
+(reorders, repacks) are still rejected — the fallback never accepts more than
+the full check does, only less. A fallback warning is only emitted when the
+build-info actually has a `@custom:storage-location` struct to lose precision
+on.
+
+Configure what a failed namespaced recompile does with:
+
+```js
+// hardhat.config.cjs
+module.exports = {
+  tronUpgrades: {
+    namespacedCompileErrors: 'error', // 'error' | 'warn' | 'ignore' (default: 'error')
+  },
+};
+```
+
+- `'error'` (default) fails `hardhat compile`, matching upstream
+  `hardhat-upgrades`. The same failure is enforced again at the first
+  `upgrades.*` call that needs it for that build-info, so `--no-compile` runs
+  and direct API use fail the same way.
+- `'warn'` warns once per build-info and falls back to AST-only checks.
+- `'ignore'` falls back silently.
+
 Compatibility note: mixing the two annotation prefixes across contracts in one
 codebase is supported by this plugin's validation. That is separate from mixing
 the underlying Solidity libraries — do not combine the OpenZeppelin upstream
 upgradeable libraries and the TRON contract libraries in the same contract, as
 their initializers, namespaces, and inheritance are not designed to interoperate.
+
+**Cross-prefix collisions.** `erc7201:` and `trc7201:` hash the namespace id
+without the prefix, so the same id under both prefixes resolves to one
+storage slot. The plugin rejects that collision, whether both annotations
+are on the same contract or one is inherited from a base contract, even
+though upgrades-core — which keys namespaces by the full annotation string —
+would otherwise miss it. Distinct ids under different prefixes are
+unaffected. Annotations are passed to upgrades-core verbatim (the plugin
+never rewrites the prefix), so error messages quote the id exactly as the
+developer wrote it.
+
+Caveat: flipping a namespace's prefix across an upgrade (`trc7201:x` to
+`erc7201:x`, same id) is safe on-chain, but upgrades-core compares namespaces
+by the full annotation string, so it no longer finds `trc7201:x` in the new
+version and reports a deleted namespace — a false rejection, in the fail-safe
+direction. Use `unsafeSkipStorageCheck` if you need to make that specific
+upgrade.
 
 ## Development
 
