@@ -5,9 +5,10 @@ pragma solidity ^0.8.26;
 // fixtures in Namespaced.sol except for the annotation prefix: tron-contracts
 // annotates namespaces with `@custom:storage-location trc7201:<id>`. The
 // slot-derivation formula is identical to ERC-7201's, so the same namespace id
-// yields the same slot; the plugin normalizes the prefix at the upgrades-core
-// boundary so these validate with full slot precision. Coexisting with the
-// erc7201 fixtures in the same compilation, these also exercise the mixed case.
+// yields the same slot. Annotations are passed to upgrades-core verbatim;
+// identity for cross-prefix collision detection is prefix-insensitive (see
+// src/utils/namespace-prefix.ts). Coexisting with the erc7201 fixtures, these
+// also exercise the mixed case.
 
 // -- packing change: reordering members shifts their slots ------------------
 contract TrcNsPackV1 {

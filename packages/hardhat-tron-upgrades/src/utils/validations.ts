@@ -1,5 +1,6 @@
 import type { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { core } from './core';
+import { assertNoNamespaceSlotCollisions } from './namespace-prefix';
 import { getNamespacedOutput } from './namespaced';
 import type { ValidationOptions } from './options';
 
@@ -26,6 +27,8 @@ export async function upgradeableContractFor(
   if (!buildInfo) {
     throw new Error(`No build-info for ${fqName}. Run \`hardhat compile\` first.`);
   }
+
+  assertNoNamespaceSlotCollisions(buildInfo, fqName);
 
   // ERC-7201 namespace members have no slot/offset in the primary build-info;
   // the namespaced recompile supplies them so packing-sensitive namespace
