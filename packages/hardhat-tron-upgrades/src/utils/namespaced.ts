@@ -14,22 +14,32 @@ import { core } from './core';
 // name and type only (from the AST), so slot-sensitive changes — a member
 // inserted into intra-slot padding, or a repack — are decided wrong.
 //
-// The recompile is expensive, so its output is cached per build-info, keyed by
+// The recompile is expensive, so its result is cached per build-info, keyed by
 // the build-info id (a content hash of the compiler input): in-memory for the
 // life of the process, and on disk beside the build-info so a later process
-// reuses it. `null` records that a build-info has no usable namespaced output
-// (compiler too old, or the recompile failed) so we never retry it.
-//
-// A disk-cached `null` is silent by construction: a later process reads it and
-// runs AST-only checks without recomputing, so any one-shot warning emitted at
-// compute time never fires again. To avoid users sitting silently degraded, the
-// fallback is announced on every run that actually USES a null result for a
-// build-info that has namespaces (deduped once per build-info id per process),
-// and an opt-in config flag turns the recompile failure into a hard error.
+// reuses it. The cache stores a discriminated `NamespacedCacheEntry` — the
+// recompile's outcome only ('output', 'unsupported', or 'compile-failed') —
+// with no policy baked in. Severity (throw / warn / silent) is decided at
+// CONSUMPTION time from the calling process's `namespacedCompileErrors`
+// setting, not at compute time, so a cache written under one setting is
+// interpreted correctly by a later process running under another. A raw
+// legacy (pre-schema) disk value is ambiguous between 'unsupported' and
+// 'compile-failed', so it is discarded and recomputed rather than guessed.
 
 type SolcOutput = any;
 
-const memoryCache = new Map<string, SolcOutput | null>();
+const CACHE_SCHEMA = 2 as const;
+
+type NamespacedCacheEntry =
+  | { schema: typeof CACHE_SCHEMA; kind: 'output'; output: SolcOutput }
+  | { schema: typeof CACHE_SCHEMA; kind: 'unsupported' }
+  | { schema: typeof CACHE_SCHEMA; kind: 'compile-failed'; errorLines: string[] };
+
+function isCacheEntry(v: unknown): v is NamespacedCacheEntry {
+  return typeof v === 'object' && v !== null && (v as any).schema === CACHE_SCHEMA;
+}
+
+const memoryCache = new Map<string, NamespacedCacheEntry>();
 
 // Build-info ids already announced as degraded this process, so the fallback
 // warning is emitted once per id rather than on every validation call.
@@ -146,13 +156,16 @@ async function compileNamespaced(
   });
 }
 
-async function computeNamespacedOutput(
+// Computes the recompile's outcome as a cache entry. Total: never throws on a
+// failed compile and applies no severity policy — that decision is made by the
+// caller of `getNamespacedOutput`, using whatever config it holds at that time.
+async function computeNamespacedEntry(
   hre: HardhatRuntimeEnvironment,
   buildInfo: any,
-): Promise<SolcOutput | null> {
+): Promise<NamespacedCacheEntry> {
   const { isNamespaceSupported, makeNamespacedInput, trySanitizeNatSpec } = core();
   const solcVersion: string = buildInfo.solcVersion;
-  if (!isNamespaceSupported(solcVersion)) return null;
+  if (!isNamespaceSupported(solcVersion)) return { schema: CACHE_SCHEMA, kind: 'unsupported' };
 
   let namespacedInput = makeNamespacedInput(buildInfo.input, buildInfo.output, solcVersion);
   namespacedInput = await trySanitizeNatSpec(namespacedInput, solcVersion);
@@ -160,63 +173,69 @@ async function computeNamespacedOutput(
   const output = await compileNamespaced(hre, namespacedInput, solcVersion);
   const errors: any[] = (output?.errors ?? []).filter((e: any) => e.severity === 'error');
   if (errors.length > 0) {
-    // The primary compilation already succeeded, so a failed recompile only
-    // forfeits slot-level precision for advanced namespace edits — fall back to
-    // AST-only checks (or throw, when the hard-error flag is set).
-    return reportNamespacedCompileFailure(
-      hre,
-      buildInfo.id,
-      errors.map((e: any) => e.formattedMessage ?? e.message),
-    );
+    return {
+      schema: CACHE_SCHEMA,
+      kind: 'compile-failed',
+      errorLines: errors.map((e: any) => e.formattedMessage ?? e.message),
+    };
   }
-  return output;
+  return { schema: CACHE_SCHEMA, kind: 'output', output };
 }
 
-// Resolves the namespaced solc output for a build-info as `SolcOutput | null`
-// (`null` = no usable namespaced output), reading the memory/disk cache before
-// recomputing.
-async function resolveNamespacedOutput(
+// Resolves the cache entry for a build-info, reading the memory/disk cache
+// before recomputing. A disk value that isn't a schema-2 entry (legacy, or
+// corrupt) is treated as a miss and recomputed — self-healing the cache file
+// in place.
+async function resolveNamespacedEntry(
   hre: HardhatRuntimeEnvironment,
   buildInfo: any,
-): Promise<SolcOutput | null> {
+): Promise<NamespacedCacheEntry> {
   const id: string = buildInfo.id;
-  if (memoryCache.has(id)) {
-    return memoryCache.get(id) ?? null;
-  }
+  const cached = memoryCache.get(id);
+  if (cached) return cached;
 
   const cachePath = diskCachePath(hre, id);
   try {
-    const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-    memoryCache.set(id, cached);
-    return cached ?? null;
+    const parsed = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    if (isCacheEntry(parsed)) {
+      memoryCache.set(id, parsed);
+      return parsed;
+    }
   } catch {
     // Cache miss (or unreadable) — recompute below.
   }
 
-  const output = await computeNamespacedOutput(hre, buildInfo);
-  memoryCache.set(id, output);
+  const entry = await computeNamespacedEntry(hre, buildInfo);
+  memoryCache.set(id, entry);
   try {
     fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-    fs.writeFileSync(cachePath, JSON.stringify(output));
+    fs.writeFileSync(cachePath, JSON.stringify(entry));
   } catch {
     // A missing on-disk cache only costs a recompile next process; ignore.
   }
-  return output ?? null;
+  return entry;
 }
 
 // Namespaced solc output for a build-info, or `undefined` when none applies.
-// Result is cached (memory + on disk) keyed by build-info id. When the result
-// is absent for a build-info that declares namespaces, the AST-only fallback is
-// announced (once per id per process) so a cached-null never degrades silently.
+// The cache entry itself carries no policy: severity for a 'compile-failed'
+// entry is decided here, from `hre`'s CURRENT `namespacedCompileErrors`
+// setting, every time it's consumed — so a cache entry written under one
+// setting is still handled correctly by a later run under another.
 export async function getNamespacedOutput(
   hre: HardhatRuntimeEnvironment,
   buildInfo: any,
 ): Promise<SolcOutput | undefined> {
-  const output = await resolveNamespacedOutput(hre, buildInfo);
-  if (output === null && buildInfoHasNamespaces(buildInfo)) {
-    warnNamespacedFallback(buildInfo.id);
+  const entry = await resolveNamespacedEntry(hre, buildInfo);
+  switch (entry.kind) {
+    case 'output':
+      return entry.output;
+    case 'unsupported':
+      if (buildInfoHasNamespaces(buildInfo)) warnNamespacedFallback(buildInfo.id);
+      return undefined;
+    case 'compile-failed':
+      reportNamespacedCompileFailure(hre, buildInfo.id, entry.errorLines);
+      return undefined;
   }
-  return output ?? undefined;
 }
 
 // Pre-warm the namespaced cache for every build-info produced by a compile, so

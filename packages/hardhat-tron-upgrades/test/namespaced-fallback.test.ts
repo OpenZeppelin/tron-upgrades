@@ -11,10 +11,14 @@ import {
 import { resolveNamespacedCompileErrors } from '../src/config';
 
 // The namespaced recompile can be absent for a build-info that HAS namespaces
-// (compiler too old, or the recompile failed). Absence is cached as a `null`
-// sentinel on disk, so a later process reads null and silently runs AST-only
-// checks. These tests pin the surfacing: the fallback must be announced on the
-// run that actually uses it, and an opt-in flag must turn the failure hard.
+// (compiler too old, or the recompile failed). The result of a recompute is
+// cached on disk as a discriminated entry (`{ schema: 2, kind: 'output' |
+// 'unsupported' | 'compile-failed', ... }`); no policy is baked into the cache
+// itself. `getNamespacedOutput` applies the current `namespacedCompileErrors`
+// setting at consumption time, so a cached failure throws, warns, or stays
+// silent depending on the config the CALLING process has, not the one that
+// produced the cache entry. A raw legacy (pre-schema) cache value is
+// ambiguous and is discarded rather than trusted.
 
 // Observe warnings through the plugin's injectable sink rather than the
 // upgrades-core channel, so the assertions are independent of the process-global
@@ -26,10 +30,14 @@ function spyWarnings() {
 }
 
 // A build-info whose output AST carries an ERC-7201 storage-location annotation.
+// `input` sources have no `content`, so a real recompute attempt passes them
+// through upgrades-core's namespaced-input rewrite untouched instead of
+// requiring a full parseable AST.
 function namespacedBuildInfo(id: string) {
   return {
     id,
     solcVersion: '0.8.26',
+    input: { sources: { 'A.sol': {} } },
     output: {
       sources: {
         'A.sol': {
@@ -60,10 +68,24 @@ function tmpHre(setting: 'error' | 'warn' | 'ignore' = 'warn') {
   } as any;
 }
 
-function seedNullCache(hre: any, id: string) {
+function seedCache(hre: any, id: string, entry: unknown) {
   const dir = path.join(hre.config.paths.artifacts, 'build-info');
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, `${id}.namespaced.json`), 'null');
+  fs.writeFileSync(path.join(dir, `${id}.namespaced.json`), JSON.stringify(entry));
+}
+
+const failedEntry = { schema: 2, kind: 'compile-failed', errorLines: ['E: boom'] };
+const unsupportedEntry = { schema: 2, kind: 'unsupported' };
+
+// Stubs the two `hre.run` calls `compileNamespaced` makes (solc build lookup,
+// then the actual compile) and records every task invoked.
+function stubCompile(hre: any, output: { errors?: any[] }) {
+  const calls: string[] = [];
+  hre.run = async (taskName: string) => {
+    calls.push(taskName);
+    return calls.length === 1 ? { isSolcJs: true, compilerPath: 'stub' } : output;
+  };
+  return calls;
 }
 
 describe('Namespaced fallback surfacing', function () {
@@ -74,35 +96,40 @@ describe('Namespaced fallback surfacing', function () {
     ).to.equal(false);
   });
 
-  it('re-emits the fallback warning when a null-cached namespaced output is used', async () => {
-    const hre = tmpHre();
-    const id = `cachednull-${Date.now()}`;
-    seedNullCache(hre, id);
+  it('throws from a disk-cached failed compile under error', async () => {
+    const hre = tmpHre('error');
+    const id = `disk-failed-error-${Date.now()}`;
+    seedCache(hre, id, failedEntry);
+
+    await expect(getNamespacedOutput(hre, namespacedBuildInfo(id))).to.be.rejectedWith(/boom/);
+  });
+
+  it('warns and degrades from a disk-cached failed compile under warn', async () => {
+    const hre = tmpHre('warn');
+    const id = `disk-failed-warn-${Date.now()}`;
+    seedCache(hre, id, failedEntry);
 
     const spy = spyWarnings();
     try {
       const out = await getNamespacedOutput(hre, namespacedBuildInfo(id));
       expect(out).to.equal(undefined);
       expect(spy.calls.length).to.be.greaterThan(0);
-      expect(spy.calls[0].title).to.match(/fallback/i);
-
-      // Per-process dedup: a second use in the same process does not re-warn.
-      const before = spy.calls.length;
-      await getNamespacedOutput(hre, namespacedBuildInfo(id));
-      expect(spy.calls.length).to.equal(before);
+      expect(spy.calls.some((c) => c.title.includes('boom') || c.lines.some((l) => l.includes('boom')))).to.equal(
+        true,
+      );
     } finally {
       spy.restore();
     }
   });
 
-  it('stays quiet when a null-cached build-info has no namespaces', async () => {
-    const hre = tmpHre();
-    const id = `nonamespace-${Date.now()}`;
-    seedNullCache(hre, id);
+  it('stays silent on a cached failed compile under ignore', async () => {
+    const hre = tmpHre('ignore');
+    const id = `disk-failed-ignore-${Date.now()}`;
+    seedCache(hre, id, failedEntry);
 
     const spy = spyWarnings();
     try {
-      const out = await getNamespacedOutput(hre, { id, solcVersion: '0.8.26', output: { sources: {} } });
+      const out = await getNamespacedOutput(hre, namespacedBuildInfo(id));
       expect(out).to.equal(undefined);
       expect(spy.calls.length).to.equal(0);
     } finally {
@@ -110,7 +137,54 @@ describe('Namespaced fallback surfacing', function () {
     }
   });
 
-  it('throws instead of degrading when namespacedCompileErrors is enabled', () => {
+  it('never errors on unsupported solc even under error', async () => {
+    const hre = tmpHre('error');
+    const id = `disk-unsupported-error-${Date.now()}`;
+    seedCache(hre, id, unsupportedEntry);
+
+    const out = await getNamespacedOutput(hre, namespacedBuildInfo(id));
+    expect(out).to.equal(undefined);
+  });
+
+  it('discards a legacy schema-1 cache instead of trusting it', async () => {
+    const hre = tmpHre();
+    const id = `legacy-null-${Date.now()}`;
+    seedCache(hre, id, null);
+    const calls = stubCompile(hre, { errors: [] });
+
+    await getNamespacedOutput(hre, namespacedBuildInfo(id));
+    expect(calls.length).to.be.greaterThan(0);
+  });
+
+  it('persists the failure sentinel an ignore run computes, and a later error run throws on it', async () => {
+    const id = `persist-fail-${Date.now()}`;
+    const hreIgnore = tmpHre('ignore');
+    stubCompile(hreIgnore, { errors: [{ severity: 'error', formattedMessage: 'E: boom' }] });
+
+    const out = await getNamespacedOutput(hreIgnore, namespacedBuildInfo(id));
+    expect(out).to.equal(undefined);
+
+    const cachePath = path.join(hreIgnore.config.paths.artifacts, 'build-info', `${id}.namespaced.json`);
+    const persisted = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    expect(persisted.kind).to.equal('compile-failed');
+
+    const hreError = {
+      config: { paths: hreIgnore.config.paths, tronUpgrades: { namespacedCompileErrors: 'error' } },
+    } as any;
+    await expect(getNamespacedOutput(hreError, namespacedBuildInfo(id))).to.be.rejectedWith(/boom/);
+  });
+
+  it('a warn-mode warning does not suppress a later error-mode throw in one process', async () => {
+    const id = `warn-then-error-${Date.now()}`;
+    const hreWarn = tmpHre('warn');
+    seedCache(hreWarn, id, failedEntry);
+    await getNamespacedOutput(hreWarn, namespacedBuildInfo(id));
+
+    const hreError = tmpHre('error');
+    await expect(getNamespacedOutput(hreError, namespacedBuildInfo(id))).to.be.rejectedWith(/boom/);
+  });
+
+  it("throws instead of degrading when namespacedCompileErrors is set to 'error'", () => {
     const hre = tmpHre('error');
     expect(() => reportNamespacedCompileFailure(hre, 'bi-hard', ['E: boom'])).to.throw(/bi-hard/);
     expect(() => reportNamespacedCompileFailure(hre, 'bi-hard-2', ['E: boom'])).to.throw(
@@ -118,7 +192,7 @@ describe('Namespaced fallback surfacing', function () {
     );
   });
 
-  it('degrades with a warning when namespacedCompileErrors is disabled', () => {
+  it("degrades with a warning when namespacedCompileErrors is set to 'warn'", () => {
     const hre = tmpHre('warn');
     const spy = spyWarnings();
     try {
