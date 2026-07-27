@@ -20,6 +20,7 @@ import type {
   ValidationOptions,
 } from '../src/index';
 import { makeUpgrades } from '../src/index';
+import type { TronUpgradesUserConfig } from '../src/config';
 
 // The expected hre.upgrades surface, spelled out member by member — removing
 // or retyping any member fails compilation here.
@@ -70,6 +71,12 @@ async function surface(): Promise<void> {
   const made: UpgradesAPI = makeUpgrades(undefined as any);
   void made;
   void implOpts;
+
+  const tronUpgradesConfig: TronUpgradesUserConfig = { namespacedCompileErrors: 'warn' };
+  void tronUpgradesConfig;
+  // @ts-expect-error booleans are no longer a valid namespacedCompileErrors value
+  const badTronUpgradesConfig: TronUpgradesUserConfig = { namespacedCompileErrors: true };
+  void badTronUpgradesConfig;
 }
 
 void surface;

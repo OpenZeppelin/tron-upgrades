@@ -55,7 +55,7 @@ function warnNamespacedFallback(buildInfoId: string, detailLines: string[] = [])
   warningSink(
     'Namespaced (ERC-7201) storage validation is using AST-only fallback for build-info ' +
       `${buildInfoId}; slot-level precision for namespace edits is reduced. Recompile to ` +
-      'restore full checks, or set tronUpgrades.namespacedCompileErrors to fail instead.',
+      "restore full checks, or set tronUpgrades.namespacedCompileErrors: 'error' to fail instead.",
     detailLines,
   );
 }
@@ -92,20 +92,29 @@ export function reportNamespacedCompileFailure(
   buildInfoId: string,
   errorLines: string[],
 ): null {
-  if ((hre.config as any)?.tronUpgrades?.namespacedCompileErrors) {
-    throw new Error(
-      'Failed to compile the modified contracts for namespaced storage-layout validation ' +
-        `(build-info ${buildInfoId}). tronUpgrades.namespacedCompileErrors is enabled, so this ` +
-        'is a hard error instead of an AST-only fallback.' +
-        (errorLines.length ? `\n${errorLines.join('\n')}` : ''),
-    );
+  const rule = ((hre.config as any)?.tronUpgrades?.namespacedCompileErrors ?? 'error') as
+    | 'error'
+    | 'warn'
+    | 'ignore';
+  switch (rule) {
+    case 'error':
+      throw new Error(
+        'Failed to compile the modified contracts for namespaced storage-layout validation ' +
+          `(build-info ${buildInfoId}).` +
+          (errorLines.length ? `\n${errorLines.join('\n')}` : '') +
+          "\n\nIf you do not anticipate advanced namespace modifications during upgrades, set " +
+          "tronUpgrades.namespacedCompileErrors: 'warn' or 'ignore' in your Hardhat config.",
+      );
+    case 'warn':
+      warnNamespacedFallback(buildInfoId, [
+        'Failed to compile the modified contracts for namespaced storage-layout validation; ' +
+          'falling back to AST-only checks for namespaced storage.',
+        ...errorLines,
+      ]);
+      return null;
+    case 'ignore':
+      return null;
   }
-  warnNamespacedFallback(buildInfoId, [
-    'Failed to compile the modified contracts for namespaced storage-layout validation; ' +
-      'falling back to AST-only checks for namespaced storage.',
-    ...errorLines,
-  ]);
-  return null;
 }
 
 function diskCachePath(hre: HardhatRuntimeEnvironment, buildInfoId: string): string {

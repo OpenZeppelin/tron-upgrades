@@ -8,6 +8,7 @@ import {
   reportNamespacedCompileFailure,
   setNamespacedWarningSink,
 } from '../src/utils/namespaced';
+import { resolveNamespacedCompileErrors } from '../src/config';
 
 // The namespaced recompile can be absent for a build-info that HAS namespaces
 // (compiler too old, or the recompile failed). Absence is cached as a `null`
@@ -52,10 +53,10 @@ function namespacedBuildInfo(id: string) {
   };
 }
 
-function tmpHre(hardError = false) {
+function tmpHre(setting: 'error' | 'warn' | 'ignore' = 'warn') {
   const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'ns-fallback-'));
   return {
-    config: { paths: { artifacts }, tronUpgrades: { namespacedCompileErrors: hardError } },
+    config: { paths: { artifacts }, tronUpgrades: { namespacedCompileErrors: setting } },
   } as any;
 }
 
@@ -110,7 +111,7 @@ describe('Namespaced fallback surfacing', function () {
   });
 
   it('throws instead of degrading when namespacedCompileErrors is enabled', () => {
-    const hre = tmpHre(true);
+    const hre = tmpHre('error');
     expect(() => reportNamespacedCompileFailure(hre, 'bi-hard', ['E: boom'])).to.throw(/bi-hard/);
     expect(() => reportNamespacedCompileFailure(hre, 'bi-hard-2', ['E: boom'])).to.throw(
       /namespacedCompileErrors/,
@@ -118,7 +119,7 @@ describe('Namespaced fallback surfacing', function () {
   });
 
   it('degrades with a warning when namespacedCompileErrors is disabled', () => {
-    const hre = tmpHre(false);
+    const hre = tmpHre('warn');
     const spy = spyWarnings();
     try {
       const result = reportNamespacedCompileFailure(hre, `bi-soft-${Date.now()}`, ['E: boom']);
@@ -127,5 +128,32 @@ describe('Namespaced fallback surfacing', function () {
     } finally {
       spy.restore();
     }
+  });
+
+  it('stays silent under ignore', function () {
+    const hre = tmpHre('ignore');
+    const spy = spyWarnings();
+    try {
+      const out = reportNamespacedCompileFailure(hre as any, 'bi-ignore', ['E: boom']);
+      expect(out).to.equal(null);
+      expect(spy.calls.length).to.equal(0);
+    } finally {
+      spy.restore();
+    }
+  });
+});
+
+describe('namespacedCompileErrors rule resolution', function () {
+  it('defaults an omitted setting to error', function () {
+    expect(resolveNamespacedCompileErrors(undefined)).to.equal('error');
+  });
+  it('accepts each tri-state value', function () {
+    for (const v of ['error', 'warn', 'ignore']) {
+      expect(resolveNamespacedCompileErrors(v)).to.equal(v);
+    }
+  });
+  it('rejects booleans and typos eagerly', function () {
+    expect(() => resolveNamespacedCompileErrors(true)).to.throw(/'error', 'warn' or 'ignore'/);
+    expect(() => resolveNamespacedCompileErrors('warn ')).to.throw(/'error', 'warn' or 'ignore'/);
   });
 });

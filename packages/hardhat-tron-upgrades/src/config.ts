@@ -7,14 +7,29 @@
 import { extendConfig } from 'hardhat/config';
 import type { HardhatConfig, HardhatUserConfig } from 'hardhat/types';
 
+export type NamespacedCompileErrorsRule = 'error' | 'warn' | 'ignore';
+
 // Plugin-level configuration, set under the `tronUpgrades` key in hardhat.config.
 export interface TronUpgradesUserConfig {
-  // When true, a failure to compile the namespaced (ERC-7201) recompile is a
-  // thrown error instead of a warning + AST-only fallback. Off by default.
-  namespacedCompileErrors?: boolean;
+  // What a failed namespaced (ERC-7201) recompile does: 'error' fails the run
+  // (default, matching upstream hardhat-upgrades), 'warn' warns once and falls
+  // back to AST-only namespace checks, 'ignore' falls back silently.
+  namespacedCompileErrors?: NamespacedCompileErrorsRule;
 }
 export interface TronUpgradesConfig {
-  namespacedCompileErrors: boolean;
+  namespacedCompileErrors: NamespacedCompileErrorsRule;
+}
+
+const NAMESPACED_COMPILE_ERRORS_RULES: readonly NamespacedCompileErrorsRule[] = ['error', 'warn', 'ignore'];
+
+export function resolveNamespacedCompileErrors(value: unknown): NamespacedCompileErrorsRule {
+  if (value === undefined) return 'error';
+  if ((NAMESPACED_COMPILE_ERRORS_RULES as readonly unknown[]).includes(value)) {
+    return value as NamespacedCompileErrorsRule;
+  }
+  throw new Error(
+    `tronUpgrades.namespacedCompileErrors must be 'error', 'warn' or 'ignore' (got ${JSON.stringify(value)})`,
+  );
 }
 
 declare module 'hardhat/types/config' {
@@ -43,6 +58,6 @@ extendConfig((config: HardhatConfig, userConfig: Readonly<HardhatUserConfig>) =>
     ensureStorageLayout((override.settings ??= {}));
   }
   config.tronUpgrades = {
-    namespacedCompileErrors: userConfig.tronUpgrades?.namespacedCompileErrors ?? false,
+    namespacedCompileErrors: resolveNamespacedCompileErrors(userConfig.tronUpgrades?.namespacedCompileErrors),
   };
 });
