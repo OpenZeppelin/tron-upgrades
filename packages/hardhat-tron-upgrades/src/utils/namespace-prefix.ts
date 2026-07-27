@@ -18,16 +18,17 @@ interface NamespaceDecl {
 }
 
 // Mirrors upgrades-core's NatSpec parsing, which is not re-exported from its
-// entrypoint: the tag's arguments run to the next `@tag`. Zero or several
-// arguments is malformed — return undefined so core raises its own error
-// rather than this scan masking it with different wording.
+// entrypoint: the tag's arguments run to the next `@tag`, and the separator
+// after the tag name must be a literal space (a tab or newline yields zero
+// args upstream). Anything but exactly one argument is malformed — return
+// undefined so core raises its own error rather than this scan masking it.
 function storageLocationOf(node: any): string | undefined {
   const doc = node?.documentation;
   const text: string = typeof doc === 'string' ? doc : (doc?.text ?? '');
   if (!/^\s*@custom:storage-location(\s|$)/m.test(text)) return undefined;
   const args: string[] = [];
   for (const match of text.matchAll(
-    /^\s*@custom:storage-location(?<args>(?:(?!^\s*@\w+)[^])*)/gm,
+    /^\s*@custom:storage-location (?<args>(?:(?!^\s*@\w+)[^])*)/gm,
   )) {
     const trimmed = (match.groups?.args ?? '').trim();
     if (trimmed.length > 0) args.push(...trimmed.split(/\s+/));

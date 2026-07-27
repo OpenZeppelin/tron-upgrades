@@ -1,5 +1,7 @@
 import hre from 'hardhat';
 import { expect } from 'chai';
+import { solcInputOutputDecoder, validate } from '@openzeppelin/upgrades-core';
+import { assertNoNamespaceSlotCollisions } from '../src/utils/namespace-prefix';
 
 const { upgrades } = hre;
 
@@ -35,8 +37,9 @@ describe('Namespaced (TRC-7201) storage validation', function () {
     );
   });
 
-  // A rejection for a trc7201 namespace must show the annotation the developer
-  // actually wrote, not the normalized erc7201 prefix.
+  // The plugin deliberately does not rewrite annotations, so a rejection for a
+  // trc7201 namespace must quote the annotation the developer actually wrote and
+  // must never show an erc7201-rewritten form of it.
   it('reports the original trc7201 prefix in rejection messages', async () => {
     let error: any = null;
     try {
@@ -98,5 +101,43 @@ describe('Namespaced (TRC-7201) storage validation', function () {
     it('accepts different ids under different prefixes', async () => {
       await upgrades.validateImplementation('NsPrefixDisjoint'); // must not throw
     });
+
+    // A malformed annotation must reach upgrades-core untouched: the scan
+    // declines to parse it, so core's own error surfaces instead of a
+    // collision error quoting an id core never accepted. The separator after
+    // the tag name must be a literal space — upstream reads a tab as zero
+    // arguments, and parsing it leniently here would mask that.
+    //
+    // Injected into a build-info clone rather than added as a .sol fixture:
+    // upgrades-core validates a whole compilation unit at once, so one
+    // malformed annotation in `contracts/` fails EVERY contract sharing its
+    // build-info (verified — a clean `hardhat compile` puts all of them in one).
+    const MALFORMED = {
+      'no argument': '@custom:storage-location',
+      'a tab separator': '@custom:storage-location\terc7201:example.collide',
+      'two arguments': '@custom:storage-location erc7201:example.collide extra',
+    };
+    const FQ_NAME = 'contracts/NamespacePrefixCollision.sol:NsCollideSelf';
+
+    for (const [label, text] of Object.entries(MALFORMED)) {
+      it(`leaves ${label} to upgrades-core`, async () => {
+        // getBuildInfo re-reads from disk, so this mutation is test-local.
+        const buildInfo: any = await hre.artifacts.getBuildInfo(FQ_NAME);
+        const contract = buildInfo.output.sources[
+          'contracts/NamespacePrefixCollision.sol'
+        ].ast.nodes.find(
+          (n: any) => n.nodeType === 'ContractDefinition' && n.name === 'NsCollideSelf',
+        );
+        contract.nodes.find(
+          (n: any) => n.nodeType === 'StructDefinition' && n.name === 'AStorage',
+        ).documentation.text = text;
+
+        expect(() => assertNoNamespaceSlotCollisions(buildInfo, FQ_NAME)).to.not.throw();
+        const decodeSrc = solcInputOutputDecoder(buildInfo.input, buildInfo.output);
+        expect(() =>
+          validate(buildInfo.output, decodeSrc, buildInfo.solcVersion, buildInfo.input),
+        ).to.throw(/must have exactly one argument/);
+      });
+    }
   });
 });
