@@ -22,7 +22,7 @@ interface NamespaceDecl {
 // after the tag name must be a literal space (a tab or newline yields zero
 // args upstream). Anything but exactly one argument is malformed — return
 // undefined so core raises its own error rather than this scan masking it.
-function storageLocationOf(node: any): string | undefined {
+export function storageLocationOf(node: any): string | undefined {
   const doc = node?.documentation;
   const text: string = typeof doc === 'string' ? doc : (doc?.text ?? '');
   if (!/^\s*@custom:storage-location(\s|$)/m.test(text)) return undefined;
