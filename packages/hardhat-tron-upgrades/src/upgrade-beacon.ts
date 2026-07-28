@@ -3,6 +3,7 @@ import {
   type AddressLike,
   FQN,
   type UpgradeBeaconOptions,
+  assertIsBeacon,
   assertStorageCompatible,
   core,
   ethersOf,
@@ -23,6 +24,9 @@ export function makeUpgradeBeacon(hre: HardhatRuntimeEnvironment) {
   ): Promise<any> {
     const ethers = ethersOf(hre);
     const beaconAddress = await resolveAddress(hre, beacon);
+    // Confirm the target is a beacon before reading the chain or manifest, so a
+    // non-beacon address fails with a precise error rather than a raw revert.
+    await assertIsBeacon(hre, beaconAddress);
     const manifest = await getManifest(hre);
 
     // Chain first: ask the beacon what it points at now, then look that

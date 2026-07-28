@@ -36,26 +36,53 @@ function encodeUpgradeCall(contract: any, call: UpgradeProxyOptions['call']): st
     : iface.encodeFunctionData(call.fn, call.args ?? []);
 }
 
-// A proxy facade with the stable UUPS upgrade entry points (v4 upgradeTo +
-// v5 upgradeToAndCall). The interface ships in contracts/Proxies.sol, so its
-// fully-qualified name differs between this package and consumer projects —
-// resolve it from the compiled artifacts.
-async function uupsProxyFacade(hre: HardhatRuntimeEnvironment, proxyAddress: string): Promise<any> {
+// Attaches a plugin-shipped interface (from contracts/Proxies.sol) at an
+// address. The interface's fully-qualified name differs between this package
+// and consumer projects, so resolve it from the compiled artifacts by name.
+async function pluginInterfaceAt(
+  hre: HardhatRuntimeEnvironment,
+  interfaceName: string,
+  address: string,
+): Promise<any> {
   const names = await hre.artifacts.getAllFullyQualifiedNames();
   const expected = new Set([
-    'contracts/Proxies.sol:ITronUpgradesUUPS',
-    '@openzeppelin/hardhat-tron-upgrades/contracts/Proxies.sol:ITronUpgradesUUPS',
+    `contracts/Proxies.sol:${interfaceName}`,
+    `@openzeppelin/hardhat-tron-upgrades/contracts/Proxies.sol:${interfaceName}`,
   ]);
   const matches = names.filter((name: string) => expected.has(name));
   if (matches.length !== 1) {
     throw new Error(
       matches.length === 0
-        ? `ITronUpgradesUUPS artifact not found — import the plugin's contracts/Proxies.sol ` +
+        ? `${interfaceName} artifact not found — import the plugin's contracts/Proxies.sol ` +
             `from your project (see README) and run \`hardhat compile\`.`
-        : `Multiple plugin ITronUpgradesUUPS artifacts found: ${matches.join(', ')}`,
+        : `Multiple plugin ${interfaceName} artifacts found: ${matches.join(', ')}`,
     );
   }
-  return ethersOf(hre).getContractAt(matches[0], proxyAddress);
+  return ethersOf(hre).getContractAt(matches[0], address);
+}
+
+// A proxy facade with the stable UUPS upgrade entry points (v4 upgradeTo +
+// v5 upgradeToAndCall).
+function uupsProxyFacade(hre: HardhatRuntimeEnvironment, proxyAddress: string): Promise<any> {
+  return pluginInterfaceAt(hre, 'ITronUpgradesUUPS', proxyAddress);
+}
+
+// Reads a contract's UPGRADE_INTERFACE_VERSION, treating a revert (the getter
+// is absent) as undefined. TRE reports the revert as "REVERT opcode executed"
+// (upper case), which upgrades-core's lower-case matcher inside
+// getUpgradeInterfaceVersion rethrows — catch it here the same way the UUPS
+// path does, and rethrow only genuine transport errors.
+async function upgradeInterfaceVersionOf(
+  hre: HardhatRuntimeEnvironment,
+  address: string,
+): Promise<string | undefined> {
+  const { getUpgradeInterfaceVersion } = core();
+  try {
+    return await getUpgradeInterfaceVersion(providerOf(hre), address, () => {});
+  } catch (e: any) {
+    if (!isOptionalCallRevert(e)) throw e;
+    return undefined;
+  }
 }
 
 export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
@@ -114,31 +141,38 @@ export function makeUpgradeProxy(hre: HardhatRuntimeEnvironment) {
           `Proxy ${proxyAddress} has no admin in the 1967 admin slot — not a transparent proxy? For UUPS proxies pass opts.kind: "uups".`,
         );
       }
-      const admin = withOwner(await ethers.getContractAt(FQN.proxyAdmin, ethers.getAddress(adminAddress)));
-      upgrade = (newImplAddress) =>
-        txOverrides
-          ? admin.upgradeAndCall(proxyAddress, newImplAddress, callData, txOverrides)
-          : admin.upgradeAndCall(proxyAddress, newImplAddress, callData);
+      const adminAddr = ethers.getAddress(adminAddress);
+
+      // Dispatch on the ProxyAdmin's reported UPGRADE_INTERFACE_VERSION, exactly
+      // like upstream: a v5 ProxyAdmin returns "5.0.0" and exposes only
+      // upgradeAndCall; a v4 ProxyAdmin has no such getter (the probe reverts)
+      // and exposes upgrade + upgradeAndCall — where upgrade must be used for a
+      // plain upgrade, since v4's upgradeAndCall force-calls the implementation.
+      const adminUiv = await upgradeInterfaceVersionOf(hre, adminAddr);
+      if (adminUiv === '5.0.0') {
+        const admin = withOwner(await ethers.getContractAt(FQN.proxyAdmin, adminAddr));
+        upgrade = (newImplAddress) =>
+          txOverrides
+            ? admin.upgradeAndCall(proxyAddress, newImplAddress, callData, txOverrides)
+            : admin.upgradeAndCall(proxyAddress, newImplAddress, callData);
+      } else {
+        const admin = withOwner(await pluginInterfaceAt(hre, 'ITronUpgradesProxyAdminV4', adminAddr));
+        upgrade = (newImplAddress) =>
+          callData === '0x'
+            ? txOverrides
+              ? admin.upgrade(proxyAddress, newImplAddress, txOverrides)
+              : admin.upgrade(proxyAddress, newImplAddress)
+            : txOverrides
+              ? admin.upgradeAndCall(proxyAddress, newImplAddress, callData, txOverrides)
+              : admin.upgradeAndCall(proxyAddress, newImplAddress, callData);
+      }
     } else {
       // The upgrade entry point lives in the CURRENT implementation and is
       // reached through the proxy (delegatecall). Dispatch on the proxy's
       // reported UPGRADE_INTERFACE_VERSION over a stable interface, exactly
       // like upstream: v5 exposes upgradeToAndCall, v4-style implementations
       // expose only upgradeTo — never assume the new implementation's ABI.
-      const { getUpgradeInterfaceVersion } = core();
-      let uiv: string | undefined;
-      try {
-        uiv = await getUpgradeInterfaceVersion(providerOf(hre), proxyAddress, () => {});
-      } catch (e: any) {
-        // A current implementation without UPGRADE_INTERFACE_VERSION reverts
-        // the optional call. TRE reports that as "REVERT opcode executed" —
-        // upper case, which upstream's (lower-case) revert matcher rethrows.
-        // Match their list case-insensitively; real transport errors still throw.
-        if (!isOptionalCallRevert(e)) {
-          throw e;
-        }
-        uiv = undefined;
-      }
+      const uiv = await upgradeInterfaceVersionOf(hre, proxyAddress);
       const proxyAsUups = withOwner(await uupsProxyFacade(hre, proxyAddress));
       upgrade = (newImplAddress) =>
         uiv === '5.0.0'

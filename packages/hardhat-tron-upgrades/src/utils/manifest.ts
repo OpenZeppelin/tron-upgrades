@@ -28,10 +28,27 @@ function checkNoLegacyManifest(hre: HardhatRuntimeEnvironment): void {
   }
 }
 
+// Builds the upgrades-core Manifest for the active network via
+// Manifest.forNetwork, which resolves a dev instance by probing the provider's
+// hardhat_metadata / anvil_metadata RPC. On a TRE that reports an instance id
+// through that RPC (see @openzeppelin/hardhat-tron's provider), forNetwork keys
+// the manifest by chain + instance and stores it in the OS temp dir, so a
+// restarted local chain — same chainId, new instance — gets a fresh manifest
+// instead of reusing a stale one. Crucially this is the SAME resolution
+// upgrades-core performs for its own internal manifest reads/writes (implementation
+// and layout records in fetchOrDeployGetDeployment, proxy-kind records in
+// processProxyKind), so the plugin's records and upgrades-core's records land in
+// one instance-qualified manifest instead of splitting across two. A network
+// that does not report metadata (any non-TRE network, or a TRE without the seam)
+// keeps the default chain-id naming, byte-for-byte.
+export async function manifestForHre(hre: HardhatRuntimeEnvironment): Promise<any> {
+  const { Manifest } = core();
+  return Manifest.forNetwork(providerOf(hre));
+}
+
 export async function getManifest(hre: HardhatRuntimeEnvironment): Promise<any> {
   checkNoLegacyManifest(hre);
-  const { Manifest } = core();
-  const manifest = await Manifest.forNetwork(providerOf(hre));
+  const manifest = await manifestForHre(hre);
   await canonicalizeStoredAddresses(manifest);
   return manifest;
 }

@@ -31,6 +31,7 @@ export interface UpgradesAPI {
   ): Promise<any>;
   silenceWarnings(): void;
   validateImplementation(name: string, opts?: ValidationOptions): Promise<void>;
+  validateUpgrade(reference: AddressLike, to: string, opts?: ValidationOptions): Promise<void>;
   validateUpgrade(from: string, to: string, opts?: ValidationOptions): Promise<void>;
   erc1967: {
     getImplementationAddress(proxy: AddressLike): Promise<string>;

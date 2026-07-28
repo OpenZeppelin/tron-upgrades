@@ -16,3 +16,20 @@ export async function isBeaconContract(
     return false;
   }
 }
+
+// Preflight guard for operations that take a beacon address: reject a target
+// that is not an upgradeable beacon with a precise error naming the address and
+// the expected interface, before any deploy or record. Mirrors upstream's
+// isBeacon rejection in deployBeaconProxy / upgradeBeacon.
+export async function assertIsBeacon(
+  hre: HardhatRuntimeEnvironment,
+  address: string,
+): Promise<void> {
+  if (!(await isBeaconContract(hre, address))) {
+    throw new Error(
+      `Contract at ${address} is not an upgradeable beacon: its implementation() getter did ` +
+        `not return an address. Deploy a beacon with upgrades.deployBeacon(...) and pass that ` +
+        `beacon's address.`,
+    );
+  }
+}
