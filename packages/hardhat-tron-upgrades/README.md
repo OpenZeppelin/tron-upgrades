@@ -222,9 +222,10 @@ namespace checks: slot/offset are unknown, so advanced-but-safe layout edits
 (e.g. a member inserted into intra-slot padding) may now be rejected when
 they would have passed under the full check. Edits that are genuinely unsafe
 (reorders, repacks) are still rejected — the fallback never accepts more than
-the full check does, only less. A fallback warning is only emitted when the
-build-info actually has a `@custom:storage-location` struct to lose precision
-on.
+the full check does, only less. On compiler versions without namespace
+support, the fallback warning is only emitted when the build-info actually has
+a `@custom:storage-location` struct; a failed namespaced recompile is reported
+regardless.
 
 Configure what a failed namespaced recompile does with:
 
