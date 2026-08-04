@@ -72,7 +72,7 @@ export interface ModuleSpecifier {
    * `true` when the specifier is erased at compile time — `import type …`, or an
    * import whose every named binding is individually `type`-marked.
    *
-   * **Added by SF-1 Tests, and it closes a real hole in INV-49's pin.**
+   * **Added by SF-1, and it closes a real hole in INV-49's pin.**
    * `src/chain/index.ts:15` is `import type { EthereumProvider } from
    * '@openzeppelin/upgrades-core'`, and without this field the pinned allow-list
    * row rendered it as `(import)` — indistinguishable from a **runtime** import of

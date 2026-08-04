@@ -57,7 +57,7 @@ type _InputIsUpstreamShaped = AssertTrue<
  * is not among them**. That single omission is the whole reason this sub-feature
  * exists, and it cannot be fixed through config because the literal comes *after*
  * the user-settings spread — `...settings` at `:75` and `outputSelection:` at
- * `:76` on `v4.9.0`, `:76` and `:77` on `v4.8.0`, read at both tags this stage —
+ * `:76` on `v4.9.0`, `:76` and `:77` on `v4.8.0`, read at both tags —
  * so the host overwrites a user-supplied `outputSelection` rather than merely
  * declining to extend it.
  */

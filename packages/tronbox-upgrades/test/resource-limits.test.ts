@@ -229,7 +229,7 @@ describe('INV-37: index I/O is bounded and non-recursive', () => {
   it('exposes only a directory-scoped content read, so per-file cost stays bounded', () => {
     // The bound is in the interface's shape: a reader that could be asked for the
     // *content* of an arbitrary file would make per-file cost unbounded by
-    // construction. Two members at revision 2, and the second does not weaken this
+    // construction. Two members, and the second does not weaken this
     // — `exists` returns a `boolean`, so it costs one stat and can return no bytes
     // however it is called. What INV-37 bounds is content, not questions.
     const ambiguitySource = environmentSources().find(

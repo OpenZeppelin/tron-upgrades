@@ -360,7 +360,7 @@ describe('INV-24: resolve routes through the injected intercept', () => {
   });
 
   it('never obtains an abstraction through config.resolver', () => {
-    // INV-24 as revision 2 states it: *"no path yields a `ContractAbstraction`
+    // INV-24 as it now stands: *"no path yields a `ContractAbstraction`
     // except the injected intercept"*. `config.resolver` is read — INV-26's pairing
     // check compares it — and that read is permitted and enumerated, so the
     // property under test is about what the read is *used for*, not whether it
@@ -385,9 +385,9 @@ describe('INV-24: resolve routes through the injected intercept', () => {
   });
 
   it('records the one read of config.resolver that INV-26 requires', () => {
-    // Revision 1 flagged this as a contradiction: INV-24's original wording
+    // This was flagged as a contradiction: INV-24's original wording
     // ("`config.resolver` is never read") could not hold alongside INV-26, whose
-    // pairing check *is* that read. Revision 2 resolves it by narrowing INV-24 to
+    // pairing check *is* that read. It is resolved by narrowing INV-24 to
     // "no path yields a `ContractAbstraction`" and enumerating the one permitted
     // read — and INV-33 recording it is a feature, not a leak: `internalPathsRead`
     // is what makes the actual surface checkable rather than aspirational, and it

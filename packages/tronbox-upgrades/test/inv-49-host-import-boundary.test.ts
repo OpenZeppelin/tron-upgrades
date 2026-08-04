@@ -216,7 +216,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       //   fixtures and no network. That module imports `./errors`, which imports
       //   nothing at all, so its whole closure inside the package is these two
       //   packages and nothing more. **That transitive claim is not asserted anywhere
-      //   yet** — SF-3 Tests owns it, as a closure walk from `record/address.ts`
+      //   yet** — SF-3 owns it, as a closure walk from `record/address.ts`
       //   asserting the only non-relative specifiers reached are `tronweb` and
       //   `ethers`. Until it exists, these two rows record what the module imports
       //   and nothing pins what `./errors` may grow to import.
@@ -323,7 +323,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
   });
 
   it('imports upgrades-core as types only everywhere the directory rules require it', () => {
-    // **Added by SF-1 Tests, closing a hole in the pin above.** The `(import)` label
+    // **Added by SF-1, closing a hole in the pin above.** The `(import)` label
     // is produced from `entry.kind`, which does not distinguish a **type-only**
     // import from a runtime one — so the `chain/index.ts` row, added by SF-1 Code
     // Draft precisely *because* the import is type-only, would equally have admitted
@@ -448,8 +448,8 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
      * There is no other route: the file is CommonJS, it is named at runtime, and the
      * host's own resolution has three `process.exit(1)` sites, so calling the host is
      * both forbidden by this invariant and fatal to the user's process. And the need
-     * will not age out — `_inputs/decisions-10.md` reclassifies the compile path as
-     * the **fallback** under a lazy ladder (compile when the host's build record is
+     * will not age out — the compile path is now the **fallback** under a lazy
+     * ladder (compile when the host's build record is
      * stale or absent, or when AST-only refuses on a shape that needs slot data), so
      * the loader stays reachable rather than becoming dead code.
      *
@@ -1061,8 +1061,8 @@ describe('INV-49: a host mentioned in a comment only passes the scan', () => {
   });
 
   it('passes the real errors.ts, whose comment is the actual trap', () => {
-    // The fixture that matters: not a synthetic file but the module the implementation
-    // revision 3 rewrote. If this ever fails, the scan has regressed to text
+    // The fixture that matters: not a synthetic file but the module the
+    // implementation rewrote. If this ever fails, the scan has regressed to text
     // matching and the next maintainer will delete it rather than fix it.
     const errors = errorsSource();
     expect(errors.text).toContain("require.resolve('tronbox')");
@@ -1161,8 +1161,8 @@ describe('INV-49: SF-11 inherits a two-clause boundary check, not one item', () 
   it('ranges over a strictly larger subject than INV-28 does', () => {
     // INV-28's subject is `src/` *minus* the seam, because the seam is INV-28's
     // permitted exception; INV-49's is `src/` entire, because it has none. The two
-    // scans therefore cannot share a subject, which is the concrete form of Design
-    // revision 2's "neither subsumes the other" — and the thing most likely to be
+    // scans therefore cannot share a subject, which is the concrete form of
+    // *neither subsumes the other* — and the thing most likely to be
     // lost when SF-11 mechanizes both as "the boundary check".
     expect(srcDir.endsWith(path.join('tronbox-upgrades', 'src'))).toBe(true);
 

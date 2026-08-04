@@ -17,7 +17,7 @@ import { SENTINEL_FILE_CONTENT } from './config-fixtures';
  * the kind of test that gets skipped once it turns flaky, which is how a routine
  * degraded path ends up uncovered in violation of SC-003.
  *
- * **Revision 2 — the interface has two methods.** INV-31 fixes it at exactly
+ * **The interface has two methods.** INV-31 fixes it at exactly
  * `read` and `exists`, and `exists` is *required* rather than optional
  * deliberately: an optional probe would force `resolvePackaged` to keep a
  * fallback path for readers that decline it, which is precisely where INV-18's

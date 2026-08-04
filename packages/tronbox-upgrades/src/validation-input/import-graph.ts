@@ -147,7 +147,7 @@ const FIRST_STRING_LITERAL = /"([^"]*)"|'([^']*)'/;
  * **A regex scan rather than a parser, declared as such.** TronBox 4.9.0 parses
  * imports with `@solidity-parser/parser`, which this package does not depend on
  * and cannot add without widening its dependency surface — a decision outside
- * this stage. So the limits are stated rather than discovered:
+ * this module's scope. So the limits are stated rather than discovered:
  *
  * - An import statement must be terminated by `;`, which Solidity requires.
  * - The word `import` inside a *string literal* followed by a `;` on the same

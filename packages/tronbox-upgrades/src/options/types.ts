@@ -170,7 +170,7 @@ export type ValidateUpgradeOptions = ValidationOptions;
  * fact and no downstream module writes `?? default` a second time. The object and
  * both its arrays are frozen, and no field is ever assigned an explicit
  * `undefined` — under this package's `exactOptionalPropertyTypes: true` that would
- * be a compile error anyway (verified this stage: `const a: ValidationOptions = {
+ * be a compile error anyway (verified by compilation: `const a: ValidationOptions = {
  * kind: undefined }` fails with **TS2375**).
  *
  * The hazard this shape removes is the spec's own stakes line: a downstream

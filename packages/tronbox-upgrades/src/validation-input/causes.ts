@@ -221,8 +221,8 @@ export type WasmAbort = 'memory-access-out-of-bounds' | 'other-wasm-abort';
  * The oldest TronBox this initiative has *verified* carries all five artifact
  * fields cause 6 can name.
  *
- * Read from the host's own hard-coded artifact literal at both supported minors
- * this stage: `src/components/Compile/index.js:165-179` at `v4.9.0` and
+ * Read from the host's own hard-coded artifact literal at both supported minors:
+ * `src/components/Compile/index.js:165-179` at `v4.9.0` and
  * `:166-180` at `v4.8.0` in the TronBox **clone** — the host's own repository at
  * those tags, not the installed package, whose `build/` is one physical line per
  * file. Byte-identical in the fields that matter —

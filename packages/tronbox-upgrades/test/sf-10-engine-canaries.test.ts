@@ -34,11 +34,11 @@ import {
  * `upgrades-core` bump look like four unrelated regressions. SF-0 made the same call
  * for `real-tronbox.test.ts`.
  *
- * Every fact below was re-verified by execution against the installed tree at this
- * stage and is stated as **verified present at
- * `@openzeppelin/upgrades-core@1.46.0`**. That phrasing is load-bearing: both of
- * The design premises about this dependency were already false at the pinned
- * version, which is why nothing here is asserted from a `.d.ts` reading.
+ * Every fact below was re-verified by execution against the installed tree and is
+ * stated as **verified present at `@openzeppelin/upgrades-core@1.46.0`**. That
+ * phrasing is load-bearing: both of the premises this dependency was originally
+ * specified against were already false at the pinned version, which is why nothing
+ * here is asserted from a `.d.ts` reading.
  *
  * The deep imports live here and never in `src/`. The package ships **no** `exports`
  * map today, so a minor that adds one would break a `src/` deep import outright —

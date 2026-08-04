@@ -494,7 +494,7 @@ function selectPost(
   source: string,
   explicitPost: JsonRpcPost | undefined,
 ): JsonRpcPost {
-  // **An injected dependency outranks a platform default.** Found by SF-1 Tests:
+  // **An injected dependency outranks a platform default.** Found by measurement:
   // the different-origin refusal below names `deps.post` as its remedy, and
   // consulting `globalThis.fetch` first made that remedy unreachable — supplying
   // `deps.post` could not resolve a refusal raised before it was ever consulted.

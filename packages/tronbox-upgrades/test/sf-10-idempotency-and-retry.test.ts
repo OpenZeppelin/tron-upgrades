@@ -32,8 +32,7 @@ import { valueIdentifierNames } from './helpers/source-scan';
  *
  * **The fixture choice in this file is load-bearing and is the reason the whole
  * category could pass vacuously.** Upstream's aliasing only bites when a *derived*
- * flag is truthy. Verified by execution against `@openzeppelin/upgrades-core@1.46.0`
- * at this stage:
+ * flag is truthy. Verified by execution against `@openzeppelin/upgrades-core@1.46.0`:
  *
  * - `{ unsafeAllow: ['constructor'] }` — one call leaves `['constructor']`, two
  *   calls leave `['constructor']`. **Nothing accumulates.** A test written on this
@@ -263,8 +262,8 @@ describe('SF-10 INV-16: arrays are copied inbound to upstream and frozen outboun
 describe('SF-10 INV-3 / INV-16 / CD-3: engineValidationOptions is the only sanctioned way to reach the engine', () => {
   /*
    * **The conflict this resolves, reproduced by execution at
-   * `@openzeppelin/upgrades-core@1.46.0` in this stage.** INV-3 and INV-16 freeze
-   * `validation.unsafeAllow`; Design decision 7 hands that same object to the
+   * `@openzeppelin/upgrades-core@1.46.0`.** INV-3 and INV-16 freeze
+   * `validation.unsafeAllow`; the specified flow hands that same object to the
    * engine. `processExceptions` — reached from `getErrors` and therefore from
    * `assertUpgradeSafe` — opens with `withValidationDefaults(opts)`, aliases
    * `opts.unsafeAllow`, and pushes into it whenever a derived flag is truthy. So
@@ -297,7 +296,7 @@ describe('SF-10 INV-3 / INV-16 / CD-3: engineValidationOptions is the only sanct
   it('throws on the derived-flag route too, not only on the array route', () => {
     // `unsafeAllowCustomTypes: true` reaches the same `push` with an *empty*
     // frozen array, so the refusal is about the freeze rather than about the
-    // array's contents. Verified this stage: `Cannot add property 0, object is
+    // array's contents. Verified by execution: `Cannot add property 0, object is
     // not extensible`.
     const { processExceptions } = upstreamOverrides();
     const resolved = resolveAsJavaScriptCaller(

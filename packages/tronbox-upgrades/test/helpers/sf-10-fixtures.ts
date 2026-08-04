@@ -305,7 +305,7 @@ export function resolveAsJavaScriptCaller(
  * `unsafeAllowLinkedLibraries` from `unsafeAllow.includes('external-library-linking')`
  * and then `push` the member back in when the derived flag is truthy — so one
  * call leaves **two** copies and two calls leave **three**. It is also the opt-out
- * v1 ships (Design Open Question 3), so this is the array a real caller writes.
+ * v1 ships, so this is the array a real caller writes.
  */
 export const ACCUMULATING_UNSAFE_ALLOW: readonly string[] = Object.freeze([
   'external-library-linking',
@@ -848,7 +848,7 @@ export function sourceNamed(relative: string): ScannedSource {
  * definition.configurable = false` and a getter that opens `const self = this`,
  * and `Utils.bootstrap` applies it to the abstraction *and to every clone*.
  * Verified by execution on the installed `tronbox-4.9.0` and `tronbox-4.8.0`
- * trees at this stage: the descriptor is `{ get, set, enumerable: false,
+ * trees: the descriptor is `{ get, set, enumerable: false,
  * configurable: false }` on both, and `Object.defineProperty(abstraction,
  * 'events', …)` throws `TypeError: Cannot redefine property: events` on both.
  *
@@ -928,7 +928,7 @@ export function tronBoxAbstraction(installName: string): Record<string, unknown>
  * `Contract._properties.transactionHash`'s getter, which needs `network_id` set
  * before it will look anything up at all.
  *
- * Verified by execution on both installed trees at this stage: reading an absent
+ * Verified by execution on both installed trees: reading an absent
  * hash **throws** `Could not find transaction hash for Box` on 4.9.0 and returns
  * **`undefined`** on 4.8.0. Both accessors are non-configurable, so the plugin
  * cannot repair either in place — which is why INV-6 makes supplying the value the

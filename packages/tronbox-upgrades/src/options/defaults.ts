@@ -51,7 +51,7 @@ export const DEFAULT_INITIALIZER = 'initialize';
  * read by resolution** — it is the canary's expectation, not a fallback, and
  * making it a fallback would reintroduce exactly the drift the invariant closes.
  *
- * **Verified present at `@openzeppelin/upgrades-core@1.46.0`** at this stage by
+ * **Verified present at `@openzeppelin/upgrades-core@1.46.0`** by
  * calling `withValidationDefaults({})` against the installed tree: these six keys,
  * these six values. The set is also exactly `Required<ValidationOptions>`, and it
  * **includes both deprecated booleans** — the structural fact that makes narrowing

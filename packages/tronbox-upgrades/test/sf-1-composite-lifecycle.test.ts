@@ -106,8 +106,8 @@ describe('INV-3: ChainAccess is total and frozen, and holds neither handle nor U
   it('survives JSON.stringify without throwing and without leaking a credential', async () => {
     // SF-0 met INV-40's guarantee by **redaction**, because its slots expose handles
     // as named capabilities. SF-1 meets it by **construction** — there is no field to
-    // redact — which is why `sealSlot` is unnecessary here. SF-1's own Research had
-    // concluded the adapter would need sealing; it does not.
+    // redact — which is why `sealSlot` is unnecessary here. The adapter was
+    // expected to need sealing; it does not.
     const handle = createCredentialBearingHandle({
       host: 'http://alice:s3cr3t@node.internal:8090',
     });
@@ -213,8 +213,8 @@ describe('INV-2: send resolves the unwrapped result and freezes nothing', () => 
 
 describe('INV-1 / INV-21: every disposition, and a mismatched id changes nothing', () => {
   it('classifies java-tron\'s measured "id":"null" + -32700 reply as a node error', async () => {
-    // **Corrects Design § The transport**, which listed "a mismatched id" among
-    // `malformed-envelope`'s triggers. Measured live: java-tron answers a request
+    // **"A mismatched id" was originally specified among `malformed-envelope`'s
+    // triggers, and that is wrong.** Measured live: java-tron answers a request
     // carrying `"id": 7` with `"id": "null"` — the JSON **string** — whenever it
     // returns `-32700`, which is exactly what an EIP-1898 block object on a state
     // method produces. Under a correlation rule, a real, well-formed node error would be

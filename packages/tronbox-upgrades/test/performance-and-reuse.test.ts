@@ -280,7 +280,7 @@ describe('INV-43: exactly one injected dependency, no concrete singleton, no fs 
   });
 
   it('exposes the real reader as a value the second host can decline to use', () => {
-    // Two members at revision 2, and the count is the assertion: INV-31 fixes the
+    // Two members, and the count is the assertion: INV-31 fixes the
     // interface at `read` and `exists`, so a third would be a widening that has to
     // pass through the invariant rather than arrive with a commit.
     expect(Object.isFrozen(fileSystemBuildInfoReader)).toBe(true);

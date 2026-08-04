@@ -44,7 +44,7 @@ export interface FixtureProbe {
   /**
    * Everything a user could see, in **both** rendering channels.
    *
-   * Revision 2 of INV-40 makes this plural on purpose. `JSON.stringify` consults
+   * INV-40 makes this plural on purpose. `JSON.stringify` consults
    * `handles.ts:sealSlot`'s `toJSON`, so a sweep over serialization alone tests the
    * *backstop* and would pass on a composite that prints a credential to a
    * terminal. Each entry therefore contributes its `util.inspect(…, { depth: null })`
@@ -417,7 +417,7 @@ export function allFixtureProbes(): readonly FixtureProbe[] {
       );
     }),
 
-    // --- added at revision 2, so the new behaviour is swept like the rest -----
+    // --- added later, so the new behaviour is swept like the rest -----------
 
     probe('packaged artifact missing (INV-18 cause 2)', () => {
       const shape = migrateShapedHandles({}, { mode: 'null' });

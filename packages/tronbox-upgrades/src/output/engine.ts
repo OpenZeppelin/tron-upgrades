@@ -44,8 +44,8 @@ export interface EngineWarningCapableExport {
  * INV-29: the warning-capable root-export set, recorded as data and split by
  * declared synchrony.
  *
- * **Verified present at `@openzeppelin/upgrades-core@1.46.0`**, as installed, at
- * this stage: every listed export exists on the root, and `addProxyToManifest`
+ * **Verified present at `@openzeppelin/upgrades-core@1.46.0`**, as installed:
+ * every listed export exists on the root, and `addProxyToManifest`
  * and `validateUpgradeSafety` are both `AsyncFunction`. The table exists because
  * the hand-written seven-name list it replaced was wrong in both directions — it
  * named two exports that cannot warn at all (`withValidationDefaults`,
@@ -172,7 +172,7 @@ export interface UncapturedEngineWarning {
  * hedged phrasing ("some warnings may bypass") is unactionable — a user who sees
  * an unexpected line outside the plugin's channel has to be able to *match* it.
  * Verified present at `@openzeppelin/upgrades-core@1.46.0` by reading
- * `dist/add-proxy-to-manifest.js:addProxyToManifest` at this stage.
+ * `dist/add-proxy-to-manifest.js:addProxyToManifest`.
  *
  * The fix a reader will reach for first — wrapping the async call in the window —
  * is not available: INV-27 refuses a thenable return outright, which makes the

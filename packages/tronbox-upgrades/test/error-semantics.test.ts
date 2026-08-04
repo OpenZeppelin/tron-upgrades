@@ -709,9 +709,9 @@ describe('INV-14: incomplete names the property path and the providing contexts'
     }
   });
 
-  it('matches the invocation-context matrix Research established', () => {
+  it('matches the measured invocation-context matrix', () => {
     // The one place the matrix is restated. Every message assertion below reads
-    // the table instead, so a table edit that contradicts Research fails here
+    // the table instead, so a table edit that contradicts the measurements fails
     // and nowhere else.
     expect(
       Object.fromEntries(
@@ -748,17 +748,17 @@ describe('INV-14: incomplete names the property path and the providing contexts'
       output: [
         'tronbox migrate',
         'tronbox test migration phase',
-        // Re-pinned at revision 3. `output` moved from `deployerContexts` to
+        // Re-pinned later. `output` moved from `deployerContexts` to
         // `configContexts` because the table was internally inconsistent: the
         // `artifacts` handle *is* present under `tronbox test` mocha files, and
         // `output.handles` has always named it, so listing that context as absent
-        // described a capability the seam does have as one it does not. Design
-        // Decision 13 chose widening `providedIn` over narrowing `handles`
+        // described a capability the seam does have as one it does not. Widening
+        // `providedIn` was chosen over narrowing `handles`
         // precisely because narrowing would have decided SF-4's still-open
         // mocha-scope question by omission.
         'tronbox test mocha files',
       ],
-      // Added at revision 5 with the compiler slot. Purely lineage-derived, so it
+      // Added with the compiler slot. Purely lineage-derived, so it
       // reads `paths`/`network`'s row: wherever a Config lineage is reachable the
       // compiler configuration is constructible, and nowhere else.
       compiler: [
@@ -1369,8 +1369,9 @@ describe('INV-18: resolvePackaged never returns nullish and its failures are dia
   /**
    * INV-18's three messages, one test each, all driven from `exists` fixtures.
    *
-   * This is what the reader amendment bought. Revision 1 delivered two messages
-   * and recorded the third as a skipped deferral, because splitting *missing* from
+   * This is what the injected existence probe bought. An earlier pass delivered
+   * two messages and recorded the third as a skipped deferral, because splitting
+   * *missing* from
    * *malformed* looked like it needed a content read INV-31 confines to
    * `ambiguity.ts`. It does not: it needs a `boolean`. The existence probe is a
    * strictly weaker capability on the dependency that was already injected, so all
