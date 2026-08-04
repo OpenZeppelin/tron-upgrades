@@ -154,6 +154,40 @@ export class EmptyInitializerRefusedError extends ProxyOperationRefusedError {
 }
 
 /**
+ * A prior deployment's record cannot vouch for this replay (INV-9): the
+ * artifact remembers an address, and the record layer reports it stale,
+ * unrecorded, or never seen. Redeploying beside it would leave two proxies
+ * answering one name, so the operation stops and says which investigation
+ * comes first.
+ */
+export class StaleProxyRecordError extends ProxyOperationRefusedError {
+  readonly code = 'stale-proxy-record';
+  constructor(
+    readonly proxyAddress: string,
+    readonly because: 'no-code-at-address' | 'unrecorded' | 'no-verdict',
+  ) {
+    super(
+      because === 'no-code-at-address'
+        ? `This migration previously deployed a proxy at ${proxyAddress}, but ` +
+          `that address holds no code on the current chain — the node was ` +
+          `likely wiped or replaced. Deploying a second proxy beside the stale ` +
+          `record is refused. If the chain really was reset, clear the ` +
+          `deployment record and the artifact's network entry, then re-run.`
+        : because === 'unrecorded'
+          ? `This migration previously deployed a proxy at ${proxyAddress}, ` +
+            `and the address holds code, but the deployment record has no ` +
+            `entry for it. Register it first with a force-import so upgrades ` +
+            `validate against the right layout.`
+          : `This migration previously deployed a proxy at ${proxyAddress}, ` +
+            `but the deployment record knows nothing about that address — an ` +
+            `out-of-band deployment, a deleted record, or another tool's ` +
+            `write. Reconcile the record before deploying again.`,
+    );
+    this.name = 'StaleProxyRecordError';
+  }
+}
+
+/**
  *`initialOwner` looks like a ProxyAdmin contract (INV-12): the v5 transparent
  * proxy deploys its OWN admin owned by `initialOwner`, so handing it an
  * existing ProxyAdmin is almost always a v4-era habit that buries the real

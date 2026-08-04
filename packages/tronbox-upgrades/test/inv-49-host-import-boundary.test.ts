@@ -205,6 +205,17 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       // dependency. The engine is a declared runtime dependency of this package.
       `options${path.sep}resolve.ts: @openzeppelin/upgrades-core (import)`,
       `options${path.sep}types.ts: @openzeppelin/upgrades-core (import)`,
+      // Added by SF-5 — three rows, additive. The operation toolkit reaches
+      // the engine strictly behind a dynamic import (the entry-closure guard
+      // proves the deferral, and the types-only census below records the row
+      // as the second sanctioned runtime route beside record/manifest.ts).
+      // `ethers` is static on purpose: it is the same runtime peer the record
+      // layer already carries, and a constructed require here would have
+      // widened the one site the loader clause below permits — measured, when
+      // this suite refused exactly that shape on the toolkit's first run.
+      `proxy${path.sep}toolkit.ts: @openzeppelin/upgrades-core (dynamic-import)`,
+      `proxy${path.sep}toolkit.ts: ethers (import)`,
+      `proxy${path.sep}upgrade-proxy.ts: ethers (import)`,
       // Added by SF-3 — ten rows, additive, nothing removed and nothing
       // loosened. Read as a directory rule, the way the SF-10 and SF-2 rows are:
       //
@@ -359,6 +370,12 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       // quoted onward, so it is fixed here instead of annotated.
       `options${path.sep}resolve.ts: @openzeppelin/upgrades-core (import, runtime)`,
       `options${path.sep}types.ts: @openzeppelin/upgrades-core (import, type-only)`,
+      // Added by SF-5: the operation toolkit's engine access, and the second
+      // sanctioned `dynamic-import, runtime` row beside record/manifest.ts —
+      // deferred for the same load-order reason, and proven deferred by
+      // test/entry-point-closure.test.ts, which recomputes the entry module's
+      // static value-closure from disk on every run.
+      `proxy${path.sep}toolkit.ts: @openzeppelin/upgrades-core (dynamic-import, runtime)`,
       // Added by SF-3, and this block is where the record layer's load-order
       // rule is actually enforced rather than described. The engine's manifest module
       // evaluates the deployment record's directory from the environment **once, at

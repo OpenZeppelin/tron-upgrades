@@ -884,18 +884,40 @@ describe('INV-32 — applied to the real tree', () => {
     // constant at import time. The exact edge census is asserted so a third
     // specifier, or one that stops being type-only, fails here by name.
     const entry = allSources().find(source => source.relative === 'index.ts');
+    // Re-pinned when the operations landed: the entry now carries VALUE edges
+    // to ./proxy (operations + refusals) and ./deploy (the deployment-seam
+    // refusal family), alongside the two erased type edges. What the invariant
+    // actually needs is unchanged and asserted below: the runtime closure
+    // reaches the engine ZERO times statically — the toolkit's engine access
+    // is a dynamic import, recorded as a deferred edge, never a static one.
     expect(entry?.moduleSpecifiers.map(edge => edge.specifier).sort()).toEqual([
+      './deploy',
       './options/types',
+      './proxy',
+      './proxy',
       './results/types',
     ]);
-    expect(entry?.moduleSpecifiers.every(edge => edge.typeOnly)).toBe(true);
     const closure = runtimeStaticClosure(
       specifierIndex(allSources()),
       'index.ts',
     );
-    expect(closure.modules).toEqual(['index.ts']);
     expect(closure.engineRuntimeEdges).toEqual([]);
-    expect(closure.deferredEdges).toEqual([]);
+    // The deferred edges are the sanctioned pattern, by name: the toolkit's
+    // three loads plus the record layer's own manifest deferral, which the
+    // closure now reaches through the operations.
+    const deferredTargets = [
+      ...new Set(closure.deferredEdges.map(edge => edge.split("'")[1])),
+    ].sort();
+    expect(deferredTargets).toEqual([
+      '../options/resolve',
+      '../validation-input',
+      '@openzeppelin/upgrades-core',
+    ]);
+    expect(
+      closure.deferredEdges.filter(edge =>
+        edge.includes('@openzeppelin/upgrades-core'),
+      ),
+    ).toHaveLength(2);
   });
 
   it('non-vacuity: re-exporting the public option surface from the entry module puts a runtime engine import in its closure', () => {
@@ -1345,12 +1367,19 @@ describe('INV-1 / INV-48 — the face is `openRecord` plus four named values, an
     // surface: it now carries names outward, so the guard is live — every export
     // is type-only, and none of them comes from the record layer.
     const entry = sourceNamed(allSources(), 'index.ts');
-    expect(faceExports(entry).filter(exported => !exported.typeOnly)).toEqual([]);
+    // Re-pinned when the operations landed: the entry now carries value
+    // exports — the operations and the two refusal families — so the live
+    // guard is the ROUTE: nothing is re-exported from the record layer, and
+    // none of the record face's five values appears among the exported names.
     for (const edge of entry.moduleSpecifiers) {
       expect(
         edge.specifier.startsWith('./record'),
         `${edge.specifier} reaches the record layer from the entry module`,
       ).toBe(false);
+    }
+    const exportedNames = new Set(faceExports(entry).map(entry_ => entry_.name));
+    for (const recordValue of FACE_VALUES) {
+      expect(exportedNames.has(recordValue), `${recordValue} escaped`).toBe(false);
     }
   });
 
@@ -1433,9 +1462,15 @@ describe('INV-1 — `openRecord` is the only way in; the consumers that would te
     expect(recordImportsFromOutside(allSources())).toEqual([
       `${path.join('deploy', 'sender.ts')} -> canonicalizeAddress`,
       `${path.join('deploy', 'sender.ts')} -> CanonicalAddress`,
+      `${path.join('proxy', 'deploy-proxy.ts')} -> canonicalizeAddress`,
       `${path.join('proxy', 'replay.ts')} -> canonicalizeAddress`,
       `${path.join('proxy', 'replay.ts')} -> CanonicalAddress`,
       `${path.join('proxy', 'replay.ts')} -> ProxyRecordVerdict`,
+      `${path.join('proxy', 'toolkit.ts')} -> openRecord`,
+      `${path.join('proxy', 'toolkit.ts')} -> canonicalizeAddress`,
+      `${path.join('proxy', 'toolkit.ts')} -> ProxyRecordVerdict`,
+      `${path.join('proxy', 'toolkit.ts')} -> RecordSession`,
+      `${path.join('proxy', 'upgrade-proxy.ts')} -> canonicalizeAddress`,
     ]);
   });
 
