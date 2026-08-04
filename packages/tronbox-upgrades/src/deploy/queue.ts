@@ -58,7 +58,7 @@ export function runThroughQueue<T>(
       settled = true;
       settle();
     };
-    host.then(async () => {
+    const chained = host.then(async () => {
       try {
         const value = await step();
         settleOnce(() => resolve(value));
@@ -67,6 +67,28 @@ export function runThroughQueue<T>(
       }
       // Reached in both arms: the host chain continues fulfilled (INV-3).
     });
+    /*
+     * The skipped-step case, without which the promise above can settle zero
+     * times: when an EARLIER step in the migration failed pre-start, the chain
+     * arrives rejected and never calls the step queued above — the try/catch
+     * guards a body that does not run. `then` is the host queue's defective
+     * arity-1 method, but its `catch` is real and appends a genuine rejection
+     * handler, so the upstream failure is observable there. The rethrow is
+     * load-bearing: without it the chain would continue FULFILLED past this
+     * link, and a user's later migration step would execute after a failure
+     * the host's own semantics say must skip it.
+     */
+    const catchable = chained as {
+      catch?: (onRejected: (failure: unknown) => unknown) => unknown;
+    };
+    if (typeof catchable.catch === 'function') {
+      catchable.catch((failure: unknown) => {
+        if (!settled) {
+          settleOnce(() => reject(failure));
+        }
+        throw failure;
+      });
+    }
   });
 }
 

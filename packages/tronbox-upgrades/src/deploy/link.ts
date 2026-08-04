@@ -32,31 +32,44 @@ import {
 } from './errors';
 
 /**
- * Solidity link placeholders as they appear in hex bytecode: the legacy
- * `__LibraryName_____…` form and the `__$<hash>$__` form. Hex proper cannot
- * contain `_` or `$`, so any occurrence is a placeholder — that absence
- * property is what makes {@link assertFullyLinked}'s check total rather than
- * format-dependent.
+ * Solidity link placeholders as they appear in hex bytecode: the
+ * `__$<34 hex>$__` form and the legacy `__LibraryName____…` form (a 40-column
+ * field padded with underscores). Hex proper cannot contain `_` or `$`, so any
+ * occurrence is a placeholder — that absence property is what makes
+ * {@link assertFullyLinked}'s check total rather than format-dependent.
+ *
+ * The two forms are extracted in sequence, with matched spans blanked between
+ * passes, because each form's delimiters are the other form's false positives:
+ * the `$__` that closes a hashed placeholder reads as the opening of a legacy
+ * one, and a legacy field's own padding ends in `__` for the same reason.
  */
-const PLACEHOLDER = /__\$?([A-Za-z0-9.:/-]+?)[_$]*(?=__|$)/g;
+const HASHED_PLACEHOLDER = /__\$([0-9a-fA-F]{34})\$__/g;
+const LEGACY_PLACEHOLDER = /__([A-Za-z0-9.:/-]+)_*/g;
 
 function stripHexPrefix(bytecode: string): string {
   return bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode;
 }
 
 /**
- * The distinct library names whose placeholders appear in `unlinkedBytecode`,
- * in first-appearance order. Empty means the implementation links nothing and
- * no refusal applies.
+ * The distinct library names whose placeholders appear in `unlinkedBytecode`.
+ * Empty means the implementation links nothing and no refusal applies.
  */
 export function linkedLibraryNames(unlinkedBytecode: string): readonly string[] {
-  const body = stripHexPrefix(unlinkedBytecode);
   const names: string[] = [];
-  for (const match of body.matchAll(PLACEHOLDER)) {
-    const name = match[1] as string;
+  const record = (name: string): void => {
     if (!names.includes(name)) {
       names.push(name);
     }
+  };
+  const withoutHashed = stripHexPrefix(unlinkedBytecode).replace(
+    HASHED_PLACEHOLDER,
+    (span, hash: string) => {
+      record(hash);
+      return '0'.repeat(span.length);
+    },
+  );
+  for (const match of withoutHashed.matchAll(LEGACY_PLACEHOLDER)) {
+    record(match[1] as string);
   }
   return names;
 }
