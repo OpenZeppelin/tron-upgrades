@@ -67,6 +67,11 @@ export {
   prepareUpgrade,
 } from './standalone';
 export { forceImport } from './adopt';
+export { transferProxyAdminOwnership } from './admin';
+export {
+  AuthorityAlreadyTransferredError,
+  AuthorityVerificationFailedError,
+} from './admin/errors';
 export {
   AdoptionKindMismatchError,
   AdoptionVerificationFailedError,

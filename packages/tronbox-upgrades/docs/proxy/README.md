@@ -81,3 +81,23 @@ Both operations declare what a replay does:
 | empty initializer | the ported TRC1967Proxy rejects uninitialized deployment for both kinds; add an initializer or use a beacon proxy |
 | `initialOwner` is a ProxyAdmin | the v5 transparent proxy deploys its own admin; passing an existing ProxyAdmin is almost always a v4 habit — the message names the skip option if you really mean it |
 | stale proxy record | a prior deployment's record cannot vouch for a replay; see above |
+
+## Administering upgrade authority
+
+```js
+await transferProxyAdminOwnership(proxyAddress, multisigAddress, { deployer });
+```
+
+A v5 transparent proxy's admin is its **own immutable ProxyAdmin** — what transfers is that
+ProxyAdmin's *ownership*. Two consequences worth knowing:
+
+- **There is no `changeProxyAdmin`.** Older plugin generations could re-point a proxy at a
+  different admin contract; v5 proxies cannot, so this plugin does not offer a function
+  that cannot work. Transferring the ProxyAdmin's ownership is the v5-correct way to hand
+  upgrade authority to a multisig.
+- **The transfer is verified, and replays are recognized.** Before sending, the current
+  owner is read: if the target already holds it, the operation is a declared no-op naming
+  the holder; if some other account holds it, the operation refuses naming that account —
+  never an opaque on-chain rejection. After sending, `owner()` is read back: success is
+  the chain's answer, not the receipt's. **The transfer is irreversible from the losing
+  side — check the target address twice.**
