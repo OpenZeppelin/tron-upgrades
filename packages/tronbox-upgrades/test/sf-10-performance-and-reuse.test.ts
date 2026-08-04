@@ -62,7 +62,7 @@ import {
  * - **Load** has no throughput budget here — SF-10 serves no callers over a network
  *   and does no I/O on any path. The scaling property that matters is the *import
  *   graph*: three directories that reach nothing are what make SF-10 a dependency
- *   root in the code and not only in the plan, and what let its Code Draft run in
+ *   root in the code and not only in the plan, and what let its implementation run in
  *   parallel with SF-0's. That is asserted structurally (INV-43, INV-44, INV-45).
  *   The quantitative bounds are INV-38's and INV-39's, in `sf-10-resource-limits`.
  * - **Portability** gets the strongest form the technique names: the whole surface

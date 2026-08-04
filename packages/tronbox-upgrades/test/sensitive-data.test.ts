@@ -17,7 +17,7 @@ import {
 } from '../src/environment';
 // Deep imports: none of these is on the seam's public face. **Corrected by SF-1
 // Tests (2026-07-31)** — the comment previously called `unsatisfiedSlot` /
-// `sealSlot` "a pending dev decision", and that decision has since landed in both
+// `sealSlot` an open question, and that question has since been settled in both
 // directions, asymmetrically:
 //
 // - `unsatisfiedSlot` **is** on the face now (`src/environment/index.ts:23`), added
@@ -27,7 +27,7 @@ import {
 // - `sealSlot` is **deliberately not** on the face, and that is a settled design
 //   property rather than an open question: SF-1 holds no handle in any field of any
 //   exported object (INV-3 / INV-9 / INV-42), so it meets SF-0's INV-40 guarantee by
-//   construction rather than by redaction and has no need of it. SF-1's Research had
+//   construction rather than by redaction and has no need of it. SF-1 was expected to
 //   concluded the adapter would require sealing; it does not.
 //
 // `test/` already deep-imports `errors`, `artifacts`, `network` and `types`, so the
@@ -601,8 +601,8 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
  * allocated in the same call. So a happy-path-only suite — which is what the rest of
  * this file already is, since every composite it builds seals successfully — would
  * pass verbatim against a `sealSlot` whose assertion had been deleted. The refusal
- * *is* the mechanism, and an unexercised mechanism is not a guard. Code Draft
- * established this shape with a throwaway probe and named this file as its permanent
+ * *is* the mechanism, and an unexercised mechanism is not a guard. This shape
+ * was established with a throwaway probe that named this file as its permanent
  * home; these are that probe's assertions 1–4, persisted.
  *
  * The guard's teeth are in the future, not the present: it converts "breaks if the
@@ -612,7 +612,7 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
  *
  * These import `sealSlot`, `hostSharingGuard` and `HostInstanceSharedError` from the
  * module rather than from `../src/environment`, because none is on the seam's public
- * face and a dev decision on whether SF-1 reuses the seam's error idiom is pending.
+ * face and whether SF-1 reuses the seam's error idiom was open.
  * Deep-importing follows this suite's existing convention.
  */
 describe('INV-29 / INV-40: the host-augmentation guard refuses a shared instance', () => {

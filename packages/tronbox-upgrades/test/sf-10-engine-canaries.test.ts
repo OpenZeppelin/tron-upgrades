@@ -37,7 +37,7 @@ import {
  * Every fact below was re-verified by execution against the installed tree at this
  * stage and is stated as **verified present at
  * `@openzeppelin/upgrades-core@1.46.0`**. That phrasing is load-bearing: both of
- * SF-10 Design's premises about this dependency were already false at the pinned
+ * The design premises about this dependency were already false at the pinned
  * version, which is why nothing here is asserted from a `.d.ts` reading.
  *
  * The deep imports live here and never in `src/`. The package ships **no** `exports`
@@ -179,7 +179,7 @@ describe('SF-10 INV-29 / INV-30: the warning-capable export set, pinned against 
     /*
      * DEV-2's correction, re-verified as **present state** rather than future risk:
      * `addProxyToManifest` and `validateUpgradeSafety` are `AsyncFunction` today.
-     * The Design's claim that "every warning-capable entry point is declared
+     * The specification's claim that "every warning-capable entry point is declared
      * synchronous" was already false at the pinned version, and it was invisible
      * because the enumeration was hand-written.
      */
@@ -273,7 +273,7 @@ describe('SF-10 INV-29 / INV-30: the warning-capable export set, pinned against 
 
   it('names the uncaptured bypass with text that matches the installed dist byte for byte', () => {
     /*
-     * OQ1, per the dev's ruling: the bypass is **documented, not remedied**, and the
+     * OQ1, as ruled: the bypass is **documented, not remedied**, and the
      * documentation names the **specific warning text** — "some warnings may bypass"
      * is unactionable, because a user who sees an unexpected coloured line outside
      * the plugin's channel has to be able to *match* it.

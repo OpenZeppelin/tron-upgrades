@@ -139,7 +139,7 @@ describe('INV-10: block 1 hashes share their leading eight bytes across every ch
 
 describe('INV-10: both sides are canonicalized, so casing is never a false refusal', () => {
   it('compares 0X2B6653DC and 0x2b6653dc as the same chain', () => {
-    // Design's `chainId` doc said "`0x`-prefixed lowercase hex, **as the node
+    // The originally specified `chainId` shape was "`0x`-prefixed lowercase hex, **as the node
     // reports it**", and those clauses can disagree. An un-canonicalized compare
     // reports `changed` with `signal: 'chain-id'` — whose message leads with "a
     // different network", the strongest claim SF-1 makes — for a chain that has not
@@ -385,7 +385,7 @@ describe('INV-25: the comparator is total over {absent, partial, complete}', () 
   });
 
   it('reports changed when a recorded first-block hash meets an observed null', () => {
-    // Design's specified direction: a chain with no block 1 cannot contain the
+    // The specified direction: a chain with no block 1 cannot contain the
     // deployments the records describe.
     const verdict = compareChainInstance(
       { chainId: MAINNET_CHAIN_ID, genesisHash: mainnetGenesisHash, firstBlockHash: mainnetFirstBlockHash },
@@ -400,7 +400,7 @@ describe('INV-25: the comparator is total over {absent, partial, complete}', () 
   });
 
   it('reports indeterminate for the reverse direction — recorded null, observed a hash', () => {
-    // Code Draft's decided default, pinned. This direction is genuinely undecidable:
+    // the implementation's decided default, pinned. This direction is genuinely undecidable:
     // a chain that had no block 1 when the record was written and has one now is
     // indistinguishable from one wiped and since restarted, because genesis is
     // constant across a TRE wipe. So it takes INV-25's non-refusing branch.

@@ -927,7 +927,7 @@ describe('INV-14: incomplete names the property path and the providing contexts'
   });
 
   it('regression: an unsupplied deployer is handle-missing, not handle-malformed', () => {
-    // Code Draft defect 4: the external draft reported `handle-malformed` with
+    // implementation defect 4: the external draft reported `handle-malformed` with
     // `expectedPath: 'deployer.options.options'` when the handle had simply not
     // been supplied, which sends the user hunting for a broken object they do
     // not have.

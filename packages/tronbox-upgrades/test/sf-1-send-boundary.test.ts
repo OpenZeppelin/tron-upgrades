@@ -258,7 +258,7 @@ describe('INV-4: stringResultMethods is a table of per-method predicates', () =>
 
   it('leaves the three transaction and block methods unvalidated, deliberately', async () => {
     // Pins the **absence** so a future reader does not mistake it for an oversight
-    // (Code Draft Open Question 2). INV-4 scopes validation to the five methods
+    // (implementation open question 2). INV-4 scopes validation to the five methods
     // upstream reads unguarded; these three it does not, and `asEngineProvider`
     // forwards the node's value for them. Recorded here as a limitation with a
     // test, not only as prose — if a later change starts validating them, this

@@ -217,7 +217,7 @@ describe('INV-1 / INV-21: every disposition, and a mismatched id changes nothing
     // `malformed-envelope`'s triggers. Measured live: java-tron answers a request
     // carrying `"id": 7` with `"id": "null"` — the JSON **string** — whenever it
     // returns `-32700`, which is exactly what an EIP-1898 block object on a state
-    // method produces. Under Design's rule that real, well-formed node error would be
+    // method produces. Under a correlation rule, a real, well-formed node error would be
     // reported as "the response was not JSON-RPC", discarding the code and message.
     const posts = createRecordingPost({
       eth_getCode: {

@@ -348,7 +348,7 @@ describe('INV-26: when both are present, artifacts must wrap the deployer resolv
   });
 
   it('does not let that read failure fail a resolution that declared no lineage slot', () => {
-    // Code Draft defect 3, in its second shape: a slot the caller never declared
+    // implementation defect 3, in its second shape: a slot the caller never declared
     // must not be able to fail the resolution, or INV-1's purpose is defeated.
     const shape = migrateShapedHandles({ omit: ['resolver'] });
     const env = resolveEnvironment(shape.handles, { require: ['chain'] });
@@ -356,7 +356,7 @@ describe('INV-26: when both are present, artifacts must wrap the deployer resolv
   });
 
   it('regression: a misconfigured network cannot fail a paths-only resolution', () => {
-    // Code Draft defect 3: the external draft ran the cross-check whenever both
+    // implementation defect 3: the external draft ran the cross-check whenever both
     // lineages were present, so `require: ['paths']` against a config with a
     // misconfigured network threw naming slot `network`.
     const shape = migrateShapedHandles({ networks: {} });

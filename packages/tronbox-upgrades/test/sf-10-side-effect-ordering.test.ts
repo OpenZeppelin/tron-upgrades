@@ -259,7 +259,7 @@ describe('SF-10 INV-23: the degraded record is the guarantee; the write is a cou
     // The swallow lives in the single emitter rather than only in `degraded`, so
     // the same rule covers `warn` and `note` — and covers the JavaScript-host case
     // the type system cannot, where the sink has no `log` at all. That is a
-    // deliberate widening of INV-23, recorded at Code Draft.
+    // deliberate widening of INV-23, recorded during implementation.
     const channel = sourceNamed('output/channel.ts');
     const catchClauses = channel.text.match(/\} catch \{/g) ?? [];
     expect(catchClauses).toHaveLength(1);
@@ -1385,7 +1385,7 @@ describe('SF-10 INV-34: DegradedCode is one closed union and every reduced-fidel
       'engine-note',
       'notes-truncated',
     ]);
-    // CD-2: `notes-truncated` is Code Draft's addition, because INV-38's truncation
+    // CD-2: `notes-truncated` is an implementation addition, because INV-38's truncation
     // note **is** a `DegradedNote` and INV-34 requires exactly one member per
     // reduced-fidelity path. Reusing any of the other five would mislabel it;
     // omitting one would make truncation the silent degraded path SC-003 forbids.
