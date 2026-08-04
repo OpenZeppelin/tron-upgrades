@@ -197,8 +197,8 @@ storage layouts (`layout at <slot>`) are outside TronBox's compiler ceiling (0.8
 TronBox project can produce one today — which matters because the validation engine's
 base-slot comparison for the slot-less mode is defeated upstream: the layout-rebuild that
 every without-storage-layouts consumer reads through drops `baseSlot`, so a base-slot change
-would pass silently (confirmed by the upstream maintainer; a minimal API-level repro is
-persisted with the development evidence). Two suite canaries pin the boundary — one fails
+would pass silently — filed and confirmed as
+<https://github.com/OpenZeppelin/openzeppelin-upgrades/issues/1296>, where the fix will land. Two suite canaries pin the boundary — one fails
 when an upstream release fixes the rebuild, one fails when a TronBox release raises the
 compiler ceiling — so the question reopens deliberately before the first affected contract
 can compile. The one base-slot change that IS expressible today, renaming an ERC-7201
