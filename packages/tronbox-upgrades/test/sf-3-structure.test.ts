@@ -896,6 +896,7 @@ describe('INV-32 — applied to the real tree', () => {
       './proxy',
       './proxy',
       './results/types',
+      './standalone',
     ]);
     const closure = runtimeStaticClosure(
       specifierIndex(allSources()),
@@ -1466,6 +1467,7 @@ describe('INV-1 — `openRecord` is the only way in; the consumers that would te
       `${path.join('proxy', 'replay.ts')} -> canonicalizeAddress`,
       `${path.join('proxy', 'replay.ts')} -> CanonicalAddress`,
       `${path.join('proxy', 'replay.ts')} -> ProxyRecordVerdict`,
+      `${path.join('proxy', 'toolkit.ts')} -> configureRecordLocation`,
       `${path.join('proxy', 'toolkit.ts')} -> openRecord`,
       `${path.join('proxy', 'toolkit.ts')} -> canonicalizeAddress`,
       `${path.join('proxy', 'toolkit.ts')} -> ProxyRecordVerdict`,

@@ -237,6 +237,11 @@ function buildFake(spec: FakeSpec = {}): Fake {
       };
     },
 
+    async inferKind() {
+      log.push('inferKind');
+      return 'transparent';
+    },
+
     async processProxyKind() {
       log.push('processProxyKind');
       return 'transparent';
