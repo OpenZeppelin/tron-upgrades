@@ -96,7 +96,7 @@ export class UpgradesOptionError extends Error {}
 /**
  * A value outside its accepted set. Never coerced (INV-9).
  *
- * The concrete case the spec's stakes line is about:
+ * The concrete case this guards against:
  * `plugin-truffle/src/utils/deploy-impl.ts:deployImpl` tests only `=== 'always'`
  * and `=== 'never'`, so `'onChange'` silently behaves as `'onchange'` there — the
  * caller asked for one policy and got another with no diagnostic. Same class:
@@ -243,7 +243,7 @@ export interface TronOptionRefusal {
  * `resolve.ts` walks this list on every resolution, so the mechanism is live
  * rather than decorative: adding the first instance is one entry here and needs no
  * change to the resolver. A test asserts the list is empty and names the reason,
- * so a later stage cannot read the absence as a missing deliverable and invent a
+ * so a later reader cannot take the absence for a missing deliverable and invent a
  * TRON refusal for an option TRON honours.
  */
 export const optionsUnsupportedOnTron: readonly TronOptionRefusal[] =

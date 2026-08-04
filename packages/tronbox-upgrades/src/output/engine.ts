@@ -161,7 +161,7 @@ export interface UncapturedEngineWarning {
  * the terminal through `console.error` with ANSI colour from `chalk@4.1.2`,
  * bypassing both TronBox's quiet mode and `silenceWarnings()`.
  *
- * **The disposition is DOCUMENT, not remedy** — a dev ruling. The rejected
+ * **The disposition is DOCUMENT, not remedy** — settled deliberately. The rejected
  * alternative was to pre-check `manifest.getAdmin()` and emit the plugin's own
  * note before calling, which duplicates upstream's condition and can drift; **a
  * drifted duplicate is worse than an honest gap**, because it emits a confidently

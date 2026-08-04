@@ -173,7 +173,7 @@ export type ValidateUpgradeOptions = ValidationOptions;
  * be a compile error anyway (verified by compilation: `const a: ValidationOptions = {
  * kind: undefined }` fails with **TS2375**).
  *
- * The hazard this shape removes is the spec's own stakes line: a downstream
+ * The hazard this shape removes: a downstream
  * operation reading `resolved.timeout` as possibly-undefined and re-applying its
  * own default, which silently diverges from the parity target's the moment either
  * changes.

@@ -114,8 +114,8 @@ measured networks — java-tron answers `-32601 method not found` to both, corre
 neither — but that makes the behaviour a property of *java-tron's method registry* rather than of
 this adapter. The day java-tron registers either method, or a proxy, a mock or a TRE variant answers
 it, the abort fires from a change nobody in this repository made. Depending on a third party's
-continued *absence* of a feature is the borrowed-premise failure this initiative has already hit
-twice.
+continued *absence* of a feature is the borrowed-premise failure this plugin's development has
+already hit twice.
 
 It also saves two round-trips on the hot path of every deploy and every upgrade, since
 `Manifest.forNetwork` probes both.

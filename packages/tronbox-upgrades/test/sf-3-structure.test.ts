@@ -35,7 +35,7 @@ import {
  * **Three rules this file follows without exception.**
  *
  * 1. **Every scan is a function of its input, and every scan has a fixture that makes
- *    it red.** A scan that has never gone red is not evidence — this initiative has
+ *    it red.** A scan that has never gone red is not evidence — this suite has
  *    already found instruments that did not measure their property, including one that
  *    was a tautology in the mode it ran in. So each predicate here takes the scanned
  *    sources (or a specifier map) as an argument, and each is applied twice: once to

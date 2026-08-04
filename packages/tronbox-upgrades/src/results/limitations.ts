@@ -104,7 +104,7 @@ export class UnavailableMemberAbsentError extends Error {
  * and `'logs' in abstraction === false`. So `result.contract.logs` is plain
  * `undefined`, which is honest, whereas `result.contract.events` is a misleading
  * `[]`. Registering `logs` too would disclaim a capability the host never offered.
- * The distinction is recorded here so a later stage does not read the omission as
+ * The distinction is recorded here so a later reader does not take the omission as
  * an oversight.
  *
  * Which receipt path the alternative names is SF-4's to finalise; SF-10 supplies

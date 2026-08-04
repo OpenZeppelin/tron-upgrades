@@ -7,7 +7,7 @@
  * INV-47: no deployment-shaped option appears here. `deployer`, `txOverrides`,
  * account identity and TRON-native fee/resource options are all SF-4's, and their
  * absence is deliberate rather than an omission — it is what keeps SF-10 a
- * dependency root that does not wait on the deployer integration's open questions. Passing
+ * dependency root that does not wait on the deployer integration's decisions. Passing
  * one is a named `UnknownOptionError` rather than a silent ignore.
  *
  * SF-11 owns the package entry point; this is the directory's face to its

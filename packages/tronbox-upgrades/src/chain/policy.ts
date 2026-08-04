@@ -31,7 +31,7 @@ export type MethodPolicy =
  * INV-12: refusing locally makes it SF-1's declared property. Forwarding makes
  * it a property of java-tron's method registry — and depending on a third
  * party's continued *absence* of a feature is the borrowed-premise failure the
- * dev's no-spoofing ruling rejects, in mirror image. Forwarding works today on
+ * no-spoofing rule rejects, in mirror image. Forwarding works today on
  * all four measured networks (`-32601 method not found`, confirmed live), but the
  * day java-tron registers either method — or a proxy, a mock or a TRE variant
  * answers it — the adapter resolves a value and

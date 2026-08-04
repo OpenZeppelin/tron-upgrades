@@ -1496,7 +1496,7 @@ describe('SF-10 INV-35: DegradedNote fields are total and frozen', () => {
     expect(() => Reflect.apply(Array.prototype.push, note.detail, ['x'])).toThrow(
       TypeError,
     );
-    // An unfrozen note would let a later stage mutate a record the caller already
+    // An unfrozen note would let a later consumer mutate a record the caller already
     // read, so the recorded copy is frozen too.
     expect(Object.isFrozen(channel.recorded[0])).toBe(true);
   });

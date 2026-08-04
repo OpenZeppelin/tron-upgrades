@@ -1,8 +1,9 @@
 # README contributions from SF-0
 
-**This is not a README, and it is not meant to be published as written.** It is SF-0's share
-of the package README that SF-12 assembles and proves followable, held here as prose fragments
-with each claim's evidence attached.
+**This is source material, not the README itself.** It is SF-0's share of the package README
+that SF-12 assembles and proves followable — prose fragments held here with each claim's
+evidence attached, so the assembled page inherits claims that were verified where they were
+written.
 
 ## Why SF-0 contributes no quickstart
 
@@ -192,7 +193,7 @@ assumption that the behaviour holds.
 ## What SF-0 does *not* contribute
 
 - **A quickstart, or any usage example.** No public API exists at this layer, and the shape of
-  the one that will is SF-4's open question.
+  the one that will is SF-4's to settle.
 - **Options documentation.** The plugin's own option surface (`kind`, `unsafeAllow`, and kin)
   is SF-4's and SF-2's.
 - **Parity divergences from the Hardhat-plugin target.** SF-0 implements no operation, so it

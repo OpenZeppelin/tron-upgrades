@@ -273,7 +273,7 @@ describe('SF-10 INV-29 / INV-30: the warning-capable export set, pinned against 
 
   it('names the uncaptured bypass with text that matches the installed dist byte for byte', () => {
     /*
-     * OQ1, as ruled: the bypass is **documented, not remedied**, and the
+     * The bypass is **documented, not remedied** — settled deliberately — and the
      * documentation names the **specific warning text** — "some warnings may bypass"
      * is unactionable, because a user who sees an unexpected coloured line outside
      * the plugin's channel has to be able to *match* it.
@@ -337,7 +337,7 @@ describe('SF-10 INV-46: the defaults table is pinned by a two-sided canary', () 
      * *expectation*, never a fallback. Making it a fallback would reintroduce exactly
      * the drift the invariant closes.
      *
-     * The stakes line is the spec's own: *"a silently flipped default … changes
+     * The risk, verbatim: *"a silently flipped default … changes
      * safety posture across every operation"*. A local `kind: 'transparent'` that
      * drifted from upstream would flip the safety posture of every operation with no
      * diagnostic.
