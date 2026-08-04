@@ -59,8 +59,11 @@ import { packageRoot } from './helpers/locate';
 /** Case-insensitive bans: the wording carries the leak whatever its capitalization. */
 const INSENSITIVE: ReadonlyArray<readonly [string, RegExp]> = [
   ['an approval authority the reader cannot consult', /\bunratifi|\bratifi/i],
-  ["a private decision-maker's ruling", /the dev.s (ruling|decision|call)|the dev has/i],
-  ['the stage that produced the code', /\bthis stage\b/i],
+  [
+    "a private decision-maker's ruling",
+    /the dev.s (ruling|decision|call)|the dev has|\bdev ruling/i,
+  ],
+  ['the stage that produced the code', /\bthis stage\b|\ba later stage\b/i],
   ['a numbered entry in a private document', /\bdecision [0-9]+/i],
   ["a private document's revision history", /\brevision[- ][0-9]/i],
   ['a private decision record', /decisions?-[0-9]|\bdecision record\b/i],
@@ -68,6 +71,15 @@ const INSENSITIVE: ReadonlyArray<readonly [string, RegExp]> = [
     'a stage-document filename',
     /\b0[0-9]-(specify|research|design|invariants|code-draft|tests|docs)\b/i,
   ],
+  /*
+   * Added after 21 live instances said the banned things in unbanned words: an
+   * "open question" names a private question register whatever its case, `OQ1`
+   * abbreviates it, "stakes line" cites a private document's section, and
+   * "this initiative" names the pipeline rather than the code.
+   */
+  ['an open entry in a private question register', /\bopen questions?\b|\bOQ[0-9]/i],
+  ["a private document's stakes section", /\bstakes line\b/i],
+  ['the initiative as a subject', /\bthis initiative\b/i],
 ];
 
 /**
@@ -85,10 +97,7 @@ const SENSITIVE: ReadonlyArray<readonly [string, RegExp]> = [
     'a pipeline stage named as a place or an owner',
     /Code Draft|SF-[0-9]+ (Design|Research|Invariants|Tests|Docs)|\b(Docs|Tests|Design|Research|Invariants) stages?\b/,
   ],
-  [
-    'a numbered private tension or open question',
-    /\bTension [0-9]|\bOpen Question\b|\bopen question [0-9]/,
-  ],
+  ['a numbered private tension', /\bTension [0-9]/],
   ['an absolute path on the author machine', /\/Users\//],
 ];
 
@@ -134,17 +143,41 @@ function collect(): readonly Publishable[] {
   return found;
 }
 
+/** Strip comment decoration and collapse whitespace, so joins read as prose. */
+function normalized(line: string): string {
+  return line
+    .replace(/^\s*(?:\/\/|\/\*+|\*+\/?)?\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
  * `matchingLines` rather than a boolean, because a failure has to name the line.
  * A scan that only reports *which file* is one a maintainer deletes instead of
  * fixing.
+ *
+ * Every adjacent pair is also matched as a whitespace-normalized join, because a
+ * line-scoped scan has a structural hole a comment wrap falls straight through:
+ * "the / dev's no-spoofing ruling" split across two lines matched nothing while
+ * saying exactly the banned thing. The pair is reported only when neither line
+ * matches alone, so a single-line hit is never double-counted.
  */
 function matchingLines(text: string, pattern: RegExp): readonly string[] {
-  return text
-    .split('\n')
-    .map((line, index) => [index + 1, line] as const)
-    .filter(([, line]) => pattern.test(line))
-    .map(([number, line]) => `${number}: ${line.trim()}`);
+  const lines = text.split('\n');
+  const hits: string[] = [];
+  lines.forEach((line, index) => {
+    if (pattern.test(line)) hits.push(`${index + 1}: ${line.trim()}`);
+  });
+  for (let index = 0; index + 1 < lines.length; index += 1) {
+    const first = lines[index] as string;
+    const second = lines[index + 1] as string;
+    if (pattern.test(first) || pattern.test(second)) continue;
+    const joined = `${normalized(first)} ${normalized(second)}`;
+    if (pattern.test(joined)) {
+      hits.push(`${index + 1}-${index + 2} (wrap-joined): ${joined.slice(0, 160)}`);
+    }
+  }
+  return hits;
 }
 
 describe('publication hygiene: every reference resolves inside the published repo', () => {
@@ -188,6 +221,36 @@ describe('publication hygiene: every reference resolves inside the published rep
       expect(offenders).toEqual([]);
     },
   );
+
+  /*
+   * The published tarball is `dist/**` only, and this suite walks `src/`, `test/`
+   * and `docs/` — none of which ship. The coverage argument is indirect and this
+   * case is what keeps it sound: `dist/` is covered by DETERMINISM, not by
+   * scanning — `prepublishOnly` rebuilds it from the scanned `src/` and runs this
+   * suite before any publish, so a stale `dist/` cannot reach the registry. That
+   * argument collapses silently if `files` grows an entry nothing accounts for,
+   * or if the rebuild hook is removed — so both are pinned here.
+   */
+  it('accounts for every path the package declares for publication', () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'),
+    ) as { files: string[]; scripts: Record<string, string> };
+
+    expect(manifest.scripts['prepublishOnly']).toBe('npm run build && npm test');
+
+    const accounted = ['dist', 'LICENSE', 'README.md'];
+    expect(manifest.files.filter(entry => !accounted.includes(entry))).toEqual([]);
+
+    /*
+     * LICENSE and README.md are declared and do not exist — recorded rather than
+     * authored, because both are release decisions, not hygiene fixes. The pin is
+     * deliberate: the day either file appears it must join the scanned set, and
+     * this assertion failing is what forces that revisit instead of the file
+     * shipping unscanned.
+     */
+    expect(fs.existsSync(path.join(packageRoot, 'LICENSE'))).toBe(false);
+    expect(fs.existsSync(path.join(packageRoot, 'README.md'))).toBe(false);
+  });
 
   it('introduces no ninth private identifier scheme', () => {
     const prefixes = new Set<string>();

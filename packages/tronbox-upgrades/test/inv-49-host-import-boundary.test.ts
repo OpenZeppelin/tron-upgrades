@@ -325,8 +325,8 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
   it('imports upgrades-core as types only everywhere the directory rules require it', () => {
     // **Added by SF-1, closing a hole in the pin above.** The `(import)` label
     // is produced from `entry.kind`, which does not distinguish a **type-only**
-    // import from a runtime one — so the `chain/index.ts` row, added by SF-1 Code
-    // Draft precisely *because* the import is type-only, would equally have admitted
+    // import from a runtime one — so the `chain/index.ts` row, added by SF-1
+    // precisely *because* the import is type-only, would equally have admitted
     // a future value import of `@openzeppelin/upgrades-core` from that module without
     // tripping anything. SF-1's INV-48 forbids exactly that: `src/chain/**` may
     // import `src/environment/**` and upgrades-core **types** only.

@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build && npm test",
     "test": "npm run test:types && vitest run",
     "test:types": "tsc -p tsconfig.test.json",
     "test:watch": "vitest"
