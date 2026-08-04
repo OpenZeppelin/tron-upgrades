@@ -1,15 +1,15 @@
 /**
- * SF-1 — INV-6, INV-7, INV-13, INV-19, INV-44, INV-49, and **Tension 1's
- * deliberate default made into a standing test**.
+ * SF-1 — INV-6, INV-7, INV-13, INV-19, INV-44, INV-49, and **the deliberate
+ * class-location default made into a standing test**.
  *
- * ## Tension 1 is the reason this file exists in this shape
+ * ## The class-location default is the reason this file exists in this shape
  *
  * INV-45 requires `slots.ts` to import **nothing**; INV-6 and INV-7 require
  * `slotToAddress` and `toRpcAddress` to **raise** `ChainSlotMalformedError` /
  * `ChainAddressUnusableError`. A module with zero imports cannot throw a class
  * declared elsewhere, so the implementation declared both classes *in* `slots.ts` and
- * re-exported them from `errors.ts` — and recorded that as
- * `PROCEEDING ON UNRATIFIED DEFAULT`. **The dev has still not ruled.**
+ * re-exported them from `errors.ts`. **That arrangement is a default taken
+ * deliberately, and it is not settled** — which is why § 1 pins it.
  *
  * the implementation discharged the proof by execution, in a throwaway script. § 1 makes it
  * a standing test, which is what makes a later reversal safe rather than merely
@@ -66,10 +66,10 @@ function errorSubclasses(): readonly { name: string; ctor: new (...args: never[]
 }
 
 // ---------------------------------------------------------------------------
-// 1. TENSION 1 — the deliberate default, pinned
+// 1. CLASS LOCATION — the deliberate default, pinned
 // ---------------------------------------------------------------------------
 
-describe('Tension 1 (UNRATIFIED): the two validation classes live in slots.ts and are re-exported', () => {
+describe('Class location (an open default): the two validation classes live in slots.ts and are re-exported', () => {
   it('sees eleven Error subclasses through errors.ts', () => {
     // INV-19's "closed and enumerable from `errors.ts`" must hold against
     // `errors.ts`, not against `slots.ts`, or every consumer needs to know where a
@@ -192,7 +192,7 @@ describe('Tension 1 (UNRATIFIED): the two validation classes live in slots.ts an
   });
 
   it('pins that INV-6 and INV-7 currently RAISE, separately from where the classes live', () => {
-    // Deliberately its own case. Reversing Tension 1 means `slots.ts` returns a
+    // Deliberately its own case. Reversing that default means `slots.ts` returns a
     // discriminated result instead of throwing, which relaxes INV-6/INV-7 from
     // *raises* to *reports* — so the behaviour change and the location change fail
     // different tests, and a reader can see which one a proposed patch actually makes.

@@ -345,7 +345,7 @@ describe('SF-10 INV-20: the result contract seals by proxying, not by mutating',
     /*
      * The specified `defineUnavailable(target, member, limitation)` installs a
      * throwing accessor on the returned handle. It **throws for the one and only
-     * member the Design registers**, because `Contract.addProp` builds every
+     * member registered**, because `Contract.addProp` builds every
      * `_properties` member with `configurable: false` and `Utils.bootstrap`
      * applies it to the abstraction *and to every clone*. The deploy path would
      * fail after a successful on-chain deployment, which is the worst possible

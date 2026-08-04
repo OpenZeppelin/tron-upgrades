@@ -112,8 +112,8 @@ describe('INV-4: parseInt is not a validator, and the numbers are reproduced', (
   );
 
   it('shows every near-miss passing the typeof guard INV-4 replaced', () => {
-    // The non-vacuity argument for § 1.2. Design Decision 15 specified "a one-line
-    // `typeof` guard per method"; INV-4 corrects it. If `typeof` rejected any of
+    // The non-vacuity argument for § 1.2. "A one-line `typeof` guard per method"
+    // was what was originally specified; INV-4 replaces it. If `typeof` rejected any of
     // these, the guard below would be untestable — there would be nothing for the
     // stronger predicate to catch that the weaker one did not.
     for (const near of chainIdNearMisses) {
@@ -257,8 +257,8 @@ describe('INV-4: stringResultMethods is a table of per-method predicates', () =>
   });
 
   it('leaves the three transaction and block methods unvalidated, deliberately', async () => {
-    // Pins the **absence** so a future reader does not mistake it for an oversight
-    // (implementation open question 2). INV-4 scopes validation to the five methods
+    // Pins the **absence** so a future reader does not mistake it for an
+    // oversight. INV-4 scopes validation to the five methods
     // upstream reads unguarded; these three it does not, and `asEngineProvider`
     // forwards the node's value for them. Recorded here as a limitation with a
     // test, not only as prose — if a later change starts validating them, this

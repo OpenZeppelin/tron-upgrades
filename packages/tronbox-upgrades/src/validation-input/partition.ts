@@ -41,7 +41,7 @@ export interface Partition {
    * The sources solc receives, in the order `provenance.sourceKeys` reports
    * (INV-4).
    *
-   * **Sorted, which is a choice this stage made rather than inherited.** The host
+   * **Sorted, which is a deliberate choice rather than inherited.** The host
    * hands solc its `required_sources` map in graph-walk order. Nothing measured
    * says solc's output depends on the order of the `sources` map — F-6 measured
    * that the *content* of a key changes every identity, and solc keys its own

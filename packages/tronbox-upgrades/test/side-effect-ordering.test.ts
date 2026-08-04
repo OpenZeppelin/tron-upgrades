@@ -211,7 +211,7 @@ describe('INV-30: SF-0 performs no network I/O and no chain read', () => {
 
 describe('INV-31: disk reads only through the injected reader, only under buildInfoDirectory, and no writes', () => {
   it('exposes exactly two methods, and the probe is typed to carry no content', () => {
-    // Revision 2's amendment, asserted as a count rather than argued in a comment.
+    // Asserted as a count rather than argued in a comment.
     // The interface is the enforcement: `exists` returns `boolean`, so no byte of
     // the packaged artifact can flow out of the weaker capability even by mistake
     // (which is what keeps INV-42 intact while INV-18 gains its third message).
@@ -731,7 +731,7 @@ describe('INV-33: internalPathsRead is exactly the set of internal paths this re
       'callValue',
       'tokenValue',
       'tokenId',
-      // the compiler slot's keys, added at revision 5. `evm` and `compilers` are
+      // the compiler slot's keys, added later. `evm` and `compilers` are
       // not declared Config props — they exist only when the CLI or the project's
       // `tronbox.js` supplies them — so a chain through them commonly stops at the
       // first hop and the deeper keys never appear in a given run's record.
@@ -1165,8 +1165,8 @@ describe('INV-35: the injected logger guaranteed surface is exactly log', () => 
     // agrees (`absentIn` lists that context). The implementation nonetheless
     // resolves the slot there through the artifacts lineage.
     //
-    // **Routed and closed elsewhere, not SF-0's.** Invariants revision 2 sent this
-    // to SF-10 Design, which resolved it *and corrected the premise this comment
+    // **Routed and closed elsewhere, not SF-0's.** This was routed to SF-10,
+    // which resolved it *and corrected the premise this comment
     // used to carry*: `origin` is not a usable visibility signal in either value,
     // because `build/lib/commands/migrate.js:command.run` replaces the logger before
     // `Config.detect` and `build/lib/test.js` passes `{ log(){} }` — so a discarding

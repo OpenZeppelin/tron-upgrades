@@ -253,7 +253,7 @@ describe('SF-10 INV-2: the closed value sets are derived from the installed engi
 
   it('declares the enumerations readonly and never mutates them from inside the package', () => {
     /*
-     * **A gap found by this stage and deliberately not asserted by polarity.**
+     * **A gap found here and deliberately not asserted by polarity.**
      * The three enumerations are declared `as const satisfies readonly …[]`,
      * which is a *compile-time* guarantee — `as const` emits no `Object.freeze`,
      * so at runtime `unsafeAllowKinds`, `proxyKinds`, `redeployModes` and
@@ -263,7 +263,7 @@ describe('SF-10 INV-2: the closed value sets are derived from the installed engi
      * `recordedUpstreamValidationDefaults`, `engineWarningCapableExports` and its
      * two derived subsets, `uncapturedEngineWarnings`,
      * `unavailableContractMembers`) is explicitly frozen. Verified by execution
-     * against the compiled output this stage.
+     * against the compiled output.
      *
      * That is exposure rather than a violation — no invariant states a freeze for
      * these four — so this test asserts the two properties that *do* hold, and the
@@ -448,7 +448,7 @@ describe('SF-10 INV-3: ResolvedUpgradeOptions is total, frozen, and never holds 
   });
 
   it('makes an explicit undefined a compile error under exactOptionalPropertyTypes', () => {
-    // Verified this stage by compilation: TS2375. The runtime half is the
+    // Verified by compilation: TS2375. The runtime half is the
     // own-key assertion above; this is the half that stops a TypeScript caller
     // reaching the runtime hazard at all.
     // @ts-expect-error SF-10 INV-3: explicit undefined is not assignable under exactOptionalPropertyTypes (TS2375).
@@ -674,7 +674,7 @@ describe('SF-10 INV-6: TransactionIdentity.hash is supplied by the plugin, never
   it('refuses every falsy or non-string hash with a typed error naming the operation', () => {
     /*
      * The 4.8.0 fixture the invariant asks for, generalized. Verified by
-     * execution on both installed trees this stage:
+     * execution on both installed trees:
      * `Contract._properties.transactionHash`'s getter throws on a falsy value in
      * 4.9.0 (`if (!transactionHash)`) but only on `null` in 4.8.0
      * (`if (transactionHash === null)`) — so on 4.8.0 an absent hash reads back
@@ -708,7 +708,7 @@ describe('SF-10 INV-6: TransactionIdentity.hash is supplied by the plugin, never
        * what one of the two supported minors actually hands back — the fact that
        * makes reading the accessor unsafe rather than merely inelegant.
        *
-       * Verified by execution at this stage, both trees installed side by side:
+       * Verified by execution, both trees installed side by side:
        *   4.9.0 -> throws `Could not find transaction hash for Box`
        *   4.8.0 -> returns `undefined`
        * Both accessors are non-configurable, so the plugin cannot repair either in
@@ -810,8 +810,8 @@ describe('SF-10 INV-7: the structural minima are pinned, and the pin asserts wha
       sourcePath: '/project/contracts/Box.sol',
     };
     /*
-     * **Corrects the Design.** `Design § Module Structure` declares the pin as
-     * "`ContractAbstraction` satisfies `ContractHandle`", which cannot compile:
+     * **The originally specified pin cannot compile.** It read
+     * "`ContractAbstraction` satisfies `ContractHandle`":
      * `address` is required on `ContractHandle` and absent from SF-0's type
      * (TS2741). Left as written, the implementation would either delete the pin — losing
      * the drift protection that is the whole justification for declaring the

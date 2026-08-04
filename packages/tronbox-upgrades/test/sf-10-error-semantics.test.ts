@@ -638,7 +638,7 @@ describe('SF-10 INV-11: the check order is fixed and enumerated', () => {
 describe('SF-10 INV-12: a contradiction between two channels expressing one allowance is refused, not resolved', () => {
   /*
    * The upstream asymmetry that makes this necessary, verified at
-   * `@openzeppelin/upgrades-core@1.46.0` this stage:
+   * `@openzeppelin/upgrades-core@1.46.0`:
    * `dist/validate/overrides.js:withValidationDefaults` computes
    * `unsafeAllowLinkedLibraries = opts.unsafeAllowLinkedLibraries ??
    * unsafeAllow.includes('external-library-linking')` and then pushes the member

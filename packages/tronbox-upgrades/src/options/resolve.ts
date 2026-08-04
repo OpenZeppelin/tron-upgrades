@@ -505,7 +505,7 @@ export function resolveUpgradeOptions(
  * point. Returns a fresh object with a fresh `unsafeAllow`, both owned by the
  * plugin (INV-16).
  *
- * **Why this exists, established by execution at this stage against
+ * **Why this exists, established by execution against
  * `@openzeppelin/upgrades-core@1.46.0`:** upstream re-applies its own defaults to
  * whatever it is given. `dist/validate/overrides.js:processExceptions` — reached
  * from `getErrors` and therefore from `assertUpgradeSafe` — opens with
@@ -524,7 +524,7 @@ export function resolveUpgradeOptions(
  * accumulating allowances the author never wrote — which is the same failure
  * INV-15 records in the other direction: two `withValidationDefaults` calls on one
  * caller-owned array leave `['external-library-linking']` as three copies of
- * itself, re-verified at 1.46.0 this stage.
+ * itself, re-verified at 1.46.0.
  */
 export function engineValidationOptions(
   resolved: ResolvedUpgradeOptions,

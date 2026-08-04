@@ -21,7 +21,7 @@ import {
 // directions, asymmetrically:
 //
 // - `unsatisfiedSlot` **is** on the face now (`src/environment/index.ts:23`), added
-//   as the one-line additive SF-0 amendment SF-1 Design needed so `src/chain/errors.ts`
+//   as the one-line additive SF-0 amendment SF-1 needed so `src/chain/errors.ts`
 //   could mint the `chain` slot's failures through the only sanctioned route
 //   (SF-0's INV-14, SF-1's INV-18). It is no longer a deep import at all.
 // - `sealSlot` is **deliberately not** on the face, and that is a settled design
@@ -96,7 +96,7 @@ import {
  * INV-40's own stated test — "run that assertion across **all** fixtures, not
  * one" — mechanical rather than aspirational.
  *
- * INV-40 revision 2 states two mechanisms and ranks them, and the tests below are
+ * INV-40 states two mechanisms and ranks them, and the tests below are
  * organized to match. The **primary** mechanism is structural — a host handle never
  * reaches a formatter, and every message is composed from the seam's own projected
  * slots — which is what makes the guarantee hold for `util.inspect`, `console.log`,
@@ -106,9 +106,9 @@ import {
  * (the channel `toJSON` is invisible to), and an AST scan asserting no handle is
  * interpolated anywhere in `src/environment/**` (the mechanism itself).
  *
- * Revision 1 recorded the un-narrowed reading as an expected failure, because
+ * An earlier pass recorded the un-narrowed reading as an expected failure, because
  * "no credential in any slot field" cannot hold alongside INV-29's `scheduling`
- * exposure. Revision 2 states the invariant's *subject* instead of narrowing
+ * exposure. INV-40 now states the invariant's *subject* instead of narrowing
  * INV-29, so the property is now stated truthfully and every test here passes.
  */
 
@@ -413,14 +413,14 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
   });
 
   /**
-   * INV-40 revision 2, ranging over what the seam projects — a passing property.
+   * INV-40, ranging over what the seam projects — a passing property.
    *
-   * Revision 1's wording said "any slot field" without stating the subject, which
+   * An earlier wording said "any slot field" without stating the subject, which
    * made it unsatisfiable alongside INV-29: the `scheduling` slot exposes the whole
    * `deployer` because SF-4 needs the queue, and from a real deployer a configured
    * `privateKey` is reachable by own-enumerable traversal at depth 4 —
    * `deployer.options.options.network_config.privateKey`, verified against 4.9.0
-   * and 4.8.0. SF-0 Tests recorded that as an expected failure. Revision 2 states
+   * and 4.8.0. SF-0 recorded that as an expected failure. The current wording states
    * the subject: the invariant ranges over what the seam *produces* — the fields it
    * projects, `provenance`, and every message — and not over the live graph
    * reachable *through* a handle it deliberately hands over. Under that wording the
@@ -552,7 +552,7 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
   });
 
   it('pins the live reachability INV-29 documents, and that INV-40 does not range over', () => {
-    // Not a deferral record. Revision 2 states INV-40's subject, which resolves the
+    // Not a deferral record. INV-40 states its own subject, which resolves the
     // conflict *by scoping* rather than by narrowing INV-29 — so these exposures are
     // deliberate and this test is their documentation. Naming both means a future
     // reader knows the exposure is two-handled: `artifacts` reaches the key too, so
@@ -591,7 +591,7 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * `handles.ts:sealSlot`'s third parameter — the ratified host-object augmentation
+ * `handles.ts:sealSlot`'s third parameter — the host-object augmentation
  * policy, expressed as an injected predicate: *the plugin may define non-enumerable
  * accessors on a host object it has verified it does not share with the host's own
  * cache; it may never mutate a shared instance.*
@@ -776,7 +776,7 @@ describe('INV-29 / INV-40: the host-augmentation guard refuses a shared instance
 // ---------------------------------------------------------------------------
 
 /**
- * INV-29 revision 3's widened subject: **all five sealed handles are unsafe to log,
+ * INV-29's widened subject: **all five sealed handles are unsafe to log,
  * two verified reachable today.**
  *
  * The rule is deliberately not keyed to today's reachable set. Reachability is a
@@ -838,7 +838,7 @@ describe('INV-29: all five sealed handles are unsafe to log, two verified reacha
   it('reaches the credential from both credential-bearing handles, through the fixtures', () => {
     // The fixture half of the measurement, and its limits stated rather than
     // glossed. What the fixtures reproduce is that the credential *is* own-enumerably
-    // reachable from both handles — which is the premise INV-40's revision-2 scoping
+    // reachable from both handles — which is the premise INV-40's narrow scoping
     // rests on, and the reason `sealSlot` applies to `artifacts` on the same footing
     // as to `scheduling`.
     //

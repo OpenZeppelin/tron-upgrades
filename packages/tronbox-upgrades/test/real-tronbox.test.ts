@@ -33,11 +33,10 @@ import {
  * answer, on **both** supported minors, so a fact that changes upstream fails here
  * loudly rather than surfacing later as a behavioural bug.
  *
- * It also promotes `evidence/probes.js` — the executable evidence behind SF-0
- * the research ⚗ claims — to a test case, which that file's own header asks for
- * ("Promote these to vitest cases at the Tests stage").
+ * It also promotes `evidence/probes.js` — the executable evidence behind SF-0's
+ * research claims — to a test case, which that file's own header asks for.
  *
- * Scope note: the facts pinned below are the ones *this stage's* four invariant
+ * Scope note: the facts pinned below are the ones *this file's* four invariant
  * categories rest on — INV-31/35/40/43/44/45's host premises. The probe spawn
  * covers the rest of the research claims wholesale, including the ones belonging
  * to categories other files own.
@@ -253,18 +252,18 @@ describe.skipIf(installedVersions.length === 0)(
         expect(config.privateKey).toBeNull();
         expect(config.network_config.privateKey).toBe(SENTINEL_PRIVATE_KEY);
         // Freshly merged on every access, which is why hiding `networks` would not
-        // close the live reachability INV-29 documents and INV-40 revision 2
+        // close the live reachability INV-29 documents and INV-40
         // deliberately does not range over — see `sensitive-data.test.ts`.
         expect(config.network_config).not.toBe(config.network_config);
       });
 
       it('INV-29 / INV-40: makes the key reachable by three routes from both credential-bearing handles, shallowest depth 4', () => {
-        // The premise of INV-40's revision-2 scoping, pinned against the tool rather
+        // The premise of INV-40's narrow scoping, pinned against the tool rather
         // than against a fixture: the reachability is a *discovered necessity*, not a
         // choice the seam made — which is why that narrow scoping was accepted as
         // correct rather than widened to cover it.
         //
-        // **Two subjects, not one — added at revision 3.** `artifacts.intercept` is
+        // **Two subjects, not one — added later.** `artifacts.intercept` is
         // credential-reachable on exactly the same terms as `scheduling.deployer`,
         // which is the door nobody had written down. Both bottom out in the *same*
         // `Config`, which is why the terms are identical rather than merely similar:
@@ -384,7 +383,7 @@ describe.skipIf(installedVersions.length === 0)(
       });
 
       it('INV-43 / INV-49: refuses the bare name while every subpath resolves', () => {
-        // **Corrected at revision 3.** This case previously read "is not requirable,
+        // **Corrected later.** This case previously read "is not requirable,
         // so the seam cannot import a singleton from it" — which is half true and the
         // wrong half was load-bearing. Bare-name resolution *is* impossible: no
         // `main`, no `exports`, no root `index.js`, only a `bin`. But the **absent

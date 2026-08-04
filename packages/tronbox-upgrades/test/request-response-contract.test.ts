@@ -538,7 +538,7 @@ describe('INV-6: network identity is three separate fields', () => {
 });
 
 // ---------------------------------------------------------------------------
-// INV-48 — new at invariants revision 2
+// INV-48 — added after the first pass
 // ---------------------------------------------------------------------------
 
 describe('INV-48: value normalization is a closed, enumerated two-entry list', () => {
@@ -569,7 +569,7 @@ describe('INV-48: value normalization is a closed, enumerated two-entry list', (
 
   it('normalizes at site 1 independently, with the getter already a string', () => {
     // The two-site hazard, made observable. `configuredNetworkId` runs *first* and
-    // throws, so before revision 2 the seam was uniform by accident of ordering.
+    // throws, so before that change the seam was uniform by accident of ordering.
     // Making entry and getter disagree in type isolates each site: here only the
     // entry is numeric, so a fix confined to the getter would fail this.
     expect(networkFor(1, '1')).toEqual(networkFor('1', '1'));
@@ -579,7 +579,7 @@ describe('INV-48: value normalization is a closed, enumerated two-entry list', (
   it('normalizes at site 2 independently, with the entry already a string', () => {
     // The reverse, and the case that proves site 2 is no longer unreachable: with
     // the entry a string, site 1 no longer throws, so a numeric getter reaches
-    // `artifactNetworkId` — where revision 1 would have relocated the refusal.
+    // `artifactNetworkId` — where an earlier shape would have relocated the refusal.
     expect(networkFor('1', 1)).toEqual(networkFor('1', '1'));
     expect(networkFor('1', 1).artifactNetworkId).toBe('1');
   });

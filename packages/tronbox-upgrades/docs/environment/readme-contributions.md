@@ -6,8 +6,8 @@ with each claim's evidence attached.
 
 ## Why SF-0 contributes no quickstart
 
-The spec assigns README quickstart / options / divergence content to the High-stakes
-sub-features' Docs stages. SF-0 has **no public consumer API**: it is an internal seam whose
+README quickstart / options / divergence content belongs to the sub-features that own
+the operations. SF-0 has **no public consumer API**: it is an internal seam whose
 only entry point, `resolveEnvironment`, is consumed by sibling modules and is not re-exported
 from the package. SF-11 owns the package entry point.
 
@@ -197,5 +197,5 @@ assumption that the behaviour holds.
 - **Parity divergences from the Hardhat-plugin target.** SF-0 implements no operation, so it
   has no operation to diverge. SC-005's divergence list is the operation-owning sub-features'.
 - **Result-shape or warning-channel documentation.** SF-10's, and its contract is not yet
-  ratified.
+  settled.
 - **Installation and packaging.** SF-11's.
