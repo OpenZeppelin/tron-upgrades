@@ -8,9 +8,9 @@ import type { RedeployMode } from './types';
  * `resolveUpgradeOptions` calls upstream's `withValidationDefaults`, so they cannot
  * drift by construction. A local re-implementation of `kind: 'transparent'` or
  * `unsafeAllowRenames: false` that drifted from upstream would flip the safety
- * posture of every operation with no diagnostic — which is the spec's stakes line
- * for SF-10 verbatim: *"a silently flipped default … changes safety posture across
- * every operation"*.
+ * posture of every operation with no diagnostic — the risk SF-10 exists to remove:
+ * *"a silently flipped default … changes safety posture across every
+ * operation"*.
  *
  * What this table owns is the four values upstream has no opinion about, plus the
  * recorded expectation the canary checks upstream against.

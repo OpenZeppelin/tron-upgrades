@@ -348,7 +348,7 @@ describe('SF-10 INV-9: never coerce — a value outside its accepted set is refu
   });
 
   it('never falls back to a default on an invalid value', () => {
-    // The specific shape of coercion the spec's stakes line names: a bad value
+    // The specific shape of coercion this surface must never perform: a bad value
     // silently becoming the default is a safety change with no diagnostic.
     for (const supplied of [{ kind: 'Nope' }, { redeployImplementation: 'sometimes' }]) {
       expect(() =>
@@ -882,8 +882,8 @@ describe('SF-10 INV-13: received is rendered bounded and type-only for non-primi
 describe('SF-10 INV-14: OptionUnsupportedOnTronError has zero instances, and the emptiness is asserted', () => {
   it('ships an empty, frozen refusal registry — a finding, not a gap', () => {
     /*
-     * The reason the list is empty, recorded here so a later stage cannot read
-     * the absence as a missing deliverable and invent a TRON refusal for an
+     * The reason the list is empty, recorded here so a later reader cannot take
+     * the absence for a missing deliverable and invent a TRON refusal for an
      * option TRON honours: everything on this surface is source-level validation
      * policy or timing, all of which TRON honours. The first real instance is
      * `txOverrides`'s EVM-only fields, which is SF-4's surface.

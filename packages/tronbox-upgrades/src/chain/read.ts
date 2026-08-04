@@ -288,7 +288,7 @@ function probeReason(
  * so all four miss both of TRON's probe outcomes and `callOptionalSignature`
  * rethrows where it should return `undefined`. Translating would depend on a
  * private implementation detail a minor bump can reword — the same
- * borrowed-premise failure the no-spoofing ruling rejects — and it would report
+ * borrowed-premise failure the no-spoofing rule rejects — and it would report
  * "revert" for "Smart contract is not exist.", collapsing INV-17's distinction at
  * the engine boundary. Supplying replacements and denying the plugin the five
  * upstream names is free because all five are reachable from plugin code only.

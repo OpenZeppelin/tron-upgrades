@@ -15,17 +15,17 @@ import {
   type ArtifactCandidate,
   type Inconsistency,
 } from '../src/environment';
-// Deep imports: none of these is on the seam's public face. **Corrected by SF-1
-// Tests (2026-07-31)** — the comment previously called `unsatisfiedSlot` /
-// `sealSlot` an open question, and that question has since been settled in both
-// directions, asymmetrically:
+// Deep imports: none of these is on the seam's public face. **Corrected
+// 2026-07-31** — the comment previously called `unsatisfiedSlot` /
+// `sealSlot` undecided, and both have since been settled,
+// asymmetrically:
 //
 // - `unsatisfiedSlot` **is** on the face now (`src/environment/index.ts:23`), added
 //   as the one-line additive SF-0 amendment SF-1 needed so `src/chain/errors.ts`
 //   could mint the `chain` slot's failures through the only sanctioned route
 //   (SF-0's INV-14, SF-1's INV-18). It is no longer a deep import at all.
 // - `sealSlot` is **deliberately not** on the face, and that is a settled design
-//   property rather than an open question: SF-1 holds no handle in any field of any
+//   property rather than an undecided one: SF-1 holds no handle in any field of any
 //   exported object (INV-3 / INV-9 / INV-42), so it meets SF-0's INV-40 guarantee by
 //   construction rather than by redaction and has no need of it. SF-1 was expected to
 //   concluded the adapter would require sealing; it does not.

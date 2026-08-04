@@ -218,8 +218,8 @@ export type Cause =
 export type WasmAbort = 'memory-access-out-of-bounds' | 'other-wasm-abort';
 
 /**
- * The oldest TronBox this initiative has *verified* carries all five artifact
- * fields cause 6 can name.
+ * The oldest TronBox *verified* to carry all five artifact fields cause 6 can
+ * name.
  *
  * Read from the host's own hard-coded artifact literal at both supported minors:
  * `src/components/Compile/index.js:165-179` at `v4.9.0` and
