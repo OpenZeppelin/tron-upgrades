@@ -378,11 +378,46 @@ function renderSignalValue(value: string | null): string {
   return value === null ? 'none' : bounded(value);
 }
 
+/**
+ * The clause that names the **second** file, added additively by SF-3.
+ *
+ * Empty when no fingerprint path is supplied, which is what keeps every existing
+ * construction of {@link ChainInstanceChangedError} rendering byte-identical text.
+ *
+ * **Why the message needs it at all, and why it sits *before* the remedy.** SF-3
+ * persists the chain fingerprint in a file beside the manifest, so a user reading this
+ * refusal sees two files and — without this clause — is told to delete one. Deleting
+ * the *unfamiliar* one is the natural reading, and it is the one that fails silently:
+ * manifest present with no fingerprint is "no recorded identity", which must never
+ * refuse, so the next run proceeds and writes the current chain's fingerprint over
+ * records written against a different one. The user dismisses the guard permanently by
+ * following the message. The same silent pass is reachable a second way — by removing a
+ * single *field* from the file rather than the file itself — so both prohibitions are
+ * stated as one clause, because they are one hazard.
+ *
+ * Placed ahead of the remedy paragraph deliberately: a clause appended *after* "delete
+ * X and run again" is read by a user who has already decided what to do.
+ */
+function renderFingerprintClause(sidecarFile: string | undefined): string {
+  if (sidecarFile === undefined) {
+    return '';
+  }
+  return (
+    `The chain fingerprint these records were checked against is kept in ` +
+    `${sidecarFile}, beside the manifest. Deleting that file — or removing a ` +
+    'field from it — resets nothing: nothing can tell a cleared fingerprint ' +
+    'from a first run, so the next run would accept these records and write ' +
+    'this chain fingerprint over them. Whatever you delete, do not delete the ' +
+    'fingerprint on its own.\n\n'
+  );
+}
+
 function renderInstanceChange(
   comparison: ChainInstanceChange,
   context: ChainInstanceChangedError['context'],
 ): string {
   const records = `${String(context.recordCount)} deployment record(s) in ${context.manifestFile}`;
+  const fingerprint = renderFingerprintClause(context.sidecarFile);
 
   if (comparison.signal === 'chain-id') {
     return (
@@ -390,6 +425,7 @@ function renderInstanceChange(
       `${records} were written against: they record chain id ` +
       `${renderSignalValue(comparison.recorded)} and it reports ` +
       `${renderSignalValue(comparison.observed)}.\n\n` +
+      fingerprint +
       'Nothing has been changed or removed. Check that the network you ' +
       'selected is the one you meant. If you did intend to switch networks, the ' +
       "records for the new one belong in that network's own manifest file — " +
@@ -405,6 +441,7 @@ function renderInstanceChange(
     `${renderSignalValue(comparison.recorded)}, observed ` +
     `${renderSignalValue(comparison.observed)}). This is a different instance ` +
     'of the same chain, so those records do not describe it.\n\n' +
+    fingerprint +
     'Nothing has been changed or removed. If this is a disposable local node ' +
     `that has been restarted, delete ${context.manifestFile} and run again. If ` +
     'you did not expect a restart, the node may be serving a different chain ' +
@@ -449,6 +486,23 @@ export class ChainInstanceChangedError extends Error {
       readonly recordCount: number;
       /** Scrubbed (INV-42). */
       readonly endpoint: string;
+      /**
+       * The chain fingerprint file that sits beside the manifest, when the caller has
+       * one — **added additively by SF-3.**
+       *
+       * Optional, and that is what makes the addition additive under
+       * `exactOptionalPropertyTypes`: every existing construction omits it and renders
+       * byte-identical text, so this file's pinned message tests are the instrument
+       * that proves the change was additive rather than a second set of tests written
+       * to accommodate it. A *required* field here would have been a compile error at
+       * every existing call site, which is the fail-loud signal rather than a problem
+       * to work around.
+       *
+       * Deliberately **not** folded into `manifestFile`. That field's own contract says
+       * it is the manifest path from `manifestPathFor`, and this file's tests pin it as
+       * *the file*; two paths joined into it would be a lie about a documented field.
+       */
+      readonly sidecarFile?: string;
     },
   ) {
     super(renderInstanceChange(comparison, context));

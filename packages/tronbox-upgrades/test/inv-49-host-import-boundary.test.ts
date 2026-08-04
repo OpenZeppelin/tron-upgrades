@@ -205,6 +205,51 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       // dependency. The engine is a declared runtime dependency of this package.
       `options${path.sep}resolve.ts: @openzeppelin/upgrades-core (import)`,
       `options${path.sep}types.ts: @openzeppelin/upgrades-core (import)`,
+      // Added by SF-3 Code Draft — ten rows, additive, nothing removed and nothing
+      // loosened. Read as a directory rule, the way the SF-10 and SF-2 rows are:
+      //
+      // - **`tronweb` and `ethers` in `address.ts` are the whole directory's only
+      //   third-party imports, and they are in the one module that must not import
+      //   anything else.** Neither is the host: `tronweb` is the TRON SDK whose
+      //   `utils.address` namespace is *static*, usable with no instance and no node,
+      //   which is the property that lets address canonicalization be tested with 200
+      //   fixtures and no network. That module imports `./errors`, which imports
+      //   nothing at all, so its whole closure inside the package is these two
+      //   packages and nothing more. **That transitive claim is not asserted anywhere
+      //   yet** — SF-3 Tests owns it, as a closure walk from `record/address.ts`
+      //   asserting the only non-relative specifiers reached are `tronweb` and
+      //   `ethers`. Until it exists, these two rows record what the module imports
+      //   and nothing pins what `./errors` may grow to import.
+      // - **`@openzeppelin/upgrades-core` appears twice in `manifest.ts`, in two
+      //   kinds, and the pair is the invariant rather than an accident.** The
+      //   type-only row is erased; the `dynamic-import` row is the deferred value
+      //   import, and it has to be deferred: the engine reads the deployment record's
+      //   directory from the environment **once, at module load**, so a *static*
+      //   runtime import of it anywhere in the entry module's closure freezes that
+      //   directory before the plugin can set it, and the plugin's own assignment
+      //   becomes a silent no-op. A future edit turning that `await import(…)` into a
+      //   top-level `import` changes this row from `(dynamic-import)` to `(import)`
+      //   and fails here, which is the only place that edit is cheap to catch.
+      // - `@openzeppelin/upgrades-core` in `types.ts`, `reconcile.ts` and
+      //   `session.ts` is **type-only** in all three — pinned as such in the
+      //   type-only block below — because a record wrapper's whole job is to be typed
+      //   over the engine's own `ManifestData` / `ImplDeployment` / `ProxyDeployment`
+      //   so that a field rename upstream is a compile error here.
+      // - `node:path` in `location.ts` and `sidecar.ts` is path arithmetic over the
+      //   record's anchor, and `node:fs/promises` in `sidecar.ts` is the fingerprint
+      //   file's atomic write and defensive read. `node:fs/promises` is a distinct
+      //   specifier from the `node:fs` the seam and SF-2 use, and the seam-scoped
+      //   `node:fs` assertion below is prefixed by `environment/`, so it is unaffected.
+      `record${path.sep}address.ts: ethers (import)`,
+      `record${path.sep}address.ts: tronweb (import)`,
+      `record${path.sep}location.ts: node:path (import)`,
+      `record${path.sep}manifest.ts: @openzeppelin/upgrades-core (dynamic-import)`,
+      `record${path.sep}manifest.ts: @openzeppelin/upgrades-core (import)`,
+      `record${path.sep}reconcile.ts: @openzeppelin/upgrades-core (import)`,
+      `record${path.sep}session.ts: @openzeppelin/upgrades-core (import)`,
+      `record${path.sep}sidecar.ts: node:fs/promises (import)`,
+      `record${path.sep}sidecar.ts: node:path (import)`,
+      `record${path.sep}types.ts: @openzeppelin/upgrades-core (import)`,
       // Added by SF-2 Code Draft — seven rows, additive, nothing removed and
       // nothing loosened. Read as a directory rule the way the SF-10 rows are:
       //
@@ -314,6 +359,21 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       // quoted onward, so it is fixed here instead of annotated.
       `options${path.sep}resolve.ts: @openzeppelin/upgrades-core (import, runtime)`,
       `options${path.sep}types.ts: @openzeppelin/upgrades-core (import, type-only)`,
+      // Added by SF-3 Code Draft, and this block is where the record layer's load-order
+      // rule is actually enforced rather than described. The engine's manifest module
+      // evaluates the deployment record's directory from the environment **once, at
+      // module load**; every row here that reads `type-only` is a row that cannot load
+      // it, and the single `runtime` row is deferred to a point after the plugin has
+      // configured that directory. So the shape of this list *is* the invariant: four
+      // type-only rows plus exactly one runtime row, and that runtime row spelled
+      // `dynamic-import`. A top-level `import { Manifest }` in `manifest.ts` would
+      // still be one runtime row — it would read `(import, runtime)`, and that is the
+      // difference this pin exists to catch.
+      `record${path.sep}manifest.ts: @openzeppelin/upgrades-core (dynamic-import, runtime)`,
+      `record${path.sep}manifest.ts: @openzeppelin/upgrades-core (import, type-only)`,
+      `record${path.sep}reconcile.ts: @openzeppelin/upgrades-core (import, type-only)`,
+      `record${path.sep}session.ts: @openzeppelin/upgrades-core (import, type-only)`,
+      `record${path.sep}types.ts: @openzeppelin/upgrades-core (import, type-only)`,
       // Added by SF-2 Code Draft. `identity.ts` is a **runtime** importer and has to
       // be: INV-34's normalisation is upstream's own `unlinkBytecode`, and
       // reproducing it locally is what that invariant exists to forbid.
