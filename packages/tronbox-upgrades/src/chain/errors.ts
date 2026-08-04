@@ -20,8 +20,8 @@
  * `UnsatisfiedSlot.cause`. `error-semantics.test.ts:84-101` enumerates
  * `src/environment/errors.ts` and asserts that family is exactly three, and
  * `code` there is a template-literal type over `EnvironmentDiagnosis` — so a
- * fourth member fails the baseline, which is the condition the dev's decision (b)
- * attached to the SF-0 amendment.
+ * fourth member fails the baseline, which is the condition attached to reusing the
+ * seam's error family: the reuse holds only while the family stays at three members.
  *
  * INV-13: every value SF-1 throws is an `Error` with a non-empty string
  * `message`, and that is load-bearing rather than tidy —
@@ -457,8 +457,7 @@ function renderInstanceChange(
  * The chain reports a different instance than the one the records were written
  * against.
  *
- * Refuses, names the remedy, and **discards nothing** — the dev's ruling, and
- * the reason is the failure mode: *a discarded manifest entry is a lost record of
+ * Refuses, names the remedy, and **discards nothing**. The reason is the failure mode: *a discarded manifest entry is a lost record of
  * a live proxy if the detection is ever wrong.* Detection can be wrong in one
  * direction — a node behind a load balancer serving two forks reports a change
  * that is true about what it observed but not about the user's intent — so the

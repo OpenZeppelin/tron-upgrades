@@ -42,8 +42,8 @@ import {
  * the wrong capability, which spec scenario 3 forbids in those terms. So SF-1
  * declares its own view, privately.
  *
- * `method` is widened from Design's `'post'` to `'get' | 'post'` because Design's
- * own default native-API refinement probe is a **GET** of
+ * `method` is widened from `'post'` alone to `'get' | 'post'` because the default
+ * native-API refinement probe is a **GET** of
  * `wallet/getnowblock`.
  */
 interface TronWrapRpcView {
@@ -367,7 +367,7 @@ type FetchLike = (
  * Read at **factory time, never at module load** (INV-24), so a process that
  * polyfills or replaces `fetch` between requires is not baked in.
  *
- * Reading a platform global is permitted here under the ratified reading of
+ * Reading a platform global is permitted here under the operative reading of
  * INV-46: it bars ambient *configuration* and singletons, not platform builtins —
  * a literal reading is unsatisfiable, because INV-31 mandates `new URL(...)` and
  * `URL` is a platform global too.
