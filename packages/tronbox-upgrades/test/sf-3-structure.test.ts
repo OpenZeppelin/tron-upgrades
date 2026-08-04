@@ -569,15 +569,15 @@ describe('INV-27 — `setProxyKind` and `detectProxyKind` occur in zero imports 
   it('the census reaches every module under `src/`, so the emptiness is not a filter that excluded them', () => {
     const sources = allSources();
     expect(sources.length).toBeGreaterThan(50);
-    // One module parses to zero identifiers, and it is the entry module — a doc
-    // comment and `export {}`. Named here rather than filtered silently, because the
-    // same fact is what makes the closure walk over it trivial, and a scan that
-    // quietly tolerated an empty module would hide the day a second one appeared.
+    // Re-pinned when the entry module gained its type-only surface: no module
+    // under `src/` parses to zero identifiers any more. The pin stays, empty,
+    // so the day an empty module appears it is named here rather than silently
+    // tolerated by every census that walks the tree.
     expect(
       sources
         .filter(source => source.identifiers.length === 0)
         .map(source => source.relative),
-    ).toEqual(['index.ts']);
+    ).toEqual([]);
   });
 
   it('non-vacuity: it reports the import, the access chain and the string-built route separately', () => {
@@ -876,14 +876,19 @@ describe('INV-32 — applied to the real tree', () => {
     }
   });
 
-  it('the entry module imports nothing at all today, so its closure is itself alone — recorded as empty rather than as satisfied', () => {
-    // Stated this way on purpose. A walk from a module with no imports visits nothing
-    // and finds nothing, and reporting that as "the invariant holds" would be a claim
-    // in the present tense about a closure that does not exist. What is asserted is
-    // the fact that makes it trivial — zero specifiers — so the day the entry module
-    // grows one, this equality fails and the guard below becomes the live one.
+  it('the entry module carries only erased edges, so its runtime closure is itself alone', () => {
+    // Re-pinned when the entry module gained its type-only surface. Both of
+    // its specifiers are `export type … from` — erased at compile time — so
+    // the RUNTIME closure is still the entry alone, which is the property the
+    // invariant actually needs: nothing evaluates the engine's record-directory
+    // constant at import time. The exact edge census is asserted so a third
+    // specifier, or one that stops being type-only, fails here by name.
     const entry = allSources().find(source => source.relative === 'index.ts');
-    expect(entry?.moduleSpecifiers).toEqual([]);
+    expect(entry?.moduleSpecifiers.map(edge => edge.specifier).sort()).toEqual([
+      './options/types',
+      './results/types',
+    ]);
+    expect(entry?.moduleSpecifiers.every(edge => edge.typeOnly)).toBe(true);
     const closure = runtimeStaticClosure(
       specifierIndex(allSources()),
       'index.ts',
@@ -1336,13 +1341,17 @@ describe('INV-1 / INV-48 — the face is `openRecord` plus four named values, an
   it('the report type is internal in this version: the entry module re-exports nothing from the record layer', () => {
     // "Internal in v1" is a statement about the package's public API, not about this
     // directory's own face — the report type is on the internal face, because the
-    // preflight returns it. What makes it internal is that the entry module does not
-    // carry it outward, and the entry module carries nothing outward at all today.
-    // Asserted as that fact, so the day it exports something this becomes the live
-    // guard on whether the report went with it.
+    // preflight returns it. Re-pinned when the entry module gained its type-only
+    // surface: it now carries names outward, so the guard is live — every export
+    // is type-only, and none of them comes from the record layer.
     const entry = sourceNamed(allSources(), 'index.ts');
-    expect(faceExports(entry)).toEqual([]);
-    expect(entry.moduleSpecifiers).toEqual([]);
+    expect(faceExports(entry).filter(exported => !exported.typeOnly)).toEqual([]);
+    for (const edge of entry.moduleSpecifiers) {
+      expect(
+        edge.specifier.startsWith('./record'),
+        `${edge.specifier} reaches the record layer from the entry module`,
+      ).toBe(false);
+    }
   });
 
   it('non-vacuity: the export reader distinguishes a value re-export from a type one', () => {
