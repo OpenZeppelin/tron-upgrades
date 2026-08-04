@@ -67,7 +67,7 @@ export class ResultCapabilityUnavailableError extends Error {
 /**
  * A registry named a member the host does not have.
  *
- * Added at Code Draft: INV-22 requires `sealUnavailable` to refuse such a member
+ * Added while implementing: INV-22 requires `sealUnavailable` to refuse such a member
  * "and say why" without naming the class, and INV-8 requires a typed error with a
  * stable `code`.
  */

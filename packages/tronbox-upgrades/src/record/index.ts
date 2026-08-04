@@ -11,7 +11,7 @@
  * derivation that later moved, inside a message telling the user to delete it.
  *
  * **The reconciliation report is internal in this version.** The plugin's result
- * surface is ratified elsewhere, and adding a result type later is additive, whereas
+ * surface is owned elsewhere, and adding a result type later is additive, whereas
  * shipping one now would fix a shape no consumer has asked for. `toTronHex` is internal
  * for the same reason: it exists for correlating a record against an address the host
  * wrote in its own artifacts, and that diagnostic is itself internal.

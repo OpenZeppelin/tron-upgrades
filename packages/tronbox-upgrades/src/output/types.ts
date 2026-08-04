@@ -81,7 +81,7 @@ export type DegradedCode =
   | 'engine-note'
   /**
    * The channel reached its documented `recorded` cap and stopped appending
-   * (INV-38). Added at Code Draft: the truncation note is itself a
+   * (INV-38). Added while implementing: the truncation note is itself a
    * `DegradedNote`, so under INV-34 it needs its own member — reusing any of the
    * five above would mislabel it, and dropping it would make truncation silent.
    */

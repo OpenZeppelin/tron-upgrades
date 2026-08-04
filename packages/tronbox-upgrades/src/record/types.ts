@@ -186,7 +186,7 @@ export interface ProxyRecordVerdict {
 
 /**
  * What the preflight found. Internal in this version: the plugin's result surface is
- * ratified elsewhere and adding a result type later is additive, whereas shipping
+ * settled by the result surface itself, and adding a result type later is additive, whereas shipping
  * one now would pre-empt that contract on the basis of a shape no consumer has
  * asked for.
  *
