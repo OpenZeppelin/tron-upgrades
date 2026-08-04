@@ -1091,8 +1091,8 @@ headers, which error pages do, embedding it is also a leak.
 > `ChainSlotMalformedError` and `ChainAddressUnusableError` — because that module must import
 > nothing and an `Error` subclass needs no import. **Depend on the behaviour, not the layout:**
 > class identity is the same object on both import routes, so `instanceof` does not depend on which
-> one you used, and both are constructible through the error module. This is a recorded unratified
-> default; its reversal is a file move.
+> one you used, and both are constructible through the error module. The arrangement is deliberate
+> and cheap to reverse — it is a file move — so depend on the behaviour, not the layout.
 
 | Class | `code` | Condition | Fields beyond `message` |
 |---|---|---|---|

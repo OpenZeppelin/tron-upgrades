@@ -50,8 +50,8 @@ import {
  * `src/chain/slots.ts` and re-exported, because that module must import nothing and
  * an `Error` subclass needs no import. **Rely on the behaviour, not the file
  * layout**: class identity is the same object on both import routes, so `instanceof`
- * does not depend on which one you used, and this arrangement is a recorded
- * unratified default whose reversal is a file move.
+ * does not depend on which one you used. The arrangement is deliberate and cheap to
+ * reverse — it is a file move — so it is documented rather than load-bearing.
  */
 export const chainErrorCodes = [
   'TRON_CHAIN_ADDRESS_UNUSABLE',

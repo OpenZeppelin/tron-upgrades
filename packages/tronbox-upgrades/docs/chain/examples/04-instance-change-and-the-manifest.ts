@@ -118,7 +118,8 @@ export function describeComparison(result: InstanceComparison): string {
  * refusal is the policy and does the throwing
  * (`src/chain/errors.ts:415-457`).
  *
- * The message **discards nothing and names the remedy**, which is the dev's ruling:
+ * The message **discards nothing and names the remedy**, and the reason is the
+ * failure mode it avoids:
  * a discarded manifest entry is a lost record of a live proxy if the detection is
  * ever wrong, and detection can be wrong in one direction — a node behind a load
  * balancer serving two forks reports a change that is true about what it observed
