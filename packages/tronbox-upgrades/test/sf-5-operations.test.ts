@@ -237,6 +237,8 @@ function buildFake(spec: FakeSpec = {}): Fake {
       };
     },
 
+    hashWithoutMetadata: (bytecode: string) => bytecode.slice(0, 16),
+
     async inferKind() {
       log.push('inferKind');
       return 'transparent';

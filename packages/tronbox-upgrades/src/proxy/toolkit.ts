@@ -141,6 +141,9 @@ export interface OperationToolkit {
 
   confirm(transactionHash: string): Promise<ConfirmationVerdict>;
 
+  /** Engine `hashBytecodeWithoutMetadata` — the adoption verification's hash. */
+  hashWithoutMetadata(bytecode: string): string;
+
   /** Engine `inferProxyKind` over a validated implementation (reference side). */
   inferKind(
     validated: ValidatedImplementation,
@@ -566,6 +569,9 @@ export async function createOperationToolkit(request: {
     },
 
     confirm: transactionHash => confirmTransaction(transactionHash, wait),
+
+    hashWithoutMetadata: bytecode =>
+      engine.hashBytecodeWithoutMetadata(bytecode),
 
     async inferKind(validated) {
       const kind: unknown = engine.inferProxyKind(

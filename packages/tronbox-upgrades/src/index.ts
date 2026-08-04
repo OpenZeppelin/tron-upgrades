@@ -66,6 +66,12 @@ export {
   deployImplementation,
   prepareUpgrade,
 } from './standalone';
+export { forceImport } from './adopt';
+export {
+  AdoptionKindMismatchError,
+  AdoptionVerificationFailedError,
+  NothingToAdoptError,
+} from './adopt/errors';
 export {
   BeaconProxyRefusedError,
   EmptyInitializerRefusedError,
