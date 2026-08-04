@@ -223,7 +223,7 @@ function fullyQualifiedNames(output: SolcStandardOutput): string[] {
  *
  * **`'plugin-compile'` scans the layouts that are present, and skips the ones
  * that are not.** That boundary is deliberate and survives the rework: on this
- * basis we requested layouts, Research measured the key emitted even when empty
+ * basis we requested layouts, and solc was measured to emit the key even when empty
  * (`{"storage":[],"types":null}` for a purely namespaced contract), and the
  * silent-omission hazard lives strictly below `0.5.13`, which the range gate
  * makes unreachable. Counting an absent key as missing here would turn an

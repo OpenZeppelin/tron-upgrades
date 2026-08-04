@@ -414,7 +414,7 @@ export function openCompiler(request: CompilerOpenRequest): CompilerOpenResult {
     // A file that exists but does not yield a usable compiler — a truncated
     // download is the realistic case — has the same remedy as one that is not
     // there: fetch it again. Cause 1's message is worded to be true of both,
-    // which is why this is a wording choice inside the ratified cause rather
+    // which is why this is a wording choice inside cause 1 rather
     // than a twelfth member. An invariant error from our own wrapper is a plugin
     // bug and is deliberately not swallowed here.
     if (thrown instanceof ValidationInputInvariantError) {

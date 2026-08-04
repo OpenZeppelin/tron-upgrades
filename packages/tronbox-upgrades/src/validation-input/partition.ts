@@ -17,7 +17,7 @@ import type { SolcStandardOutput } from './solc-input';
  * no batch size exists** (INV-35). `PartitionRecord` carries no count, so there is
  * no field a threshold could be compared against, and `target` is **singular**, so
  * a multi-target partition is not representable (INV-38) — union-first is
- * specified and unbuilt, which is what Q5 ratified.
+ * specified and unbuilt, and that is deliberate rather than an oversight.
  */
 
 export interface PartitionRecord {

@@ -30,10 +30,10 @@ export type HandleName =
   | 'waitForTransactionReceipt';
 
 /**
- * The five invocation contexts Research established. `plain node` is a named
- * context because `EnvironmentAbsentError` is the diagnosis for it and INV-14
- * renders `absentIn` from the slot table — an unnamed context renders as an
- * omission.
+ * The five invocation contexts, measured against a real TronBox tree. `plain
+ * node` is a named context because `EnvironmentAbsentError` is the diagnosis for
+ * it and INV-14 renders `absentIn` from the slot table — an unnamed context
+ * renders as an omission.
  */
 export type InvocationContextName =
   | 'tronbox migrate'

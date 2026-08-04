@@ -82,7 +82,7 @@ export const slotRequirements: Readonly<Record<SlotName, SlotRequirement>> =
     // `outputFromHandles` falls back to the `logger` on the Config lineage
     // reached through `artifacts`, and that Config is live there.
     //
-    // Design revision 2, Decision 13: the table was internally inconsistent and
+    // The table was internally inconsistent and
     // either edit would have restored consistency, so widening needed a reason.
     // The inconsistency is a *reporting* error, not a capability error — the
     // seam does construct the slot from either handle, and the table exists to

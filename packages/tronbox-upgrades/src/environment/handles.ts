@@ -149,7 +149,7 @@ export const REDACTED_HOST_HANDLE =
   '[TronBox host handle — redacted, not serialized]';
 
 /**
- * The ratified host-object augmentation policy, expressed as an injected
+ * The host-object augmentation policy, expressed as an injected
  * predicate: *the plugin may define non-enumerable accessors on a host object it
  * has verified it does not share with the host's own cache; it may never mutate a
  * shared instance.*

@@ -114,8 +114,8 @@ export type Cause =
   /**
    * 7 — the artifact does not correspond to the sources on disk.
    *
-   * **The payload is the contract name and nothing else, which is a correction
-   * to Design.** Design gave this member `identity: ArtifactIdentityComparison`.
+   * **The payload is the contract name and nothing else, corrected from an
+   * originally specified `identity: ArtifactIdentityComparison`.**
    * Two reasons that field cannot stay, and the second is the substantive one:
    *
    * - It is an object, so it fails INV-17's own type-level instrument (*"every
