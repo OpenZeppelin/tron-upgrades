@@ -18,6 +18,8 @@ import { transactionIdentity, operationNotes } from '../results/types';
 import type { DeployedBeacon, DeployedProxy, UpgradedProxy } from '../results/types';
 import {
   createOperationToolkit,
+  handlesFrom,
+  HANDLE_OPTION_KEYS,
   encodeInitializer,
   type OperationContext,
   type RawOperationOptions,
@@ -27,7 +29,7 @@ import { UpgradeVerificationFailedError } from '../proxy/errors';
 import { isAlreadyCurrent } from '../proxy/replay';
 
 export const BEACON_ACCEPTED_OPTIONS: readonly string[] = [
-  'deployer',
+  ...HANDLE_OPTION_KEYS,
   'initializer',
   'constructorArgs',
   'initialOwner',
@@ -127,7 +129,7 @@ export async function deployBeacon(
   options: RawOperationOptions = {},
 ): Promise<DeployedBeacon> {
   const context = await createOperationToolkit({
-    handles: { deployer: options.deployer },
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: BEACON_ACCEPTED_OPTIONS,
   });
@@ -175,7 +177,7 @@ export async function deployBeaconProxy(
   options: RawOperationOptions = {},
 ): Promise<DeployedProxy> {
   const context = await createOperationToolkit({
-    handles: { deployer: options.deployer },
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: BEACON_ACCEPTED_OPTIONS,
   });
@@ -248,7 +250,7 @@ export async function upgradeBeacon(
   options: RawOperationOptions = {},
 ): Promise<UpgradedProxy> {
   const context = await createOperationToolkit({
-    handles: { deployer: options.deployer },
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: BEACON_ACCEPTED_OPTIONS,
   });

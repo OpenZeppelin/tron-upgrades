@@ -141,6 +141,32 @@ describe('INV-8: proxy-artifact triage', () => {
     ).toBe(abstraction);
   });
 
+  it('treats same-source duplicates as unique — recompiles accumulate build records, and that is not a user collision', () => {
+    // Found by the first live migration: two compiles left two build-info
+    // files, both carrying the proxy, and the triage refused a "collision"
+    // whose two paths were identical.
+    const access = artifactAccessWith(() => ({
+      status: 'ambiguous',
+      name: 'TransparentUpgradeableProxy',
+      candidates: [
+        {
+          sourcePath: 'openzeppelin-tron-solidity/contracts/proxy/transparent/TransparentUpgradeableProxy.sol',
+          contractName: 'TransparentUpgradeableProxy',
+          buildInfoFile: '/proj/build/info/a.json' as never,
+        },
+        {
+          sourcePath: 'openzeppelin-tron-solidity/contracts/proxy/transparent/TransparentUpgradeableProxy.sol',
+          contractName: 'TransparentUpgradeableProxy',
+          buildInfoFile: '/proj/build/info/b.json' as never,
+        },
+      ],
+      unverifiedContract: abstraction,
+    }));
+    expect(
+      requireProxyArtifact(access, PROXY_CONTRACT_NAMES.transparent),
+    ).toBe(abstraction);
+  });
+
   it('refuses a collision naming every candidate path', () => {
     const access = artifactAccessWith(() => ({
       status: 'ambiguous',

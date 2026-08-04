@@ -116,6 +116,9 @@ function buildFake(spec: Spec = {}) {
     },
     looksLikeProxyAdmin: async () => false,
     hashWithoutMetadata: (b: string) => b,
+    proxySlots: async () => {
+      throw new Error('proxySlots is not part of the beacon paths');
+    },
     callThroughFacade: async (request: { at: string; method: string }) => {
       log.push(`callThroughFacade:${request.method}`);
       return { address: request.at, transactionHash: 'ff'.repeat(32) };

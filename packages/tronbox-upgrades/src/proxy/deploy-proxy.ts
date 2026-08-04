@@ -26,6 +26,9 @@ import { ProxyAdminAsOwnerError, StaleProxyRecordError } from './errors';
 import { decideDeployReplay } from './replay';
 import {
   createOperationToolkit,
+  handlesFrom,
+  HANDLE_OPTION_KEYS,
+  readWriteBackHash,
   encodeInitializer,
   type OperationContext,
   type RawOperationOptions,
@@ -33,7 +36,7 @@ import {
 
 /** The option keys this operation accepts; anything else is a named refusal. */
 export const DEPLOY_PROXY_ACCEPTED_OPTIONS: readonly string[] = [
-  'deployer',
+  ...HANDLE_OPTION_KEYS,
   'kind',
   'initializer',
   'constructorArgs',
@@ -98,7 +101,7 @@ export async function runDeployProxy(
     // deployment's, read from the host's own write-back memory — and if the
     // artifact does not carry one, `transactionIdentity` refuses rather than
     // fabricating a field a caller would read as this run's.
-    const priorHash = (contract as { transactionHash?: unknown }).transactionHash;
+    const priorHash = readWriteBackHash(contract);
     return Object.freeze({
       contract: await toolkit.contractAt(contract, decision.address),
       address: decision.address,
@@ -149,17 +152,13 @@ export async function runDeployProxy(
       () => toolkit.hostDeploy(contract, [...resolved.constructorArgs]),
     );
 
-    const priorProxyHash = (proxyAbstraction as { transactionHash?: unknown })
-      .transactionHash;
+    const priorProxyHash = readWriteBackHash(proxyAbstraction);
     const constructorArgs =
       kind === 'transparent'
         ? [implementationAddress, initialOwner, initData]
         : [implementationAddress, initData];
     const writeBack = await toolkit.hostDeploy(proxyAbstraction, constructorArgs);
-    assertFreshTransaction(
-      typeof priorProxyHash === 'string' ? priorProxyHash : null,
-      writeBack,
-    );
+    assertFreshTransaction(priorProxyHash, writeBack);
 
     const verdict = await toolkit.confirm(writeBack.transactionHash);
     if (verdict.kind === 'reverted') {
@@ -217,7 +216,7 @@ export async function deployProxy(
   options: RawOperationOptions = {},
 ): Promise<DeployedProxy> {
   const context = await createOperationToolkit({
-    handles: { deployer: options.deployer },
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
   });

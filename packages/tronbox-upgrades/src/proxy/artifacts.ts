@@ -43,11 +43,29 @@ export function requireProxyArtifact(
   switch (resolution.status) {
     case 'unique':
       return resolution.contract;
-    case 'ambiguous':
+    case 'ambiguous': {
+      /*
+       * The seam detects; the refusal-or-pick policy is this operation
+       * layer's. Candidates that share one (sourcePath, contractName) are the
+       * SAME contract seen in several build records — recompiles accumulate
+       * build-info files, and the first live migration hit exactly that shape
+       * — so only DISTINCT sources constitute a collision a user must
+       * resolve. With one distinct source the resolver's single abstraction
+       * is unambiguous for deployment, whatever record later describes it.
+       */
+      const distinct = new Set(
+        resolution.candidates.map(
+          candidate => `${candidate.sourcePath}:${candidate.contractName}`,
+        ),
+      );
+      if (distinct.size <= 1) {
+        return resolution.unverifiedContract;
+      }
       throw new ProxyArtifactCollisionError(
         name,
-        resolution.candidates.map(candidate => candidate.sourcePath),
+        [...new Set(resolution.candidates.map(candidate => candidate.sourcePath))],
       );
+    }
     case 'indeterminate':
       throw new ProxyArtifactMissingError(name);
   }

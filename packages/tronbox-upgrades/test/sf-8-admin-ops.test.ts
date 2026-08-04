@@ -50,14 +50,15 @@ function buildFake(spec: Spec = {}) {
       describe: () => 'fake',
     } as never,
     session: {} as never,
-    chain: {
-      read: {
-        readAdminAddress: async () => {
-          log.push('readAdminAddress');
-          return (spec.adminSlot ?? toTronHex(canonicalizeAddress(ADMIN))) as never;
-        },
-      },
-    } as never,
+    chain: { read: {} } as never,
+    proxySlots: async () => {
+      log.push('proxySlots');
+      const admin =
+        spec.adminSlot === zeroChainAddress
+          ? null
+          : (spec.adminSlot ?? toTronHex(canonicalizeAddress(ADMIN)));
+      return { kind: 'code' as const, implementation: null, admin, beacon: null };
+    },
     contractAt: async () => ({}) as never,
     validateImplementation: async () => {
       throw new Error('not used here');
@@ -133,7 +134,7 @@ describe('INV-3: a zero admin slot refuses before any send', () => {
     await expect(
       runTransferProxyAdminOwnership(fake.context, PROXY, NEW_OWNER),
     ).rejects.toBeInstanceOf(NotTransparentProxyError);
-    expect(fake.log).toEqual(['readAdminAddress']);
+    expect(fake.log).toEqual(['proxySlots']);
   });
 });
 

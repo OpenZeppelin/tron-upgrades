@@ -17,7 +17,7 @@ import {
   refuseUnlessLinkingAllowed,
   linkedLibraryNames,
 } from '../deploy';
-import { zeroChainAddress } from '../chain';
+import { NothingToAdoptError } from '../adopt/errors';
 import { transactionIdentity, operationNotes } from '../results/types';
 import type { UpgradedProxy } from '../results/types';
 import { planUpgradeDispatch } from './dispatch';
@@ -29,13 +29,16 @@ import {
 import { isAlreadyCurrent } from './replay';
 import {
   createOperationToolkit,
+  handlesFrom,
+  HANDLE_OPTION_KEYS,
+  readWriteBackHash,
   encodeInitializer,
   type OperationContext,
   type RawOperationOptions,
 } from './toolkit';
 
 export const UPGRADE_PROXY_ACCEPTED_OPTIONS: readonly string[] = [
-  'deployer',
+  ...HANDLE_OPTION_KEYS,
   'kind',
   'call',
   'constructorArgs',
@@ -100,13 +103,24 @@ export async function runUpgradeProxy(
   // 2 — only now may the missing deployer refuse (INV-18).
   const deployer = toolkit.requireDeployer();
 
-  // 3 — the beacon check, BEFORE kind processing (INV-4): upstream's kind
-  //     machinery defaults a record-less proxy to 'transparent', so a beacon
-  //     proxy that reaches it gets a transparent-path upgrade attempt.
+  // 3 — the slots, in ONE non-raising read (the per-slot readers raise on an
+  //     empty slot — measured live). The beacon check comes BEFORE kind
+  //     processing (INV-4): upstream's kind machinery defaults a record-less
+  //     proxy to 'transparent', so a beacon proxy that reaches it gets a
+  //     transparent-path upgrade attempt.
   const readers = toolkit.chain.read;
-  const beacon = await readers.readBeaconAddress(proxyAddress);
-  if (beacon !== zeroChainAddress) {
-    throw new BeaconProxyRefusedError(proxyAddress, beacon);
+  const slots = await toolkit.proxySlots(proxyAddress);
+  if (slots.kind === 'no-code') {
+    throw new NothingToAdoptError(proxyAddress);
+  }
+  if (slots.beacon !== null) {
+    throw new BeaconProxyRefusedError(proxyAddress, slots.beacon);
+  }
+  if (slots.implementation === null) {
+    throw new NothingToAdoptError(
+      proxyAddress,
+      'code with an empty 1967 implementation slot — not a proxy this plugin can upgrade',
+    );
   }
 
   // 4 — the kind, from the engine's own machinery with the record cross-check.
@@ -114,7 +128,7 @@ export async function runUpgradeProxy(
 
   // 5 — chain first for current state (INV-7): the 1967 slot is the only truth
   //     about what runs now; the manifest supplies the layout FOR that address.
-  const currentImplementation = await readers.readImplementationAddress(proxyAddress);
+  const currentImplementation = slots.implementation;
 
   // 6 — the already-current no-op, recognized canonically (INV-10).
   const targetByRecord = toolkit.priorDeployedAddress(contract);
@@ -126,7 +140,7 @@ export async function runUpgradeProxy(
       contract: await toolkit.contractAt(contract, proxyAddress),
       address: proxyAddress,
       transaction: transactionIdentity(
-        (contract as { transactionHash?: unknown }).transactionHash,
+        readWriteBackHash(contract),
         'upgradeProxy (already current)',
       ),
       implementation: currentImplementation as string,
@@ -146,12 +160,11 @@ export async function runUpgradeProxy(
   let adminAddress: string | null = null;
   let probeSubject: string = proxyAddress;
   if (kind === 'transparent') {
-    const admin = await readers.readAdminAddress(proxyAddress);
-    if (admin === zeroChainAddress) {
+    if (slots.admin === null) {
       throw new NotTransparentProxyError(proxyAddress);
     }
-    adminAddress = admin;
-    probeSubject = admin as string;
+    adminAddress = slots.admin;
+    probeSubject = slots.admin;
   }
   const interfaceVersion = await readers.readUpgradeInterfaceVersion(probeSubject);
   const plan = planUpgradeDispatch({
@@ -235,7 +248,7 @@ export async function upgradeProxy(
   options: RawOperationOptions = {},
 ): Promise<UpgradedProxy> {
   const context = await createOperationToolkit({
-    handles: { deployer: options.deployer },
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: UPGRADE_PROXY_ACCEPTED_OPTIONS,
   });

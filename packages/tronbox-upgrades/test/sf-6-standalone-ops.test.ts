@@ -116,6 +116,9 @@ function buildFake(spec: Spec = {}) {
     looksLikeProxyAdmin: async () => false,
 
     hashWithoutMetadata: (bytecode: string) => bytecode.slice(0, 16),
+    proxySlots: async () => {
+      throw new Error('proxySlots must not be consulted by this surface');
+    },
 
     callThroughFacade: async (request: { at: string }) => {
       log.push('callThroughFacade');
