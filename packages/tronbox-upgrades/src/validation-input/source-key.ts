@@ -24,9 +24,9 @@ import type { AbsolutePath } from '../environment';
  * `path.relative`, `path.resolve` or `replace(/\\/g, '/')` on a source path"*,
  * enforced by a scan naming this file as the only one. Import resolution and the
  * artifact's own `sourcePath` both need that arithmetic, so co-locating it is
- * what the instrument requires rather than a widening of scope. Design's
- * *"nothing else"* is about keeping graph traversal and input assembly out, and
- * they are out.
+ * what the instrument requires rather than a widening of scope. The
+ * *"nothing else"* constraint is about keeping graph traversal and input assembly
+ * out, and they are out.
  *
  * **Everything below reproduces TronBox rather than calling it** (SF-0's INV-49 —
  * no module in this package imports the host by any path, and the host's own
