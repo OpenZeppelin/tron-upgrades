@@ -268,3 +268,86 @@ export function absentFromRecompile(): ArtifactIdentityComparison {
     withMetadataMatches: false,
   });
 }
+
+export interface BuildRecordFreshnessRequest {
+  /**
+   * `evm.deployedBytecode` out of the host's own build record.
+   *
+   * `.object` is **unprefixed** — it is raw solc standard-JSON output — and it
+   * must stay that way for this call: `dist/link-refs.js:extractLinkReferences`
+   * indexes `bytecode.object.substr(start * 2, …)` with no prefix strip, so
+   * handing it a `0x`-prefixed string reads every placeholder two characters off.
+   */
+  readonly buildRecordDeployed: SolcBytecode;
+  /**
+   * `ArtifactRecord.deployedBytecode`, which TronBox writes as
+   * `'0x' + contract.evm.deployedBytecode.object` and then rewrites per linked
+   * library into its own legacy placeholder form — `'__' + libraryName` padded
+   * with underscores to 40 characters, where solc writes `__$<34-hex>$__`.
+   */
+  readonly artifactDeployedBytecode: string;
+}
+
+export type BuildRecordFreshness =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly reason: 'deployed-bytecode-differs' | 'nothing-to-compare';
+    };
+
+/**
+ * Whether a build record describes the very compile that produced this artifact,
+ * decided by **content** and by the compiled result rather than by the source
+ * text.
+ *
+ * **Why the compiled result.** Solc's deployed bytecode ends in a CBOR metadata
+ * section whose hash covers the sources *and the settings*, so a source-text
+ * comparison could match while settings differed and this one cannot. It also
+ * needs no additional read: `evm.deployedBytecode.object` and its
+ * `.linkReferences` are both in the host's own `outputSelection`, in the
+ * `*.output.json` file the build-info reader already reads — so the paired
+ * compiler-*input* file stays unread and the reader's one-listing-plus-one-parse
+ * budget is untouched. The source-text formulation would have amended it.
+ *
+ * **Why not simply `===`.** TronBox rewrites the artifact's placeholders for every
+ * linked library, so a linked contract's artifact bytes differ from solc's raw
+ * object even when the two describe the same compile. The normalisation is
+ * upstream's own and is used here exactly as {@link compareArtifactIdentity} uses
+ * it — take the link offsets from the reference side, rewrite the *artifact* side
+ * into the compiler's canonical placeholder. The only change is that the
+ * reference side is the build record instead of a fresh recompile.
+ *
+ * **The `0x` is added explicitly on the solc side.** `unlinkBytecode` is
+ * prefix-tolerant and returns a `0x`-prefixed string (`dist/link-refs.js`);
+ * `.object` is unprefixed. The asymmetry is real, there is no off-by-two, and
+ * both sides are lower-cased because a placeholder is substituted verbatim, so
+ * case can only diverge upstream of this comparison.
+ *
+ * **Equality means the same compiled output.** It means the same sources *and*
+ * settings only while the CBOR tail is present; a project setting
+ * `metadata.bytecodeHash: "none"` strips it and the claim weakens to the first
+ * form. Sound in the safe direction either way — a mismatch sends the caller
+ * down the compile path, never past a check.
+ *
+ * **The empty-versus-empty case is refused rather than passed**, and it is the
+ * one vacuity trap this comparison has: an abstract contract or an interface has
+ * `deployedBytecode` of `'0x'` against a record `.object` of `''`, which compare
+ * equal and would report "verified" having compared nothing. There is no evidence
+ * in that pair, so it is `'nothing-to-compare'`.
+ */
+export function verifyBuildRecordFreshness(
+  request: BuildRecordFreshnessRequest,
+): BuildRecordFreshness {
+  const reference = request.buildRecordDeployed.object;
+  const artifact = request.artifactDeployedBytecode;
+  if (reference === '' || artifact === '' || artifact === '0x') {
+    return { ok: false, reason: 'nothing-to-compare' };
+  }
+
+  const linkReferences = extractLinkReferences(request.buildRecordDeployed);
+  const unlinkedArtifact = unlinkBytecode(artifact, linkReferences);
+
+  return unlinkedArtifact.toLowerCase() === `0x${reference}`.toLowerCase()
+    ? { ok: true }
+    : { ok: false, reason: 'deployed-bytecode-differs' };
+}
