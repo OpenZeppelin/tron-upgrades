@@ -140,6 +140,15 @@ function collect(): readonly Publishable[] {
     }
   };
   for (const top of ['src', 'test', 'docs']) walk(path.join(packageRoot, top));
+  // Root-level publication files join the scanned set the day they exist. The
+  // existence pins in the manifest test below are what make an appearance
+  // deliberate; this clause is what makes it scanned.
+  for (const rootFile of ['LICENSE', 'README.md']) {
+    const full = path.join(packageRoot, rootFile);
+    if (fs.existsSync(full)) {
+      found.push({ relative: rootFile, text: fs.readFileSync(full, 'utf8') });
+    }
+  }
   return found;
 }
 
@@ -246,13 +255,15 @@ describe('publication hygiene: every reference resolves inside the published rep
     expect(manifest.files.filter(entry => !accounted.includes(entry))).toEqual([]);
 
     /*
-     * LICENSE and README.md are declared and do not exist — recorded rather than
-     * authored, because both are release decisions, not hygiene fixes. The pin is
-     * deliberate: the day either file appears it must join the scanned set, and
-     * this assertion failing is what forces that revisit instead of the file
-     * shipping unscanned.
+     * LICENSE exists and ships: MIT, matching the manifest's declared license
+     * and the sibling plugins' file verbatim. It is in the scanned set (the
+     * root-file clause in `collect`). README.md is declared and does not exist —
+     * recorded rather than authored, because it is a release decision, not a
+     * hygiene fix. That pin is deliberate: the day the file appears it must join
+     * the scanned set, and this assertion failing is what forces that revisit
+     * instead of the file shipping unscanned.
      */
-    expect(fs.existsSync(path.join(packageRoot, 'LICENSE'))).toBe(false);
+    expect(fs.existsSync(path.join(packageRoot, 'LICENSE'))).toBe(true);
     expect(fs.existsSync(path.join(packageRoot, 'README.md'))).toBe(false);
   });
 
