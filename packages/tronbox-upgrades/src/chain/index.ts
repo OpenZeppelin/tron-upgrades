@@ -87,8 +87,8 @@ function asEngineProvider(provider: TronEthereumProvider): EthereumProvider {
  * `JSON.stringify(access)` cannot leak either and does not throw. That is why
  * `sealSlot` is unnecessary here: SF-0 met INV-40's guarantee by *redaction*
  * because its slots expose handles as named capabilities; SF-1 meets it by
- * *construction*, because there is no field to redact. SF-1's Research had
- * concluded the adapter would need sealing; it does not, and the reason is a
+ * *construction*, because there is no field to redact. The adapter was expected to
+ * need sealing; it does not, and the reason is a
  * design property that the first field added for convenience would silently undo.
  */
 export interface ChainAccess {

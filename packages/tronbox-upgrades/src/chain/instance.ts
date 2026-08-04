@@ -25,7 +25,7 @@ import { requireResultShape, type TronEthereumProvider } from './provider';
  * A chain instance's fingerprint, read from the chain.
  *
  * INV-10: every field that participates in a comparison is **canonicalized before
- * it is returned**. Design's doc said `chainId` was "`0x`-prefixed lowercase hex,
+ * it is returned**. The originally specified shape for `chainId` was "`0x`-prefixed lowercase hex,
  * as the node reports it", and those two clauses can disagree — if a node version
  * changes its hex casing, or a proxy uppercases it, an un-canonicalized comparison
  * reports `changed` with `signal: 'chain-id'`, whose message leads with "a
