@@ -22,7 +22,12 @@ const { deployProxy } = require('@openzeppelin/tronbox-upgrades');
 const Box = artifacts.require('Box');
 
 module.exports = async function (deployer) {
-  const result = await deployProxy(Box, [42], { deployer });
+  // The migration's own handles, passed through once: artifacts, tronWrap and
+  // waitForTransactionReceipt are file-scope globals TronBox provides to
+  // every migration, alongside the deployer argument.
+  const handles = { deployer, artifacts, tronWrap, waitForTransactionReceipt };
+
+  const result = await deployProxy(Box, [42], handles);
   console.log('proxy at', result.address);
 };
 ```
@@ -42,7 +47,7 @@ are on the [deployment and transactions](../deploy/README.md) page.
 
 ```js
 const BoxV2 = artifacts.require('BoxV2');
-const result = await upgradeProxy(proxyAddress, BoxV2, { deployer });
+const result = await upgradeProxy(proxyAddress, BoxV2, handles);
 ```
 
 In order: the new implementation is validated, its storage layout is checked against the
@@ -85,7 +90,7 @@ Both operations declare what a replay does:
 ## Administering upgrade authority
 
 ```js
-await transferProxyAdminOwnership(proxyAddress, multisigAddress, { deployer });
+await transferProxyAdminOwnership(proxyAddress, multisigAddress, handles);
 ```
 
 A v5 transparent proxy's admin is its **own immutable ProxyAdmin** — what transfers is that

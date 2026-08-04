@@ -14,7 +14,8 @@ understanding before you meet them.
 
 ```js
 module.exports = async function (deployer, network, accounts) {
-  const box = await deployProxy(Box, [42], { deployer }); // ← await, always
+  const handles = { deployer, artifacts, tronWrap, waitForTransactionReceipt };
+  const box = await deployProxy(Box, [42], handles); // ← await, always
 };
 ```
 

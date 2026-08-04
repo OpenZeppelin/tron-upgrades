@@ -82,22 +82,6 @@ function buildFake(spec: Spec = {}) {
         },
       },
       read: {
-        hasCode: async () => {
-          log.push('hasCode');
-          return spec.hasCode ?? true;
-        },
-        readImplementationAddress: async () => {
-          log.push('readImplementationAddress');
-          return (spec.implementationSlot ?? zeroChainAddress) as never;
-        },
-        readAdminAddress: async () => {
-          log.push('readAdminAddress');
-          return (spec.adminSlot ?? zeroChainAddress) as never;
-        },
-        readBeaconAddress: async () => {
-          log.push('readBeaconAddress');
-          return (spec.beaconSlot ?? zeroChainAddress) as never;
-        },
         readBeaconImplementation: async () => {
           log.push('readBeaconImplementation');
           return spec.answersBeaconImplementation
@@ -106,6 +90,18 @@ function buildFake(spec: Spec = {}) {
         },
       },
     } as never,
+    proxySlots: async () => {
+      log.push('proxySlots');
+      if (spec.hasCode === false) {
+        return { kind: 'no-code' as const };
+      }
+      return {
+        kind: 'code' as const,
+        implementation: spec.implementationSlot ?? null,
+        admin: spec.adminSlot ?? null,
+        beacon: spec.beaconSlot ?? null,
+      };
+    },
     contractAt: async (_a: never, address: string) => ({ address }) as never,
     async validateImplementation(name: string) {
       log.push(`validate:${name}`);
@@ -189,7 +185,7 @@ describe('INV-3: the code check comes first, and no-code refuses by name', () =>
     await expect(
       runForceImport(fake.context, ADDR, abstraction(CODE)),
     ).rejects.toBeInstanceOf(NothingToAdoptError);
-    expect(fake.log).toEqual(['hasCode']);
+    expect(fake.log).toEqual(['proxySlots']);
   });
 });
 

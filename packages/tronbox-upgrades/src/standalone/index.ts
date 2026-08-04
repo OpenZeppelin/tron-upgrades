@@ -22,11 +22,15 @@ import type {
 } from '../results/types';
 import {
   createOperationToolkit,
+  handlesFrom,
+  HANDLE_OPTION_KEYS,
+  readWriteBackHash,
   type OperationContext,
   type RawOperationOptions,
 } from '../proxy/toolkit';
 
 const VALIDATE_ACCEPTED: readonly string[] = [
+  ...HANDLE_OPTION_KEYS,
   'kind',
   'constructorArgs',
   'unsafeAllow',
@@ -37,7 +41,7 @@ const VALIDATE_ACCEPTED: readonly string[] = [
 ];
 
 const DEPLOY_IMPL_ACCEPTED: readonly string[] = [
-  'deployer',
+  ...HANDLE_OPTION_KEYS,
   'kind',
   'constructorArgs',
   'unsafeAllow',
@@ -79,7 +83,7 @@ export async function validateImplementation(
   options: RawOperationOptions = {},
 ): Promise<ValidationOutcome> {
   const context = await createOperationToolkit({
-    handles: {},
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: VALIDATE_ACCEPTED,
     mode: 'validate-only',
@@ -119,7 +123,7 @@ export async function validateUpgrade(
   options: RawOperationOptions = {},
 ): Promise<ValidationOutcome> {
   const context = await createOperationToolkit({
-    handles: {},
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: VALIDATE_ACCEPTED,
     mode: 'validate-only',
@@ -164,10 +168,9 @@ async function deployImplementationThroughQueue(
     }
     // Replay (scenario 4): the record vouched for an unchanged implementation,
     // nothing was deployed, and the identity reported is the recorded one.
-    const prior = (contract as { transactionHash?: unknown }).transactionHash;
     return {
       implementationAddress,
-      transactionHash: typeof prior === 'string' ? prior : null,
+      transactionHash: readWriteBackHash(contract),
     };
   });
 
@@ -191,7 +194,7 @@ export async function deployImplementation(
   options: RawOperationOptions = {},
 ): Promise<ImplementationDeployment> {
   const context = await createOperationToolkit({
-    handles: { deployer: options.deployer },
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: DEPLOY_IMPL_ACCEPTED,
   });
@@ -232,7 +235,7 @@ export async function prepareUpgrade(
   options: RawOperationOptions = {},
 ): Promise<ImplementationDeployment> {
   const context = await createOperationToolkit({
-    handles: { deployer: options.deployer },
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: DEPLOY_IMPL_ACCEPTED,
   });

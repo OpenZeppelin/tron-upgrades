@@ -8,7 +8,6 @@
 
 import type { ContractAbstraction } from '../environment';
 import { canonicalizeAddress } from '../record';
-import { zeroChainAddress } from '../chain';
 import {
   ConfirmationIndeterminateError,
   TransactionRevertedError,
@@ -18,6 +17,8 @@ import type { AuthorityTransfer } from '../results/types';
 import { NotTransparentProxyError } from '../proxy/errors';
 import {
   createOperationToolkit,
+  handlesFrom,
+  HANDLE_OPTION_KEYS,
   type OperationContext,
   type RawOperationOptions,
 } from '../proxy/toolkit';
@@ -27,7 +28,7 @@ import {
 } from './errors';
 
 export const TRANSFER_OWNERSHIP_ACCEPTED_OPTIONS: readonly string[] = [
-  'deployer',
+  ...HANDLE_OPTION_KEYS,
   'timeout',
   'pollingInterval',
 ];
@@ -42,12 +43,13 @@ export async function runTransferProxyAdminOwnership(
   const proxyAddress = canonicalizeAddress(proxy);
   const targetOwner = canonicalizeAddress(newOwner);
 
-  // INV-3 — a zero admin slot refuses before anything else.
-  const adminSlot = await toolkit.chain.read.readAdminAddress(proxyAddress);
-  if (adminSlot === zeroChainAddress) {
+  // INV-3 — an empty admin slot refuses before anything else. The batched
+  // read, because the per-slot reader raises on an empty slot (measured).
+  const slots = await toolkit.proxySlots(proxyAddress);
+  if (slots.kind === 'no-code' || slots.admin === null) {
     throw new NotTransparentProxyError(proxyAddress);
   }
-  const adminAddress = canonicalizeAddress(adminSlot);
+  const adminAddress = canonicalizeAddress(slots.admin);
 
   // INV-1 — the pre-read (scenario 3). Nothing sends when it already answers.
   const currentOwner = await toolkit.ownerOf(adminAddress);
@@ -128,7 +130,7 @@ export async function transferProxyAdminOwnership(
   options: RawOperationOptions = {},
 ): Promise<AuthorityTransfer> {
   const context = await createOperationToolkit({
-    handles: { deployer: options.deployer },
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: TRANSFER_OWNERSHIP_ACCEPTED_OPTIONS,
   });

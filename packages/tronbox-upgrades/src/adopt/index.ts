@@ -12,11 +12,12 @@
 
 import type { ContractAbstraction } from '../environment';
 import { canonicalizeAddress } from '../record';
-import { zeroChainAddress } from '../chain';
 import { operationNotes } from '../results/types';
 import type { AdoptionOutcome } from '../results/types';
 import {
   createOperationToolkit,
+  handlesFrom,
+  HANDLE_OPTION_KEYS,
   type OperationContext,
   type RawOperationOptions,
 } from '../proxy/toolkit';
@@ -27,7 +28,7 @@ import {
 } from './errors';
 
 export const FORCE_IMPORT_ACCEPTED_OPTIONS: readonly string[] = [
-  'deployer',
+  ...HANDLE_OPTION_KEYS,
   'kind',
   'constructorArgs',
   'unsafeAllow',
@@ -59,28 +60,22 @@ export async function runForceImport(
   const address = canonicalizeAddress(addressInput);
   const readers = toolkit.chain.read;
 
-  // INV-3 — the code check FIRST, and by name: a TVM node rejects slot reads
-  // for a no-code address instead of answering an empty word, so every
-  // classification read below presumes this passed.
-  if (!(await readers.hasCode(address))) {
+  // INV-3 — the batched slot read discriminates no-code as its own fact (a
+  // TVM node rejects per-slot reads for a no-code address, and the per-slot
+  // readers raise on empty slots — both measured), so classification uses the
+  // one non-raising instrument.
+  const slots = await toolkit.proxySlots(address);
+  if (slots.kind === 'no-code') {
     throw new NothingToAdoptError(address);
   }
 
-  // Classification, from chain state alone (INV-2's premise).
-  const implementationSlot = await readers.readImplementationAddress(address);
-  const beaconSlot = await readers.readBeaconAddress(address);
-  const beaconRead =
-    implementationSlot === zeroChainAddress && beaconSlot === zeroChainAddress
-      ? await readers.readBeaconImplementation(address)
-      : undefined;
-
   let found: AdoptedKind;
   let implementationAddress: string;
-  if (beaconSlot !== zeroChainAddress) {
+  if (slots.beacon !== null) {
     // A beacon PROXY: its implementation lives on the beacon, and the record
     // kind is beacon (scenario 5's "never as a transparent or UUPS proxy").
     found = 'beacon';
-    const viaBeacon = await readers.readBeaconImplementation(beaconSlot);
+    const viaBeacon = await readers.readBeaconImplementation(slots.beacon);
     if (viaBeacon.kind !== 'implementation') {
       throw new NothingToAdoptError(
         address,
@@ -88,16 +83,18 @@ export async function runForceImport(
       );
     }
     implementationAddress = viaBeacon.address;
-  } else if (implementationSlot !== zeroChainAddress) {
-    const adminSlot = await readers.readAdminAddress(address);
-    found = adminSlot === zeroChainAddress ? 'uups' : 'transparent';
-    implementationAddress = implementationSlot;
-  } else if (beaconRead !== undefined && beaconRead.kind === 'implementation') {
-    found = 'beacon';
-    implementationAddress = beaconRead.address;
+  } else if (slots.implementation !== null) {
+    found = slots.admin === null ? 'uups' : 'transparent';
+    implementationAddress = slots.implementation;
   } else {
-    found = 'implementation';
-    implementationAddress = address;
+    const beaconRead = await readers.readBeaconImplementation(address);
+    if (beaconRead.kind === 'implementation') {
+      found = 'beacon';
+      implementationAddress = beaconRead.address;
+    } else {
+      found = 'implementation';
+      implementationAddress = address;
+    }
   }
 
   // INV-2 — the kind gate, before anything validates or writes.
@@ -175,7 +172,7 @@ export async function forceImport(
   options: RawOperationOptions = {},
 ): Promise<AdoptionOutcome> {
   const context = await createOperationToolkit({
-    handles: { deployer: options.deployer },
+    handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: FORCE_IMPORT_ACCEPTED_OPTIONS,
   });

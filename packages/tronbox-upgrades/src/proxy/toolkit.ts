@@ -180,6 +180,22 @@ export interface OperationToolkit {
   /** `owner()` via the optional-call reader; `null` when nothing answers. */
   ownerOf(address: string): Promise<string | null>;
 
+  /**
+   * The three 1967 slots in one non-raising read: `null` means a zero word,
+   * `no-code` is its own fact. The per-slot readers RAISE on an empty slot —
+   * measured on the first live upgrade — so classification always goes
+   * through this.
+   */
+  proxySlots(address: string): Promise<
+    | { readonly kind: 'no-code' }
+    | {
+        readonly kind: 'code';
+        readonly implementation: string | null;
+        readonly admin: string | null;
+        readonly beacon: string | null;
+      }
+  >;
+
   /** The dispatched upgrade call, sent through the host (upgrade path). */
   sendUpgradeCall(request: {
     readonly route: 'admin-v5' | 'admin-v4' | 'uups-v5' | 'uups-pre5';
@@ -205,8 +221,42 @@ export interface OperationContext {
 /** Options every operation accepts at minimum; the per-operation lists extend it. */
 export interface RawOperationOptions {
   readonly deployer?: unknown;
+  readonly artifacts?: unknown;
+  readonly tronWrap?: unknown;
+  readonly tronWeb?: unknown;
+  readonly waitForTransactionReceipt?: unknown;
   readonly [key: string]: unknown;
 }
+
+/**
+ * The migration-scope handles, lifted off the options object. TronBox's
+ * migration sandbox provides exactly these as file-scope globals — the host's
+ * Migrate component builds the context `{ tronWrap, tronWeb,
+ * waitForTransactionReceipt }` on top of Require's `artifacts` — and
+ * `RawMigrationHandles` mirrors that sandbox by design, so a migration passes
+ * what it already holds:
+ *
+ *   const handles = { deployer, artifacts, tronWrap, waitForTransactionReceipt };
+ *   await deployProxy(Box, [42], handles);
+ */
+export function handlesFrom(options: RawOperationOptions): RawMigrationHandles {
+  return {
+    deployer: options.deployer,
+    artifacts: options.artifacts,
+    tronWrap: options.tronWrap,
+    tronWeb: options.tronWeb,
+    waitForTransactionReceipt: options.waitForTransactionReceipt,
+  };
+}
+
+/** The five handle keys, accepted by every operation's option list. */
+export const HANDLE_OPTION_KEYS: readonly string[] = [
+  'deployer',
+  'artifacts',
+  'tronWrap',
+  'tronWeb',
+  'waitForTransactionReceipt',
+];
 
 /**
  * Encodes initializer data over the abstraction's public `abi`. `'0x'` is a
@@ -239,6 +289,21 @@ export function encodeInitializer(
     throw new EmptyInitializerRefusedError(kind, 'no-default-initializer');
   }
   return data;
+}
+
+/**
+ * A guarded read of a class abstraction's write-back fields: the host's
+ * getters route through `this.network`, which THROWS for a contract with no
+ * per-network entry yet — measured on the first live run. Absence is a value
+ * here, never an exception.
+ */
+export function readWriteBackHash(contract: ContractAbstraction): string | null {
+  try {
+    const hash = (contract as { transactionHash?: unknown }).transactionHash;
+    return typeof hash === 'string' && hash !== '' ? hash : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The abstraction's public deployed-address surface, guarded. */
@@ -574,14 +639,28 @@ export async function createOperationToolkit(request: {
             `abstraction has no deployable surface in this context`,
         );
       }
-      await deployable.new(...args);
-      const address = deployable.address;
-      const transactionHash = deployable.transactionHash;
+      const instance = (await deployable.new(...args)) as {
+        address?: unknown;
+        transactionHash?: unknown;
+      };
+      const address = instance?.address;
+      const transactionHash = instance?.transactionHash;
       if (typeof address !== 'string' || typeof transactionHash !== 'string') {
         throw new Error(
-          'the host deploy completed without writing address and transactionHash back',
+          'the host deploy resolved without an address and transaction hash',
         );
       }
+      /*
+       * The write-back the host's own deploy action performs, mirrored here
+       * because this seam deploys through `.new` directly: assigning the
+       * class's `address` is what CREATES the artifact's per-network entry
+       * (the setter writes `_json.networks[network_id]`), which is both the
+       * replay memory `decideDeployReplay` reads and what the host persists
+       * back into the artifact after the migration. Reading the class getter
+       * before this assignment throws — measured on the first live run.
+       */
+      deployable.address = address;
+      deployable.transactionHash = transactionHash;
       return { address, transactionHash };
     },
 
@@ -687,6 +766,8 @@ export async function createOperationToolkit(request: {
       }
       return { address: request.at, transactionHash };
     },
+
+    proxySlots: address => requireChain().read.readProxySlots(address),
 
     async ownerOf(address) {
       // owner()'s selector; the answer is a 32-byte word carrying the address

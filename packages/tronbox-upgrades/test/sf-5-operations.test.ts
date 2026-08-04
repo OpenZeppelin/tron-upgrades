@@ -138,22 +138,11 @@ function buildFake(spec: FakeSpec = {}): Fake {
     } as never,
     chain: {
       read: {
-        readBeaconAddress: async () => {
-          log.push('readBeaconAddress');
-          return (spec.beacon ?? zeroChainAddress) as never;
-        },
-        readAdminAddress: async () => {
-          log.push('readAdminAddress');
-          return (spec.admin ?? toTronHex(canonicalizeAddress(IMPL_OWNER)).replace('41', '0x')) as never;
-        },
         readImplementationAddress: async () => {
+          // The post-upgrade verification read (INV-3).
           log.push('readImplementationAddress');
-          // First read answers the current implementation; the post-upgrade
-          // verification read answers the observed value.
-          const reads = log.filter(entry => entry === 'readImplementationAddress');
-          return (reads.length > 1
-            ? (spec.observedAfterUpgrade ?? toTronHex(canonicalizeAddress(NEW_IMPL)))
-            : currentImpl) as never;
+          return (spec.observedAfterUpgrade ??
+            toTronHex(canonicalizeAddress(NEW_IMPL))) as never;
         },
         readUpgradeInterfaceVersion: async () => {
           log.push('readUpgradeInterfaceVersion');
@@ -163,6 +152,19 @@ function buildFake(spec: FakeSpec = {}): Fake {
         },
       } as never,
     } as never,
+
+    proxySlots: async () => {
+      log.push('proxySlots');
+      return {
+        kind: 'code' as const,
+        implementation: currentImpl,
+        admin:
+          'admin' in spec
+            ? (spec.admin === zeroChainAddress ? null : (spec.admin ?? null))
+            : toTronHex(canonicalizeAddress(IMPL_OWNER)),
+        beacon: spec.beacon ?? null,
+      };
+    },
 
     contractAt: async (_abstraction, address) => {
       log.push('contractAt');
@@ -399,7 +401,7 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     await expect(
       runUpgradeProxy(fake.context, PROXY_ADDR, newImpl()),
     ).rejects.toBeInstanceOf(BeaconProxyRefusedError);
-    expect(fake.log).toContain('readBeaconAddress');
+    expect(fake.log).toContain('proxySlots');
     expect(fake.log).not.toContain('processProxyKind');
     expect(fake.log).not.toContain('queue');
   });
@@ -408,7 +410,7 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     const fake = buildFake();
     await runUpgradeProxy(fake.context, PROXY_ADDR, newImpl());
 
-    const authority = fake.log.indexOf('readAdminAddress');
+    const authority = fake.log.indexOf('proxySlots');
     const probe = fake.log.indexOf('readUpgradeInterfaceVersion');
     const implementationDeploy = fake.log.indexOf('fetchOrDeployImplementation');
     expect(authority).toBeGreaterThanOrEqual(0);
