@@ -192,6 +192,18 @@ well goes with it. There is deliberately no narrower slot-data flag: the maintai
 pass-through sufficient (2026-08-04), and the measured false-positive rate — two shapes over
 nine pairs, both resolved by escalation — does not justify a second opt-out surface.
 
+**One known limitation, currently unreachable and canaried.** Solidity 0.8.29's custom
+storage layouts (`layout at <slot>`) are outside TronBox's compiler ceiling (0.8.26), so no
+TronBox project can produce one today — which matters because the validation engine's
+base-slot comparison for the slot-less mode is defeated upstream: the layout-rebuild that
+every without-storage-layouts consumer reads through drops `baseSlot`, so a base-slot change
+would pass silently (confirmed by the upstream maintainer; a minimal API-level repro is
+persisted with the development evidence). Two suite canaries pin the boundary — one fails
+when an upstream release fixes the rebuild, one fails when a TronBox release raises the
+compiler ceiling — so the question reopens deliberately before the first affected contract
+can compile. The one base-slot change that IS expressible today, renaming an ERC-7201
+`@custom:storage-location` id, is refused in both validation modes.
+
 **The long-term path is upstream of this plugin entirely**: a TronBox feature request to add
 `storageLayout` to its compiler `outputSelection`, which would make every build record carry
 positions and retire the fresh path's shortfall without a plugin change. The request ships with
