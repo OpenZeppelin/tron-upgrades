@@ -22,8 +22,8 @@ import {
  * whose graph is not resolved first gets
  * `ParserError: Source "Nope.sol" not found: File not supplied initially`, which
  * names a mechanism inside the *plugin's* input assembly and is indistinguishable
- * from a genuine source error. Owning the walk is what turns Research's
- * undetectable condition 2 into two causes with two different remedies.
+ * from a genuine source error. Owning the walk is what turns a
+ * previously undetectable condition into two causes with two different remedies.
  *
  * **The walk starts at the target and never enumerates the contracts directory**
  * (INV-43). That is what makes cost a function of graph depth rather than project

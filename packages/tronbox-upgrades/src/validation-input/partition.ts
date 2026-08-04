@@ -26,8 +26,8 @@ export interface PartitionRecord {
    *
    * **A source key, not a contract name, and INV-4 is what decides it:**
    * *"`provenance.partition.closure` is non-empty and contains
-   * `provenance.partition.target`"*, and `closure` is a set of source keys. Design's
-   * field comment reads like a contract name; the containment assertion is the
+   * `provenance.partition.target`"*, and `closure` is a set of source keys. The
+   * original field comment read like a contract name; the containment assertion is the
    * testable statement, so the key wins. It also names something a user can open.
    */
   readonly target: string;
@@ -130,9 +130,9 @@ export function partitionIdentity(
  * call-scoped memo holds at most one entry and its *hit* path is unreachable
  * through the shipped API. The lookup runs on every compile; the hit does not.
  *
- * That is a gap between two ratified inputs rather than a shortcut here: Design's
- * § Partitioning describes the memo as amortising *"within one process"*, INV-45
- * states it as *"within one call"*, and INV-22's and INV-38's tests speak of
+ * That is a gap between two specified requirements rather than a shortcut here: the
+ * partitioning requirement describes the memo as amortising *"within one process"*,
+ * INV-45 states it as *"within one call"*, and INV-22's and INV-38's tests speak of
  * *"two targets requested in one call"* — a request shape `ValidationInputRequest`
  * does not have. It is reported at close, with the two ways out named. The
  * mechanism ships because it is exactly the seam union-first needs, and because it

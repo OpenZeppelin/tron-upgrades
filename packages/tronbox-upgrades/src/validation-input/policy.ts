@@ -4,7 +4,7 @@ import { unreachableCause, type Cause } from './causes';
  * **The one enumerated policy point.** One total function from cause to
  * disposition, one table, one importer, one call site.
  *
- * This module is the dev's founding architectural instruction made structural:
+ * This module is the founding architectural instruction made structural:
  * *"implement refusal as a single enumerated policy point, not as behaviour
  * spread across call sites. If the review comes back 'too strict to ship',
  * flipping it must be a one-value change plus a message, not a redesign."*

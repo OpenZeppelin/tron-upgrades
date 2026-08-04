@@ -11,8 +11,8 @@ import type { CompilerConfiguration } from '../environment';
  * solcInput)`, so aliasing it means a produced record is assignable at the
  * consumer boundary by construction rather than by inspection. A local
  * re-declaration would be a second shape to keep in step with an upstream one,
- * which is the drift Design's *"deliberately the shape Hardhat's build-info hands
- * upgrades-core"* exists to avoid.
+ * which is the drift the *"deliberately the shape Hardhat's build-info hands
+ * upgrades-core"* requirement exists to avoid.
  */
 export type SolcStandardOutput = SolcOutput;
 

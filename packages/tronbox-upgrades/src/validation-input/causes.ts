@@ -142,7 +142,7 @@ export type Cause =
    * (`evidence/probe-wasm-memory-ceiling.js`). Terminal — one contract's closure
    * is the smallest partition there is (INV-37).
    *
-   * **`raised` is a closed union, which is a correction to Design's
+   * **`raised` is a closed union, corrected from the originally specified
    * `raised: string`.** INV-17's violation scenario names quoting the wasm's
    * `RuntimeError` into this message as the violation, so the field cannot hold
    * the throw's text. A classification keeps the distinction the probe measured —

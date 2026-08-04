@@ -4,9 +4,9 @@ import type { Diagnosis } from './diagnose';
 /**
  * SF-2's three error classes.
  *
- * **Why this module exists, when Design's § Module Structure lists twelve and
- * names none of them.** Design declares `ValidationInputInvariantError` and
- * `CompilerRetiredError` in § Error Handling, and the invariant set adds a third,
+ * **Why this module exists, when the planned module list named twelve and none of
+ * them was this one.** `ValidationInputInvariantError` and `CompilerRetiredError`
+ * were specified with the error handling, and the invariant set adds a third,
  * `ValidationInputRefusedError` (INV-20), but no module in the twelve owns them.
  * The two candidates both fail:
  *
