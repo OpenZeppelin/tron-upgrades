@@ -540,8 +540,8 @@ describe('SF-10 INV-22: a member is registered as unavailable only if the host a
        * `events: function events(){ return [] }` — an unconditional empty array,
        * byte-identical on both minors — which a caller reasonably reads as "the
        * transaction emitted no events". `logs` and `decodeLogs` do not exist at
-       * all: zero occurrences in the compiled module on either minor, verified this
-       * stage. So `result.contract.logs` is plain `undefined`, which is honest,
+       * all: zero occurrences in the compiled module on either minor, measured
+       * directly. So `result.contract.logs` is plain `undefined`, which is honest,
        * whereas `result.contract.events` is a misleading `[]`.
        */
       const abstraction = tronBoxAbstraction(installName);
