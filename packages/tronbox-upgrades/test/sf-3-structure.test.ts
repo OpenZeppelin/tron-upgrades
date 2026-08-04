@@ -895,6 +895,7 @@ describe('INV-32 — applied to the real tree', () => {
       './admin/errors',
       './adopt',
       './adopt/errors',
+      './beacon',
       './deploy',
       './options/types',
       './proxy',
@@ -1467,6 +1468,7 @@ describe('INV-1 — `openRecord` is the only way in; the consumers that would te
     expect(recordImportsFromOutside(allSources())).toEqual([
       `${path.join('admin', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('adopt', 'index.ts')} -> canonicalizeAddress`,
+      `${path.join('beacon', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('deploy', 'sender.ts')} -> canonicalizeAddress`,
       `${path.join('deploy', 'sender.ts')} -> CanonicalAddress`,
       `${path.join('proxy', 'deploy-proxy.ts')} -> canonicalizeAddress`,
