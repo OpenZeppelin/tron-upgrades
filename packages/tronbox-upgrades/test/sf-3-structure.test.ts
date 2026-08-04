@@ -1433,6 +1433,9 @@ describe('INV-1 — `openRecord` is the only way in; the consumers that would te
     expect(recordImportsFromOutside(allSources())).toEqual([
       `${path.join('deploy', 'sender.ts')} -> canonicalizeAddress`,
       `${path.join('deploy', 'sender.ts')} -> CanonicalAddress`,
+      `${path.join('proxy', 'replay.ts')} -> canonicalizeAddress`,
+      `${path.join('proxy', 'replay.ts')} -> CanonicalAddress`,
+      `${path.join('proxy', 'replay.ts')} -> ProxyRecordVerdict`,
     ]);
   });
 
