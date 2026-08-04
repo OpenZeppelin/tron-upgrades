@@ -535,12 +535,71 @@ export async function createOperationToolkit(request: {
       }
     },
 
-    async sendUpgradeCall() {
-      throw new Error(
-        'sendUpgradeCall is not wired for this host yet: the dispatched call ' +
-          'rides the plugin-shipped interfaces, which need a provisioned ' +
-          'abstraction surface this context did not supply',
-      );
+    async sendUpgradeCall(request) {
+      /*
+       * The dispatched call rides a plugin-shipped facade attached at the
+       * CURRENT generation's contract (never the new implementation's ABI):
+       * a v5 admin is the real ProxyAdmin; a v4 admin goes through
+       * ITronUpgradesProxyAdminV4; both uups routes go through
+       * ITronUpgradesUUPS at the proxy. All three are compiled by the
+       * consumer's own import of contracts/Proxies.sol, so resolution takes
+       * the same triage as the proxy artifacts.
+       */
+      const facadeName =
+        request.route === 'admin-v5'
+          ? 'ProxyAdmin'
+          : request.route === 'admin-v4'
+            ? 'ITronUpgradesProxyAdminV4'
+            : 'ITronUpgradesUUPS';
+      const facade = requireProxyArtifact(env.artifacts, facadeName);
+      const target =
+        request.adminAddress === null ? request.proxyAddress : request.adminAddress;
+      const attachable = facade as {
+        at?: (address: string) => Promise<unknown> | unknown;
+      };
+      if (typeof attachable.at !== 'function') {
+        throw new Error(
+          `the ${facadeName} abstraction has no attachable surface in this context`,
+        );
+      }
+      const instance = (await attachable.at(target)) as Record<
+        string,
+        (...callArgs: unknown[]) => Promise<unknown>
+      >;
+      const method = instance[request.call];
+      if (typeof method !== 'function') {
+        throw new Error(
+          `${facadeName} at ${target} exposes no ${request.call} method`,
+        );
+      }
+      const callArgs =
+        request.route === 'admin-v5' || request.route === 'admin-v4'
+          ? request.call === 'upgrade'
+            ? [request.proxyAddress, request.implementationAddress]
+            : [request.proxyAddress, request.implementationAddress, request.data]
+          : request.call === 'upgradeTo'
+            ? [request.implementationAddress]
+            : [request.implementationAddress, request.data];
+      const result: unknown = await method(...callArgs);
+      // Measured: the host's send path resolves the transaction id as a
+      // string (`transaction.transaction.txID`). The object arms cover the
+      // polling configurations that resolve a receipt-shaped value instead.
+      const transactionHash =
+        typeof result === 'string'
+          ? result
+          : typeof (result as { txID?: unknown })?.txID === 'string'
+            ? ((result as { txID: string }).txID)
+            : typeof (result as { transactionHash?: unknown })?.transactionHash ===
+                'string'
+              ? ((result as { transactionHash: string }).transactionHash)
+              : null;
+      if (transactionHash === null) {
+        throw new Error(
+          `the ${request.call} call returned no recognisable transaction id; ` +
+            `refusing to report an upgrade it cannot confirm`,
+        );
+      }
+      return { address: request.proxyAddress, transactionHash };
     },
 
     recordProxy: (address, kind) => session.addProxyRecord({ address, kind }),
