@@ -31,7 +31,11 @@ import { createOutputChannel } from '../output/channel';
 import type { OutputChannel } from '../output/types';
 import type { ContractHandle } from '../results/types';
 import { createChainAccess, type ChainAccess } from '../chain';
-import { openRecord, canonicalizeAddress } from '../record';
+import {
+  configureRecordLocation,
+  openRecord,
+  canonicalizeAddress,
+} from '../record';
 import type { ProxyRecordVerdict, RecordSession } from '../record';
 import type { ValidationInput } from '../validation-input';
 import {
@@ -137,6 +141,11 @@ export interface OperationToolkit {
 
   confirm(transactionHash: string): Promise<ConfirmationVerdict>;
 
+  /** Engine `inferProxyKind` over a validated implementation (reference side). */
+  inferKind(
+    validated: ValidatedImplementation,
+  ): Promise<'transparent' | 'uups' | 'beacon'>;
+
   /** Engine `processProxyKind` over the deployed proxy (upgrade path). */
   processProxyKind(
     proxyAddress: string,
@@ -235,6 +244,14 @@ export function readPriorDeployedAddress(
   return typeof candidate.address === 'string' ? candidate.address : null;
 }
 
+const VALIDATE_ONLY_SLOTS = [
+  'paths',
+  'network',
+  'artifacts',
+  'output',
+  'compiler',
+] as const;
+
 const REQUIRED_SLOTS = [
   'paths',
   'network',
@@ -247,8 +264,12 @@ const REQUIRED_SLOTS = [
 
 type OperationEnvironment = Pick<
   SlotShapes,
-  (typeof REQUIRED_SLOTS)[number]
-> & { readonly scheduling?: SlotShapes['scheduling'] };
+  (typeof VALIDATE_ONLY_SLOTS)[number]
+> & {
+  readonly chain?: SlotShapes['chain'];
+  readonly receipts?: SlotShapes['receipts'];
+  readonly scheduling?: SlotShapes['scheduling'];
+};
 
 /**
  * The production toolkit. The engine and the option resolver load *inside*
@@ -260,21 +281,52 @@ export async function createOperationToolkit(request: {
   readonly rawOptions: RawOperationOptions;
   readonly acceptedOptions: readonly string[];
   readonly processEnv?: Readonly<Record<string, string | undefined>>;
+  /**
+   * `'validate-only'` resolves no chain, no receipts, no scheduling and opens
+   * no record — an operation that changes nothing creates nothing, and the CI
+   * context this mode exists for must not be refused for lacking what
+   * validation never uses. The record LOCATION is still configured before the
+   * engine loads, in both modes: the engine reads it once at module scope, so
+   * a validate-only call that skipped it would silently poison every later
+   * state-changing call in the same process.
+   */
+  readonly mode?: 'state-changing' | 'validate-only';
 }): Promise<OperationContext> {
+  const mode = request.mode ?? 'state-changing';
+  const processEnv = request.processEnv ?? process.env;
+
   const env = resolveEnvironment(request.handles, {
-    require: REQUIRED_SLOTS,
-    optional: ['scheduling'] as const,
+    require:
+      mode === 'validate-only' ? VALIDATE_ONLY_SLOTS : REQUIRED_SLOTS,
+    optional:
+      mode === 'validate-only'
+        ? ([] as const)
+        : (['scheduling'] as const),
   }) as unknown as OperationEnvironment;
 
   const channel = createOutputChannel(env.output);
-  const chain = await createChainAccess(env.chain, {
-    env: request.processEnv ?? process.env,
-  });
-  const session = await openRecord({
-    root: env.paths.root,
-    env: request.processEnv ?? process.env,
-    chain,
-  });
+
+  const notInThisMode = (member: string) => (): never => {
+    throw new Error(
+      `internal error: ${member} was reached from a validate-only operation — ` +
+        `this is a bug in @openzeppelin/tronbox-upgrades, please report it`,
+    );
+  };
+
+  configureRecordLocation(env.paths.root, processEnv);
+
+  const chain =
+    mode === 'validate-only'
+      ? undefined
+      : await createChainAccess(env.chain as never, { env: processEnv });
+  const session =
+    mode === 'validate-only' || chain === undefined
+      ? undefined
+      : await openRecord({
+          root: env.paths.root,
+          env: processEnv,
+          chain,
+        });
 
   // The deferred loads, in one place — every module whose static closure
   // reaches the engine: `options/resolve` and `validation-input/identity`
@@ -305,21 +357,45 @@ export async function createOperationToolkit(request: {
     ) as unknown as Record<string, unknown>,
   };
 
-  const wait: BoundWait = (hash, intervalMs, maxRetries) =>
-    Promise.resolve(
+  const requireChain = (): ChainAccess => {
+    if (chain === undefined) {
+      notInThisMode('chain access')();
+    }
+    return chain as ChainAccess;
+  };
+  const requireSession = (): RecordSession => {
+    if (session === undefined) {
+      notInThisMode('the record session')();
+    }
+    return session as RecordSession;
+  };
+  const stub = <T,>(name: string): T =>
+    new Proxy(
+      {},
+      { get: (_target, property) => notInThisMode(`${name}.${String(property)}`)() },
+    ) as T;
+
+  const wait: BoundWait = (hash, intervalMs, maxRetries) => {
+    if (env.receipts === undefined) {
+      return Promise.reject(
+        new Error(notInThisMode('the confirmation wait').name),
+      );
+    }
+    return Promise.resolve(
       (env.receipts.waitForTransactionReceipt as (...args: unknown[]) => unknown)(
         hash,
         intervalMs,
         maxRetries,
       ),
     );
+  };
 
   const toolkit: OperationToolkit = {
     network: env.network,
     artifacts: env.artifacts,
     channel,
-    session,
-    chain,
+    session: session ?? stub<RecordSession>('session'),
+    chain: chain ?? stub<ChainAccess>('chain'),
 
     async contractAt(abstraction, address) {
       const attachable = abstraction as {
@@ -410,13 +486,13 @@ export async function createOperationToolkit(request: {
     queue: (host, step) => runThroughQueue(host, step),
 
     priorDeployedAddress: readPriorDeployedAddress,
-    replayVerdicts: () => session.report.proxies,
+    replayVerdicts: () => requireSession().report.proxies,
 
     resolveSender: () => resolveEffectiveSender(env.network.sender),
 
     async signerOf(transactionHash) {
       try {
-        const transaction = (await chain.provider.send('eth_getTransactionByHash', [
+        const transaction = (await requireChain().provider.send('eth_getTransactionByHash', [
           transactionHash,
         ])) as { from?: unknown } | null;
         const from = transaction?.from;
@@ -430,13 +506,14 @@ export async function createOperationToolkit(request: {
 
     proxyArtifact: name => requireProxyArtifact(env.artifacts, name),
 
-    looksLikeProxyAdmin: address => chain.read.looksLikeProxyAdmin(address),
+    looksLikeProxyAdmin: address =>
+      requireChain().read.looksLikeProxyAdmin(address),
 
     async fetchOrDeployImplementation(validated, resolvedOptions, deploy) {
       const fetch = () =>
         engine.fetchOrDeployGetDeployment(
           validated.version as never,
-          chain.provider as never,
+          requireChain().provider as never,
           async () => {
             const writeBack = await deploy();
             return {
@@ -490,13 +567,24 @@ export async function createOperationToolkit(request: {
 
     confirm: transactionHash => confirmTransaction(transactionHash, wait),
 
+    async inferKind(validated) {
+      const kind: unknown = engine.inferProxyKind(
+        validated.validations as never,
+        validated.version as never,
+      );
+      if (kind !== 'transparent' && kind !== 'uups' && kind !== 'beacon') {
+        throw new Error(`the engine inferred an unknown proxy kind: ${String(kind)}`);
+      }
+      return kind;
+    },
+
     async processProxyKind(proxyAddress, validated, resolvedOptions) {
       const kindOptions: Record<string, unknown> = {
         ...resolvedOptions.engineOptions,
         kind: resolvedOptions.kind,
       };
       await engine.processProxyKind(
-        chain.provider as never,
+        requireChain().provider as never,
         proxyAddress,
         kindOptions as never,
         validated.validations as never,
@@ -510,7 +598,7 @@ export async function createOperationToolkit(request: {
     },
 
     async storedLayoutFor(implementationAddress) {
-      const record = await session.getImplRecord(implementationAddress);
+      const record = await requireSession().getImplRecord(implementationAddress);
       if (record?.layout === undefined) {
         throw new Error(
           `No stored storage layout for the implementation at ` +
@@ -602,7 +690,8 @@ export async function createOperationToolkit(request: {
       return { address: request.proxyAddress, transactionHash };
     },
 
-    recordProxy: (address, kind) => session.addProxyRecord({ address, kind }),
+    recordProxy: (address, kind) =>
+      requireSession().addProxyRecord({ address, kind }),
   };
 
   return { toolkit, resolved };

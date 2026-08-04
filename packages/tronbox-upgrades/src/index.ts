@@ -61,6 +61,12 @@ export type {
  */
 export { deployProxy, upgradeProxy } from './proxy';
 export {
+  validateImplementation,
+  validateUpgrade,
+  deployImplementation,
+  prepareUpgrade,
+} from './standalone';
+export {
   BeaconProxyRefusedError,
   EmptyInitializerRefusedError,
   NotTransparentProxyError,
