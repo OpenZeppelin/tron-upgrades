@@ -771,8 +771,8 @@ describe('INV-47: host-shaped but consumer-agnostic', () => {
   it('exposes the same seam face to every invocation shape', () => {
     // Host-shaped, consumer-agnostic: the same entry point serves the migrate
     // shape, the mocha-file shape and the deployer-only shape with no shape-specific
-    // branch in the caller. This is also what keeps SF-4's mocha-scope question
-    // open — nothing here presupposes a deployer.
+    // branch in the caller. This is also what lets SF-4 refuse when no deployer is
+    // present rather than be forced to support it — nothing here presupposes one.
     const shapes = [
       ['migrate', migrateShapedHandles().handles, ['paths', 'network']],
       ['artifacts only', artifactsOnlyHandles().handles, ['paths', 'network']],

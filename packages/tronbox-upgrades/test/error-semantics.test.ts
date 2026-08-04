@@ -754,8 +754,8 @@ describe('INV-14: incomplete names the property path and the providing contexts'
         // `output.handles` has always named it, so listing that context as absent
         // described a capability the seam does have as one it does not. Widening
         // `providedIn` was chosen over narrowing `handles`
-        // precisely because narrowing would have decided SF-4's still-open
-        // mocha-scope question by omission.
+        // precisely because narrowing would have decided SF-4's mocha-scope
+        // question by omission — which was still open when the choice was made.
         'tronbox test mocha files',
       ],
       // Added with the compiler slot. Purely lineage-derived, so it

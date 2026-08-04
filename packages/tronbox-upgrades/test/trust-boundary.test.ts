@@ -299,8 +299,9 @@ describe('INV-26: when both are present, artifacts must wrap the deployer resolv
   });
 
   it('resolves normally with only artifacts, proving no deployer is presupposed', () => {
-    // This is what keeps SF-4's mocha-scope question open: the check is
-    // conditioned on both handles being present, never on a deployer existing.
+    // This is what leaves SF-4 free to refuse when no deployer is present: the
+    // check is conditioned on both handles being present, never on a deployer
+    // existing.
     const shape = artifactsOnlyHandles();
     const env = resolveEnvironment(
       shape.handles,
