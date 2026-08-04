@@ -53,11 +53,33 @@ export type {
 } from './results/types';
 
 /*
- * Operations join here as they land, each shaped as:
- *
- *   resolve the environment → configureRecordLocation → await import(...) the
- *   engine-reaching module → run.
- *
- * Until the first one does, the package deliberately exports no value: an
- * importable name that cannot work yet is a promise the package cannot keep.
+ * The operations. Each is shaped exactly as the rule above requires: resolve
+ * the environment → `configureRecordLocation` (inside `openRecord`) → dynamic
+ * import of the engine-reaching modules → run. Their static closures are
+ * engine-free, and `test/entry-point-closure.test.ts` recomputes that from
+ * disk on every run.
  */
+export { deployProxy, upgradeProxy } from './proxy';
+export {
+  BeaconProxyRefusedError,
+  EmptyInitializerRefusedError,
+  NotTransparentProxyError,
+  ProxyAdminAsOwnerError,
+  ProxyArtifactCollisionError,
+  ProxyArtifactMissingError,
+  ProxyOperationRefusedError,
+  StaleProxyRecordError,
+  UnknownProxyGenerationError,
+  UpgradeVerificationFailedError,
+} from './proxy';
+export {
+  DeploymentRefusedError,
+  DeployerAbsentError,
+  TransactionRevertedError,
+  ConfirmationIndeterminateError,
+  SenderMismatchError,
+  LinkedImplementationRefusedError,
+  LinkVerificationFailedError,
+  StaleTransactionIdentityError,
+  CheatcodeSlotCollisionError,
+} from './deploy';

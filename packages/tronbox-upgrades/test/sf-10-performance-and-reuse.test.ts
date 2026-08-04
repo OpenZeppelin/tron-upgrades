@@ -804,20 +804,21 @@ describe('SF-10 INV-48: the public surface is additive across minors', () => {
     ]);
   });
 
-  it('records the entry point as type-only, so a value widening is deliberate', () => {
-    // Re-pinned when the entry module gained its type-only surface. SF-11 owns
-    // `src/index.ts`; what this guards now is that the widening stays ERASED:
-    // no value export, and no re-export of `./output`, whose channel factory
-    // and engine capture must be reached per operation, never at import time —
+  it('records the entry point surface, so a widening is deliberate', () => {
+    // Re-pinned when the operations landed: the entry now carries VALUE
+    // exports — deployProxy, upgradeProxy, and the two refusal families —
+    // which is the deliberate widening the earlier pin existed to make
+    // deliberate. What still cannot appear, asserted on specifier positions
+    // rather than prose: a re-export of `./output` (its channel factory and
+    // engine capture are reached per operation, never at import time) and a
+    // static edge to `./options/resolve` (the package's engine value-import),
     // and INV-45's rule (the test-only reset stays off the surface) travels
     // with it.
     const entry = fs.readFileSync(path.join(srcDir, 'index.ts'), 'utf8');
     expect(entry).toContain('export type {');
-    // A value export block would read `export {` with no `type` — absent.
-    expect(/export\s+\{/.test(entry)).toBe(false);
-    // Edges, not prose: the module's own comment legitimately NAMES the two
-    // modules it must never import, so the ban matches specifier positions.
+    expect(entry).toContain("export { deployProxy, upgradeProxy } from './proxy';");
     expect(/from '\.\/output/.test(entry)).toBe(false);
     expect(/from '\.\/options\/resolve/.test(entry)).toBe(false);
+    expect(entry).not.toContain('resetSilenceForTests');
   });
 });
