@@ -1,7 +1,10 @@
 # Integration guide
 
-Four patterns, in the order a consumer meets them, and then the mistakes worth naming. Every
-snippet here has a compiling counterpart in [`examples/`](./examples).
+Four patterns, in the order a consumer meets them, and then the mistakes worth naming.
+[`examples/`](./examples) holds **type-checked counterparts for patterns 1 and 3**, and the
+injectable-dependency shape both rely on. **Patterns 2 and 4 — escalating once, and telling a
+slot-data refusal apart from a real incompatibility — do not yet have example modules**, so
+follow their snippets here rather than expecting a file.
 
 - [Pattern 1 — derive inside the operation](#pattern-1--derive-inside-the-operation)
 - [Pattern 2 — escalate once, on any non-empty report](#pattern-2--escalate-once-on-any-non-empty-report)
