@@ -238,7 +238,11 @@ describe('publication hygiene: every reference resolves inside the published rep
 
     expect(manifest.scripts['prepublishOnly']).toBe('npm run build && npm test');
 
-    const accounted = ['dist', 'LICENSE', 'README.md'];
+    // `contracts/` ships the consumer-import file; its .sol is not in the
+    // walked extension set, so it is accounted by the shape test below rather
+    // than by prose scanning (Solidity comments face consumers directly and
+    // were written for them).
+    const accounted = ['contracts', 'dist', 'LICENSE', 'README.md'];
     expect(manifest.files.filter(entry => !accounted.includes(entry))).toEqual([]);
 
     /*
