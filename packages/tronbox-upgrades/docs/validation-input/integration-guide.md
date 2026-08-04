@@ -188,7 +188,9 @@ refusal message says what it says.
 `unsafeSkipStorageCheck` does not disable *slot-position* checking. It disables the storage
 check, which discards the appends, reorderings, renames, retypes and deletions AST-only detects
 perfectly well. A user who reaches for it because a `__gap` refusal looked inexplicable has
-traded two false positives for the whole check.
+traded two false positives for the whole check. It is a **last resort** — the same standing it
+has in the Hardhat plugin's own documentation — and it is deliberately the *only* storage-check
+opt-out: there is no narrower slot-data flag, ruled rather than pending (2026-08-04).
 
 The path is: **escalate first**. If the escalated, slot-level check still refuses, the
 incompatibility is real and the message can name the `__gap` size to set.

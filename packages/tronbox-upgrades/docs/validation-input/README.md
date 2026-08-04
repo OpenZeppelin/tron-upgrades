@@ -185,6 +185,21 @@ It is still **stated** rather than silent. Every fresh path records a
 `storage-layout-unavailable` degraded note on the operation's channel, and the note's remedy is
 that no action is needed because escalation will compile before refusing anything.
 
+**If a refusal still looks wrong after escalation, the escape hatch is upstream's existing
+`unsafeSkipStorageCheck` — passed through unchanged, and a last resort.** It disables the whole
+storage check, not just the position-dependent part, so everything AST-only detects perfectly
+well goes with it. There is deliberately no narrower slot-data flag: the maintainer ruled the
+pass-through sufficient (2026-08-04), and the measured false-positive rate — two shapes over
+nine pairs, both resolved by escalation — does not justify a second opt-out surface.
+
+**The long-term path is upstream of this plugin entirely**: a TronBox feature request to add
+`storageLayout` to its compiler `outputSelection`, which would make every build record carry
+positions and retire the fresh path's shortfall without a plugin change. The request ships with
+evidence already measured here: adding that one entry leaves `evm.bytecode.object`,
+`evm.deployedBytecode.object` and `metadata` byte-identical
+(`evidence/probe-recompile-fidelity.js` §1), so it cannot perturb existing builds. Nothing in
+this module is built against that future — if it lands, the ladder simply stops degrading.
+
 ---
 
 ## Escalation
@@ -284,13 +299,17 @@ this plugin's own compile. Slot positions for them require a second compilation 
 sources with a storage variable injected per namespaced struct, which this version does not
 perform in either mode.
 
-**The plugin states that shortfall itself, and it must**, because upstream cannot. Upstream's
-only slot-absence notice asks `original.storage.some(item => item.slot === undefined)` — and a
-purely namespaced contract has `storage: []`, so the branch never fires while every namespace
-member carries `slot: undefined` (`evidence/probe-namespaced-without-second-compile.js`,
-measured in both modes). Upstream
-is silent exactly where a statement is needed, so a `namespaced-ast-only` degraded note is
-recorded on every path that finds a namespace.
+**The plugin states that shortfall itself.** Upstream's only slot-absence notice asks
+`original.storage.some(item => item.slot === undefined)` — and a purely namespaced contract has
+`storage: []`, so the branch never fires while every namespace member carries `slot: undefined`
+(`evidence/probe-namespaced-without-second-compile.js`, measured in both modes). So a
+`namespaced-ast-only` degraded note is recorded on every path that finds a namespace.
+
+**What the note means, bounded by the upstream maintainer's ruling (2026-08-04): it is a
+fidelity statement, not a safety warning.** A real change to a namespaced struct still surfaces
+as a name or type change and is refused — the divergence direction without positions is
+over-rejection, never silent acceptance. The note tells a caller how much the comparison could
+see, not that anything was unsafe.
 
 `flat === false` is read only as corroboration, never as the signal:
 `dist/storage/extract.js` sets `flat = true` *inside* the loop over `storageLayout.storage`, so

@@ -903,16 +903,23 @@ function finishInput(request: FinishRequest): ValidationInput {
  * The namespaced shortfall, stated on **every** path because it is present on
  * every path.
  *
- * This is the one degraded statement nothing upstream can produce. A namespace's
- * members get no `slot` and no `offset` unless the sources are compiled a second
- * time with a storage variable injected for each namespaced struct, which this
- * version does not do — so they are position-less whether the flat layout came
- * from a build record or from this plugin's own compile. And upstream's only
- * slot-absence branch reads the flat `storage` list, which for a contract whose
- * storage lives entirely in namespaces is **empty**, so the branch never fires
- * while every namespace member lacks positions. Every OZ 5.x contract is in that
- * state. Saying nothing here is the silent degraded path the plugin is not
- * allowed to ship.
+ * A namespace's members get no `slot` and no `offset` unless the sources are
+ * compiled a second time with a storage variable injected for each namespaced
+ * struct, which this version does not do — so they are position-less whether the
+ * flat layout came from a build record or from this plugin's own compile. And
+ * upstream's only slot-absence branch reads the flat `storage` list, which for a
+ * contract whose storage lives entirely in namespaces is **empty**, so the branch
+ * never fires while every namespace member lacks positions. Every OZ 5.x contract
+ * is in that state.
+ *
+ * What the note means — bounded by the upstream maintainer's ruling (2026-08-04):
+ * this is a fidelity statement, not a safety patch. A real change to a namespaced
+ * struct still surfaces as a name or type change and is refused, so the class an
+ * upstream slot-absence notice would have guarded here is empty; the divergence
+ * direction without positions is over-rejection, never silent acceptance. The
+ * note is recorded because a reduced-fidelity comparison must be stated (SC-003)
+ * — a caller reading `namespaced-ast-only` learns how much the comparison could
+ * see, not that it was unsafe.
  */
 function stateNamespaceShortfall(
   context: ArmContext,
