@@ -68,6 +68,7 @@ export {
 } from './standalone';
 export { forceImport } from './adopt';
 export { transferProxyAdminOwnership } from './admin';
+export { deployBeacon, deployBeaconProxy, upgradeBeacon } from './beacon';
 export {
   AuthorityAlreadyTransferredError,
   AuthorityVerificationFailedError,

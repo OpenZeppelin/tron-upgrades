@@ -190,7 +190,10 @@ export interface OperationToolkit {
     readonly data: string;
   }): Promise<WriteBack>;
 
-  recordProxy(address: string, kind: 'transparent' | 'uups'): Promise<void>;
+  recordProxy(
+    address: string,
+    kind: 'transparent' | 'uups' | 'beacon',
+  ): Promise<void>;
 }
 
 /** What an operation entry point receives beyond the user's own arguments. */
