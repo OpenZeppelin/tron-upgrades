@@ -47,7 +47,7 @@ export interface EngineWarningCapableExport {
  * **Verified present at `@openzeppelin/upgrades-core@1.46.0`**, as installed, at
  * this stage: every listed export exists on the root, and `addProxyToManifest`
  * and `validateUpgradeSafety` are both `AsyncFunction`. The table exists because
- * the Design's hand-written seven-name list was wrong in both directions — it
+ * the hand-written seven-name list it replaced was wrong in both directions — it
  * named two exports that cannot warn at all (`withValidationDefaults`,
  * `inferProxyKind`) and omitted four that can, two of which return `Promise`
  * today. A hand-written list is what made a present-state error look like a

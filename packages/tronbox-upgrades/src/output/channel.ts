@@ -10,7 +10,7 @@ import type {
  * INV-38: the documented maximum length of a channel's `recorded` array.
  *
  * Any number is arbitrary; the truncation note is what carries the honesty. 100
- * per channel, on the dev's ruling and reasoning: a single operation producing
+ * per channel, and the reasoning is the failure mode: a single operation producing
  * more than 100 distinct degraded statements has a problem the notes cannot
  * express anyway, and the truncation note says so.
  *
@@ -37,7 +37,7 @@ const DETAIL_INDENT = '    ';
  * A `DegradedNote` that cannot be recorded because a required field is missing or
  * malformed.
  *
- * Added at Code Draft: INV-35 requires `degraded` to reject an empty `summary` or
+ * Added while implementing: INV-35 requires `degraded` to reject an empty `summary` or
  * `remedy` "with a typed error" but does not name the class, and INV-8 requires
  * every rejection in the package to be a typed error carrying a stable `code`.
  * The `detail` case is the same class of defect — a JavaScript producer can pass a

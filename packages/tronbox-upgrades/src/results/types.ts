@@ -132,7 +132,7 @@ export interface AuthorityTransfer extends OperationResult {
 /**
  * A result was constructed without the transaction identity the plugin guarantees.
  *
- * Added at Code Draft: INV-6 requires the envelope constructor to reject a falsy
+ * Added while implementing: INV-6 requires the envelope constructor to reject a falsy
  * hash "with a typed error naming the operation" but does not name the class, and
  * INV-8 requires every rejection to be a typed error carrying a stable `code`.
  *
