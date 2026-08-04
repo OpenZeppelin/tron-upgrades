@@ -12,8 +12,9 @@ only entry point, `resolveEnvironment`, is consumed by sibling modules and is no
 from the package. SF-11 owns the package entry point.
 
 Writing a quickstart here would mean inventing the call a user makes, and that call runs
-through the deploy/upgrade operations, whose shape is **SF-4's open question** — specifically
-how the deployer enters the public API. Two tests assert that question is still open. So SF-0
+through the deploy/upgrade operations, whose shape is **SF-4's to settle** — specifically
+how the deployer enters the public API. Two tests assert something narrower and more useful:
+that nothing at this layer presupposes a deployer, so SF-4 stays free to decide. So SF-0
 contributes the **environment, compatibility, divergence and troubleshooting** material a
 README needs, and no usage example.
 
