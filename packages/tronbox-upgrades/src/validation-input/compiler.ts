@@ -14,7 +14,7 @@ import type { SolcStandardInput, SolcStandardOutput } from './solc-input';
  * The TVM compiler's whole lifecycle — locate, gate, load, wrap, and **retire** —
  * plus the one declaration of the supported range.
  *
- * **Why the lifecycle is one module.** D4 amendment 2: a caught
+ * **Why the lifecycle is one module.** A caught
  * `WebAssembly.RuntimeError` invalidates the module, because emscripten's abort
  * poisons it. A handle that can be poisoned must not have its loading in one
  * module and its disposal in another, or a caught ceiling on contract A silently
@@ -36,9 +36,9 @@ import type { SolcStandardInput, SolcStandardOutput } from './solc-input';
  * The declared range, declared **once** (INV-16). Both the gate and the message
  * read it, so the range cannot drift out of sync with the check.
  *
- * **The floor is a plugin claim, not a compiler capability** (D2). Research
- * established `0.5.13` as the version where the TVM registry's builds begin
- * emitting `storageLayout`, and that is still the mechanical boundary — but it is
+ * **The floor is a plugin claim, not a compiler capability.** `0.5.13` is the
+ * version where the TVM registry's builds begin emitting `storageLayout`, as
+ * measured against the registry, and that is still the mechanical boundary — but it is
  * the boundary of the *compiler's* capability, and declaring it as the *plugin's*
  * would publish a support claim nothing measured: no probe ran upgrades-core
  * against sub-0.8 compiler output, `@openzeppelin/contracts-upgradeable` has

@@ -232,7 +232,8 @@ describe('INV-15: classification keys on code first and message only within a co
   it('performs no nested traversal of error.error or error.cause', () => {
     // INV-15 forbids a walk, and the reason there is nothing to walk is that
     // `transport.ts` refuses an unvalidated shape first — the structural fix for
-    // Research D9's shallowness. A nested payload therefore classifies on its own
+    // a predicate that read only `error.message`, so a nested `error.error.message`
+    // yielded `''` and classified as "not a revert". A nested payload therefore classifies on its own
     // top-level code, not on a message dug out of a child.
     const nested: JsonRpcErrorPayload = {
       code: -32603,
@@ -489,7 +490,8 @@ describe('INV-17: no-code and reverted stay distinct at all four surfaces', () =
   });
 
   it('distinguishes not-a-beacon\'s two reasons', async () => {
-    // D8's distinction, at the last surface it can be lost: upstream collapses both
+    // The "no code" versus "not a beacon" distinction, at the last surface it can be
+    // lost: upstream collapses both
     // into `InvalidBeacon`, so a user who mistyped an address is told their contract
     // is the wrong kind and "check the address" is not among the suggestions.
     const notAnAddress = providerOver({
@@ -746,7 +748,8 @@ describe('INV-47: the reader surface takes send as a parameter', () => {
     // `eip-1967-type.js:isTransparentProxy` is `!isEmptySlot(adminAddress)`, so a
     // reader that threw for an empty admin slot would make that predicate throw
     // instead of returning `false` — and the plugin would disagree with the engine
-    // about whether an address is a proxy (Research D7).
+    // about whether an address is a proxy: a checksummed zero address for an empty
+    // slot reads as an answer rather than an absence.
     const empty = providerOver({
       eth_getCode: { result: '0x60806040' },
       eth_getStorageAt: { result: zeroSlotWord },

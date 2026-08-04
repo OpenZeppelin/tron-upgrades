@@ -13,8 +13,11 @@
  * the time this type exists* — `transport.ts` refuses anything else as
  * `malformed-envelope`.
  *
- * That single validation is the structural fix for Research D9's shallowness.
- * D9's diagnosis was that the sibling reads only `error.message`, so a nested
+ * That single validation is the structural fix for a predicate that read only
+ * `error.message`: a nested `error.error.message`, or a thrown string, yielded `''`
+ * and so classified as "not a revert" and rethrew. The riskiest consumer of that
+ * miss silently disables a safety check.
+ * The measured diagnosis: the sibling reads only `error.message`, so a nested
  * `error.error.message` or a thrown string yields `''`. The fix is not a deeper
  * walk at the classification site (INV-15 forbids one); it is that
  * classification never sees an unvalidated shape, so there is nothing to walk.
@@ -36,7 +39,11 @@ export interface JsonRpcErrorPayload {
  * What a node error means. Two of the five members are normal control flow for a
  * probe; three are failures.
  *
- * Keeping `no-contract-at-address` distinct from `reverted` is Research D8: the
+ * Keeping `no-contract-at-address` distinct from `reverted` matters because a
+ * predicate matching the node's "smart contract is not exist" as a revert tells a
+ * user their address "is not an upgradeable beacon" when in fact nothing is deployed
+ * there at all. The two conditions must stay distinguishable even though the node
+ * reports them identically. The
  * sibling tells a user their address "is not an upgradeable beacon: its
  * `implementation()` getter did not return an address" when in fact nothing is
  * deployed there at all.

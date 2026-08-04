@@ -624,7 +624,9 @@ describe('INV-23: send holds no cache, memo or dedupe', () => {
   it('names no cache-shaped identifier in provider.ts or transport.ts', () => {
     // `eth_chainId` is immutable per instance and the engine calls it on every
     // `Manifest.forNetwork`, so memoizing inside `send` is the obvious optimization.
-    // It is also Research D5's defect shape exactly, and its staleness window is
+    // It also reproduces the sibling's two-transports defect — one remapping addresses
+    // and swallowing failures to zeros, the other doing neither, so the same read
+    // answers differently depending on which it went through — and its staleness window is
     // unbounded because a `tronbox console` session can switch network under it.
     const forbidden = /^(cache|cached|memo|memoize|memoized|dedupe|store|entries|results)$/i;
     for (const relative of ['provider.ts', 'transport.ts']) {

@@ -136,7 +136,7 @@ export function buildSolcInput(
 /**
  * The `error`-severity diagnostic count, which is all cause 11 ever carries.
  *
- * Never the text (D4 amendment 4): solc's error strings are unbounded and
+ * Never the text: solc's error strings are unbounded and
  * routinely carry absolute filesystem paths, and the host already renders them in
  * its own channel.
  */

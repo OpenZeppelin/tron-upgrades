@@ -9,7 +9,7 @@
  * rather than a rule: free functions that each construct their own transport are
  * how the sibling ended up with two — reading the implementation slot through one
  * and *verifying* it through the other, so its post-upgrade check can compare
- * answers about two different addresses (D5). Taking `send` as a parameter means a
+ * answers about two different addresses. Taking `send` as a parameter means a
  * second transport has to be passed in explicitly at a call site someone reviews,
  * and it is simultaneously what makes these bodies host-free for SF-11's
  * extraction.
@@ -75,7 +75,8 @@ export type ProxySlotsRead =
       readonly beacon: ChainAddress | null;
     };
 
-/** `readBeaconImplementation`'s three outcomes. The first two are D8's, kept apart. */
+/** `readBeaconImplementation`'s three outcomes. The first two are
+   * "no code deployed" and "deployed but not a beacon", kept apart. */
 export type BeaconRead =
   | { readonly kind: 'implementation'; readonly address: ChainAddress }
   | { readonly kind: 'no-code-at-beacon' }
@@ -199,7 +200,10 @@ export async function readImplementationAddress(
  * `eip-1967-type.js:isTransparentProxy` is `!isEmptySlot(adminAddress)` and a
  * reader that threw here would make that predicate throw instead of returning
  * `false`. A reader surface that tidied this up would make the plugin disagree
- * with the engine about whether an address is a proxy (Research D7).
+ * with the engine about whether an address is a proxy. Returning a checksummed zero
+ * address for an empty slot would read as an answer rather than an absence, and
+ * upstream diverges per slot — throwing for beacon, returning zero for admin — so
+ * this surface matches it per slot rather than uniformly.
  */
 export async function readAdminAddress(
   send: TronEthereumProvider,
@@ -408,7 +412,7 @@ export async function readUpgradeInterfaceVersion(
  * Replaces `inferProxyAdmin`.
  *
  * Upstream returns `false` for a *swallowed* error, which "silently disables a
- * safety check" (D9). This returns `false` only for a classified probe outcome or
+ * safety check". This returns `false` only for a classified probe outcome or
  * a non-address answer, and raises otherwise. Mirrors upstream's decision rule
  * — `owner !== undefined && parseAddress(owner) !== undefined` — with a total
  * predicate in place of the throwing decoder.
@@ -426,7 +430,10 @@ export async function looksLikeProxyAdmin(
 /**
  * Replaces `getImplementationAddressFromBeacon` / `isBeacon`.
  *
- * INV-37(b): probes `eth_getCode` **first**, which is what separates D8's two
+ * INV-37(b): probes `eth_getCode` **first**, which is what separates "nothing is deployed
+   * there" from "deployed but not a beacon" — the node reports both identically, and
+   * conflating them tells a user their address is not a beacon when in fact it is
+   * not anything. It separates those two
  * conditions — upstream collapses them into `InvalidBeacon`, so a user with
  * nothing deployed at the address is told their contract "doesn't look like a
  * beacon" and the correct action, check the address, is not among the ones the

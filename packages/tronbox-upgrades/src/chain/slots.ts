@@ -64,7 +64,7 @@ function renderExcerpt(value: string): string {
 }
 
 /**
- * D4: refuse rather than produce a plausible wrong value.
+ * Refuse rather than produce a plausible wrong value.
  *
  * The sibling plugin's `slotToAddress` is `'0x' + slotValue.slice(-40)` with no
  * check, so a `'0x'` result yields the string `'0x0x'` and a `null` throws a bare

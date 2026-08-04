@@ -334,7 +334,11 @@ export class ChainResultShapeError extends Error {
 // and `getBeaconAddress` throw. `eip-1967-type.js:isTransparentProxy` is
 // `!isEmptySlot(adminAddress)`, so a reader that threw there would make that
 // predicate throw instead of returning `false` — and the plugin would disagree
-// with the engine about whether an address is a proxy (Research D7).
+// with the engine about whether an address is a proxy. The sibling returns a
+// checksummed zero address for an empty slot, which reads as an answer rather than
+// an absence; upstream itself diverges per slot, throwing for beacon while returning
+// zero for admin, so matching it per slot is the only way not to invent a third
+// convention.
 
 /** Mirrors `EIP1967ImplementationNotFound`, which **throws**. */
 export class ChainImplementationNotFoundError extends Error {

@@ -36,7 +36,7 @@ export type Cause =
    * 2 — the compiler is outside `SUPPORTED_SOLC`.
    *
    * A distinct cause from 1 and 3: the compiler may be present, loadable and
-   * matching, and still outside the range this plugin has verified. D2, and the
+   * matching, and still outside the range this plugin has verified. The declared floor, and the
    * gate is on the *version* rather than on the output because F-5 measured a
    * sub-0.5.13 compiler accepting a `storageLayout` request with zero
    * diagnostics of any severity and simply omitting the key.
@@ -136,7 +136,7 @@ export type Cause =
   /**
    * 8 — the compiler exhausted its own memory on this closure.
    *
-   * Fires by **catching**, not by timing (D4 amendment 2): the TVM wasm reports
+   * Fires by **catching**, not by timing: the TVM wasm reports
    * its ceiling as a `WebAssembly.RuntimeError`, measured verbatim as
    * `RuntimeError: memory access out of bounds`
    * (`evidence/probe-wasm-memory-ceiling.js`). Terminal — one contract's closure
@@ -192,7 +192,7 @@ export type Cause =
   /**
    * 11 — the sources on disk do not compile.
    *
-   * Ratified as D4 amendment 4. It is not cause 7: cause 7 fires *iff*
+   * It is not cause 7: cause 7 fires *iff*
    * `withoutMetadataMatches` is `false`, which is a **comparison result**, and a
    * compile that fails produces no artifact to compare — so overloading cause 7
    * would not merely name the wrong state, it would make INV-32 false as

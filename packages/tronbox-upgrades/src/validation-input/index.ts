@@ -16,7 +16,7 @@
 
 export { deriveValidationInput } from './pipeline';
 
-/** D2, declared once in `compiler.ts` and read by both the gate and the message. */
+/** The declared floor, defined once in `compiler.ts` and read by both the gate and the message. */
 export { SUPPORTED_SOLC } from './compiler';
 
 /**
