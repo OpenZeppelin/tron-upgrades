@@ -115,6 +115,8 @@ function buildFake(spec: Spec = {}) {
     proxyArtifact: () => ({}) as never,
     looksLikeProxyAdmin: async () => false,
 
+    hashWithoutMetadata: (bytecode: string) => bytecode.slice(0, 16),
+
     async inferKind(reference) {
       log.push(`inferKind:${reference.name}`);
       return spec.inferredKind ?? 'uups';

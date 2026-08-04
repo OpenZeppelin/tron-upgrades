@@ -285,6 +285,16 @@ export interface RecordSession {
     readonly kind: ProxyDeployment['kind'];
   }): Promise<void>;
   /**
+   * The adoption write (force-import's): merge semantics, never an overwrite —
+   * an existing version entry keeps its recorded layout and gains the address
+   * in `allAddresses`, so an identical replay changes nothing.
+   */
+  addImplRecord(record: {
+    readonly versionKey: string;
+    readonly address: string;
+    readonly layout: unknown;
+  }): Promise<void>;
+  /**
    * `proxies.length` + the number of `impls` keys + one if `admin` is present.
    *
    * The definition is fixed and written down because the number appears in a refusal
