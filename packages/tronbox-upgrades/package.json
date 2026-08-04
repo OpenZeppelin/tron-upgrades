@@ -21,9 +21,15 @@
     "@openzeppelin/upgrades-core": "^1.46.0"
   },
   "peerDependencies": {
-    "tronbox": ">=4.0.0"
+    "ethers": "^6.13.0",
+    "tronbox": ">=4.0.0",
+    "tronweb": ">=6.0.0"
   },
   "devDependencies": {
+    "ethers": "^6.17.0",
+    "tronbox-4.8.0": "npm:tronbox@4.8.0",
+    "tronbox-4.9.0": "npm:tronbox@4.9.0",
+    "tronweb": "^6.4.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.10"
   },
