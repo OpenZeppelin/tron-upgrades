@@ -1415,16 +1415,20 @@ function recordImportsFromOutside(
 }
 
 describe('INV-1 — `openRecord` is the only way in; the consumers that would test it do not exist yet', () => {
-  it('no module outside the record layer imports from it today — recorded as a count of zero, not as a satisfied rule', () => {
-    // The operations this rule ranges over are unbuilt. So what is asserted is the
-    // measured state: nothing outside the directory reaches into it. The moment a
-    // consumer appears, the next assertion is the one that decides whether it took a
-    // permitted route.
-    expect(recordImportsFromOutside(allSources())).toEqual([]);
+  it('the consumer census is exact: the deployment seam, importing through the face', () => {
+    // Originally asserted as zero consumers, recorded as a measured state rather
+    // than a satisfied rule. The first consumer has now appeared, so the measured
+    // state is re-pinned exactly: the sender module takes the mint and its brand,
+    // both through the face. A second consumer, or a route change, edits this
+    // list deliberately or fails here.
+    expect(recordImportsFromOutside(allSources())).toEqual([
+      `${path.join('deploy', 'sender.ts')} -> canonicalizeAddress`,
+      `${path.join('deploy', 'sender.ts')} -> CanonicalAddress`,
+    ]);
   });
 
-  it('whatever a future consumer imports must be one of the five face values, and the check for that is live now', () => {
-    const permitted = new Set(FACE_VALUES);
+  it('every consumer import is on the face — values and exported types alike', () => {
+    const permitted = new Set([...FACE_VALUES, ...FACE_TYPES]);
     for (const entry of recordImportsFromOutside(allSources())) {
       const name = entry.split(' -> ')[1] ?? '';
       expect(permitted.has(name), `${entry} is not on the face`).toBe(true);
@@ -1443,7 +1447,9 @@ describe('INV-1 — `openRecord` is the only way in; the consumers that would te
         path.join('ops', 'upgrade.ts'),
       ),
     ];
-    const found = recordImportsFromOutside(sources);
+    const found = recordImportsFromOutside(sources).filter(entry =>
+      entry.startsWith(`ops${path.sep}`),
+    );
     expect(found).toEqual([
       `${path.join('ops', 'upgrade.ts')} -> fingerprintPathFor`,
     ]);
@@ -1459,7 +1465,11 @@ describe('INV-1 — `openRecord` is the only way in; the consumers that would te
         path.join('ops', 'deploy.ts'),
       ),
     ];
-    expect(recordImportsFromOutside(sources)).toEqual([
+    expect(
+      recordImportsFromOutside(sources).filter(entry =>
+        entry.startsWith(`ops${path.sep}`),
+      ),
+    ).toEqual([
       `${path.join('ops', 'deploy.ts')} -> <namespace or default of ${path.join('record', 'manifest.ts')}>`,
     ]);
   });
@@ -1472,7 +1482,9 @@ describe('INV-1 — `openRecord` is the only way in; the consumers that would te
         path.join('ops', 'ok.ts'),
       ),
     ];
-    const found = recordImportsFromOutside(sources);
+    const found = recordImportsFromOutside(sources).filter(entry =>
+      entry.startsWith(`ops${path.sep}`),
+    );
     expect(found).toEqual([`${path.join('ops', 'ok.ts')} -> openRecord`]);
     for (const entry of found) {
       expect(new Set(FACE_VALUES).has(entry.split(' -> ')[1] ?? '')).toBe(true);
