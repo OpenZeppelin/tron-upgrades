@@ -58,7 +58,14 @@ import type { SolcStandardOutput } from './solc-input';
  *    every member of every namespace carries `slot: undefined`, measured in both
  *    modes (`evidence/namespaced-without-second-compile.log`). Every OZ 5.x
  *    contract takes that path. {@link positionShortfall} asks the same question
- *    of `namespaces`, so the shortfall is stated instead of silent.
+ *    of `namespaces`, so the reduced fidelity is stated rather than implied.
+ *
+ *    What that statement is NOT, per the upstream maintainer's ruling
+ *    (2026-08-04): a patch over a false-negative hole. A real change to a
+ *    namespaced struct still surfaces as a name or type change and is refused;
+ *    the divergence direction without positions is over-rejection, never silent
+ *    acceptance. The note exists because a reduced-fidelity comparison must say
+ *    so (SC-003), not because unsafe changes would otherwise pass.
  * ============================================================================
  */
 
