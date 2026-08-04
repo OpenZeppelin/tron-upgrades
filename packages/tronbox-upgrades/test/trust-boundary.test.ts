@@ -508,7 +508,11 @@ describe('INV-28: only src/environment/** reads a TronBox-internal property path
         use => use.name === 'ContractHandle' && !use.isPropertyName,
       ),
     );
+    // `index.ts` joined the family when the entry module gained its type-only
+    // surface: a re-export of the name for the package's public API, still not
+    // a cast site. Any module beyond these four naming the type fails here.
     expect(namers.map(source => source.relative).sort()).toEqual([
+      'index.ts',
       path.join('results', 'index.ts'),
       path.join('results', 'limitations.ts'),
       path.join('results', 'types.ts'),
