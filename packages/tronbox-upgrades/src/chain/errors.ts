@@ -105,9 +105,9 @@ export type TransportFailure =
   | { readonly kind: 'http-status'; readonly status: number }
   /**
    * 2xx with a body that is not JSON — typically an HTML error page from a
-   * reverse proxy. `detail` carries a bounded excerpt: Design declared this
-   * member shapeless, and INV-44 requires the message to state a truncated
-   * excerpt, which is only possible if the excerpt is carried.
+   * reverse proxy. `detail` carries a bounded excerpt: this member was
+   * originally specified shapeless, and INV-44 requires the message to state a
+   * truncated excerpt, which is only possible if the excerpt is carried.
    */
   | { readonly kind: 'non-json-body'; readonly detail: string }
   /** JSON that is not a JSON-RPC response: no `result` and no well-formed `error`. */

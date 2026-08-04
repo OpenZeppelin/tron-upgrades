@@ -46,9 +46,9 @@ import {
 import { ChainMethodRefusedError } from './errors';
 
 /**
- * **Corrects Design § The composite, measured at write time.** Design claimed a
- * single `send(string, unknown[]) => Promise<unknown>` "satisfies the whole of
- * `EthereumProvider` through its catch-all overload". It does not, and the
+ * **A single `send(string, unknown[]) => Promise<unknown>` was originally
+ * specified as satisfying "the whole of `EthereumProvider` through its catch-all
+ * overload". It does not, and the
  * compiler says so: assignability to an **overloaded** interface requires
  * compatibility with every signature, and `Promise<unknown>` is not assignable to
  * `Promise<HardhatMetadata>` — which two of the eleven overloads declare.

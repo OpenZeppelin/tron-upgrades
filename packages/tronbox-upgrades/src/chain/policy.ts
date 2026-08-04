@@ -130,8 +130,8 @@ const HEX_DATA = /^0x[0-9a-fA-F]*$/;
  * - `eth_getCode`        `provider.js:isEmpty`               `code.replace(/^0x/, '')`
  * - `eth_call`           `upgrade-interface-version.js:13`   `encodedVersion.replace(/^0x/, '')`
  *
- * **INV-4 corrects Design Decision 15, which specified a one-line `typeof`
- * guard per method.** `typeof value === 'string'` is the floor, not the check,
+ * **INV-4 deliberately exceeds the one-line `typeof` guard per method that was
+ * originally specified.** `typeof value === 'string'` is the floor, not the check,
  * and measurably insufficient for the one method whose value becomes the
  * manifest key. `getChainId` is `parseInt(id.replace(/^0x/, ''), 16)`, and
  * `parseInt` is not a validator. Executed while writing this file:

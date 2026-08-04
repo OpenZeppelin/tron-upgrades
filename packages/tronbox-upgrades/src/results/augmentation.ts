@@ -1,5 +1,5 @@
 /**
- * The ratified host-object augmentation policy, and its one guarded helper.
+ * The host-object augmentation policy, and its one guarded helper.
  *
  * **The policy (INV-19):** *the plugin may define non-enumerable accessors on a
  * host object it has verified it does not share with the host's own cache. It may

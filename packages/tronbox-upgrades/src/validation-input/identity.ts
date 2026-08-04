@@ -153,8 +153,8 @@ export interface IdentityResult {
 /**
  * Normalises the artifact into the compiler's own placeholder form and compares.
  *
- * **`getUnlinkedBytecode` is not used, and that is a correction to Design with a
- * measurement behind it.** Its signature at
+ * **`getUnlinkedBytecode` is not used, and the reason is measured rather than
+ * stylistic.** Its signature at
  * `@openzeppelin/upgrades-core@1.46.0` is
  * `getUnlinkedBytecode(data: ValidationData, bytecode: string)`
  * (`dist/validate/query.d.ts:28`) — its first parameter is the accumulated
