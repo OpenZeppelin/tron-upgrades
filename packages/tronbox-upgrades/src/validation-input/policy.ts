@@ -25,7 +25,7 @@ import { unreachableCause, type Cause } from './causes';
  *   substitutes this module at its boundary in a fixture, which is a test
  *   affordance and not an API.
  *
- * **What v1 decides: refuse, on all eleven** (D1). There is no input v1 produces
+ * **What v1 decides: refuse, on all eleven.** There is no input v1 produces
  * whose fidelity is anything but slot-level. The `proceed-reduced` machinery is
  * built anyway, because the reporting side is what makes a flip cheap — G4
  * measured that reduced fidelity is *unobservable* from upgrades-core (the report
@@ -38,7 +38,8 @@ import { unreachableCause, type Cause } from './causes';
 export type ReducedMode = { readonly kind: 'declaration-order-only' };
 
 /**
- * Both variants carry the cause (D4 amendment 3).
+ * Both variants carry the cause, so the message never derives from the disposition
+ * and a leniency flip provably cannot change the diagnosis.
  *
  * Dropping it from `proceed-reduced` would force the reduced-fidelity statement
  * to be composed downstream from the mode alone — telling the user *that*
@@ -83,7 +84,7 @@ const REFUSE = { disposition: 'refuse' } as const;
  * `{ disposition: 'refuse' }`, so the `proceed-reduced` arm below becomes
  * unreachable *type* rather than unreachable *value* — TS2678 — and the flip
  * scaffolding would not compile until the first row was already flipped. That is
- * exactly backwards from what D1 asks for.
+ * exactly backwards from what the flip scaffolding asks for.
  */
 const POLICY_TABLE: Readonly<Record<Cause['kind'], PolicyEntry>> = {
   'compiler-absent': REFUSE,

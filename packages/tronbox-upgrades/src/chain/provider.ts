@@ -67,8 +67,8 @@ export function requireResultShape(method: string, value: unknown): string {
  * INV-23: **`send` memoizes nothing.** No cache, no memo, no dedupe — N calls
  * with the same arguments produce N round-trips. `eth_chainId` is immutable per
  * instance and the engine calls it on every `Manifest.forNetwork`, so memoizing
- * here is the obvious optimization and it is Research D5's defect shape exactly:
- * the sibling reads the implementation slot through one transport and *verifies*
+ * here is the obvious optimization, and it reproduces a defect measured in the
+ * sibling: it reads the implementation slot through one transport and *verifies*
  * it through another, so its post-upgrade check can compare answers about two
  * different addresses. A memoizing `send` is a second source of truth about the
  * chain living inside the one object whose entire purpose is to be the single

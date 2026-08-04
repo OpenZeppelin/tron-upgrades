@@ -302,7 +302,7 @@ describe('INV-12: the metadata methods are refused locally, before any request',
     expect(posts.calls).toEqual([]);
   });
 
-  it('throws rather than resolving an error envelope — record #4 §1\'s asymmetry', async () => {
+  it('throws rather than resolving an error envelope — the refusal asymmetry', async () => {
     // A positive obligation, not a gap. `manifest.js:getDevInstanceMetadata`
     // distinguishes a dev instance from a persistent one *by catching*, and its
     // `Broken invariant: … chainId undefined does not match eth_chainId 728126428`
