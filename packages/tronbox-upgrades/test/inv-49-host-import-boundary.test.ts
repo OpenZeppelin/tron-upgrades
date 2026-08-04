@@ -169,7 +169,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
     // second importer. A predicate that cannot run is the limit case of a predicate
     // evaluated in the wrong mode, so each is now its own `it()`.
     expect([...externalSpecifiers()].sort()).toEqual([
-      // Added by SF-1 Code Draft, and additive: one row, nothing removed and
+      // Added by SF-1, and additive: one row, nothing removed and
       // nothing loosened. Legitimate on two grounds. **It is not the host** —
       // INV-49's boundary is TronBox, and `@openzeppelin/upgrades-core` is the
       // validation engine, a declared runtime dependency already pinned twice
@@ -186,7 +186,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       `environment${path.sep}ambiguity.ts: node:path (import)`,
       `environment${path.sep}artifacts.ts: node:path (import)`,
       `environment${path.sep}paths.ts: node:path (import)`,
-      // Added by SF-2 Code Draft, and the row is the *reason* SF-2's own
+      // Added by SF-2, and the row is the *reason* SF-2's own
       // `node:module` row below is safe. `soljson-path.ts` is where the seam took
       // ownership of the host's `~/.tronbox/{solc,evm-solc}/soljson_v<version>.js`
       // convention, and `node:path` is all it needs: the home directory arrives as an
@@ -196,7 +196,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       // `AbsolutePath`, and INV-2's brand is what the loader's clause 3 below reads
       // as provenance.
       `environment${path.sep}soljson-path.ts: node:path (import)`,
-      // Added by SF-10 Code Draft. These two rows are also SF-10 INV-43's
+      // Added by SF-10. These two rows are also SF-10 INV-43's
       // directory rule read off the same scan: `src/options/**` may import
       // `@openzeppelin/upgrades-core` and nothing else, while `src/output/**`
       // imports nothing at all and `src/results/**` imports only `../output` —
@@ -205,7 +205,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       // dependency. The engine is a declared runtime dependency of this package.
       `options${path.sep}resolve.ts: @openzeppelin/upgrades-core (import)`,
       `options${path.sep}types.ts: @openzeppelin/upgrades-core (import)`,
-      // Added by SF-3 Code Draft — ten rows, additive, nothing removed and nothing
+      // Added by SF-3 — ten rows, additive, nothing removed and nothing
       // loosened. Read as a directory rule, the way the SF-10 and SF-2 rows are:
       //
       // - **`tronweb` and `ethers` in `address.ts` are the whole directory's only
@@ -250,7 +250,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       `record${path.sep}sidecar.ts: node:fs/promises (import)`,
       `record${path.sep}sidecar.ts: node:path (import)`,
       `record${path.sep}types.ts: @openzeppelin/upgrades-core (import)`,
-      // Added by SF-2 Code Draft — seven rows, additive, nothing removed and
+      // Added by SF-2 — seven rows, additive, nothing removed and
       // nothing loosened. Read as a directory rule the way the SF-10 rows are:
       //
       // - **`node:module` in `validation-input/compiler.ts` is the whole package's
@@ -290,7 +290,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
   });
 
   it('imports node:fs in exactly one module of the seam', () => {
-    // **Rewritten by SF-2 Code Draft, and the rewrite is a narrowing.** The
+    // **Rewritten by SF-2, and the rewrite is a narrowing.** The
     // assertion was `toHaveLength(1)` over *all* of `src/`, while its own comment
     // tied it to INV-31 and INV-43 — both of which are claims about
     // `src/environment/**`: INV-31 enumerates the seam's filesystem access,
@@ -359,7 +359,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       // quoted onward, so it is fixed here instead of annotated.
       `options${path.sep}resolve.ts: @openzeppelin/upgrades-core (import, runtime)`,
       `options${path.sep}types.ts: @openzeppelin/upgrades-core (import, type-only)`,
-      // Added by SF-3 Code Draft, and this block is where the record layer's load-order
+      // Added by SF-3, and this block is where the record layer's load-order
       // rule is actually enforced rather than described. The engine's manifest module
       // evaluates the deployment record's directory from the environment **once, at
       // module load**; every row here that reads `type-only` is a row that cannot load
@@ -374,7 +374,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       `record${path.sep}reconcile.ts: @openzeppelin/upgrades-core (import, type-only)`,
       `record${path.sep}session.ts: @openzeppelin/upgrades-core (import, type-only)`,
       `record${path.sep}types.ts: @openzeppelin/upgrades-core (import, type-only)`,
-      // Added by SF-2 Code Draft. `identity.ts` is a **runtime** importer and has to
+      // Added by SF-2. `identity.ts` is a **runtime** importer and has to
       // be: INV-34's normalisation is upstream's own `unlinkBytecode`, and
       // reproducing it locally is what that invariant exists to forbid.
       // `solc-input.ts` is type-only — it aliases upstream's `SolcOutput` so a
@@ -422,7 +422,7 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
 
   it('names no require-constructing primitive under src/, outside the one loader that pays for it', () => {
     /*
-     * The second half of completeness, **amended by SF-2 Code Draft for exactly one
+     * The second half of completeness, **amended by SF-2 for exactly one
      * file, and instrumented rather than merely excused.**
      *
      * **The original ban's stated reason, with one correction it earned.**
@@ -975,7 +975,7 @@ describe('INV-49: the scan fires on a genuine host import', () => {
     // copy of the tree the moment SF-10 added `options/`, `output/` and
     // `results/` — and the clean-tree assertion below compares this copy's file
     // count against the real tree's, so a fixture that misses a directory reads
-    // as a scan that failed to recurse. Rewritten by SF-10 Code Draft; the
+    // as a scan that failed to recurse. Rewritten by SF-10; the
     // property under test is unchanged, and the injected violation below still
     // lands in a subdirectory.
     fs.cpSync(srcDir, root, {
@@ -1061,7 +1061,7 @@ describe('INV-49: a host mentioned in a comment only passes the scan', () => {
   });
 
   it('passes the real errors.ts, whose comment is the actual trap', () => {
-    // The fixture that matters: not a synthetic file but the module Code Draft
+    // The fixture that matters: not a synthetic file but the module the implementation
     // revision 3 rewrote. If this ever fails, the scan has regressed to text
     // matching and the next maintainer will delete it rather than fix it.
     const errors = errorsSource();

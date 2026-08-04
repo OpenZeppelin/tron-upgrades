@@ -329,7 +329,7 @@ describe('INV-43 / INV-46: with no global fetch, a different-origin override is 
       endpointOverride: DIFFERENT_ORIGIN_OVERRIDE,
     }).catch(() => undefined);
 
-    // The ratified reading of INV-46 is explicit that this fallback "IS the leak
+    // The operative reading of INV-46 is explicit that this fallback "IS the leak
     // INV-43 exists to prevent". A refusal that still issued the probe through the
     // handle would have leaked before it refused.
     expect(handle.requests).toEqual([]);

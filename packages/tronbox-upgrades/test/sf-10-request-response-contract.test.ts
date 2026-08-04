@@ -813,7 +813,7 @@ describe('SF-10 INV-7: the structural minima are pinned, and the pin asserts wha
      * **Corrects the Design.** `Design § Module Structure` declares the pin as
      * "`ContractAbstraction` satisfies `ContractHandle`", which cannot compile:
      * `address` is required on `ContractHandle` and absent from SF-0's type
-     * (TS2741). Left as written, Code Draft would either delete the pin — losing
+     * (TS2741). Left as written, the implementation would either delete the pin — losing
      * the drift protection that is the whole justification for declaring the
      * minima twice — or cast through it, losing the guarantee silently. So the
      * refusal is recorded as a directive the compiler enforces.

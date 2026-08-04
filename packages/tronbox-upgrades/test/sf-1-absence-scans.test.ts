@@ -374,7 +374,7 @@ describe('INV-33: SF-1 writes nothing, signs nothing and touches no filesystem',
   it('names no filesystem or process primitive in a value position', () => {
     // Value position only. `process.env` appears in `index.ts` as `deps.env`'s
     // documented default — read once at factory time, which INV-24 permits and
-    // INV-46's ratified reading names explicitly — so `process` is allowed there and
+    // INV-46's operative reading names explicitly — so `process` is allowed there and
     // nowhere else, and only for `env`.
     const forbidden = /^(readFileSync|writeFileSync|existsSync|mkdirSync|unlinkSync|rmSync|spawn|spawnSync|execSync|fork)$/;
     for (const source of sources) {

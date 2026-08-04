@@ -1160,7 +1160,7 @@ describe('INV-35: the injected logger guaranteed surface is exactly log', () => 
 
   it('states which lineage supplied the channel, including when it is a noop', () => {
     // `origin: 'config-lineage'` may be TronBox's own `{ log(){} }` default — a
-    // channel that discards everything written to it. Design's own note says the
+    // channel that discards everything written to it. The specification's own note says the
     // `output` slot is absent under `tronbox test` mocha files, and the slot table
     // agrees (`absentIn` lists that context). The implementation nonetheless
     // resolves the slot there through the artifacts lineage.

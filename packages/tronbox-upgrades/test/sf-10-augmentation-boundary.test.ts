@@ -343,7 +343,7 @@ describe('SF-10 INV-20: the result contract seals by proxying, not by mutating',
 
   it('proves the designed mechanism cannot run — DEV-1, executable rather than quoted', () => {
     /*
-     * The Design's `defineUnavailable(target, member, limitation)` installs a
+     * The specified `defineUnavailable(target, member, limitation)` installs a
      * throwing accessor on the returned handle. It **throws for the one and only
      * member the Design registers**, because `Contract.addProp` builds every
      * `_properties` member with `configurable: false` and `Utils.bootstrap`

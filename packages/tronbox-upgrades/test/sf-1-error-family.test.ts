@@ -1,19 +1,19 @@
 /**
  * SF-1 — INV-6, INV-7, INV-13, INV-19, INV-44, INV-49, and **Tension 1's
- * unratified default made into a standing test**.
+ * deliberate default made into a standing test**.
  *
  * ## Tension 1 is the reason this file exists in this shape
  *
  * INV-45 requires `slots.ts` to import **nothing**; INV-6 and INV-7 require
  * `slotToAddress` and `toRpcAddress` to **raise** `ChainSlotMalformedError` /
  * `ChainAddressUnusableError`. A module with zero imports cannot throw a class
- * declared elsewhere, so Code Draft declared both classes *in* `slots.ts` and
+ * declared elsewhere, so the implementation declared both classes *in* `slots.ts` and
  * re-exported them from `errors.ts` — and recorded that as
  * `PROCEEDING ON UNRATIFIED DEFAULT`. **The dev has still not ruled.**
  *
- * Code Draft discharged the proof by execution, in a throwaway script. § 1 makes it
+ * the implementation discharged the proof by execution, in a throwaway script. § 1 makes it
  * a standing test, which is what makes a later reversal safe rather than merely
- * cheap: if the dev moves the two declarations into `errors.ts`, these five
+ * cheap: if someone moves the two declarations into `errors.ts`, these five
  * assertions are what confirm the move preserved INV-19's enumeration and INV-13's
  * instantiate-all-eleven check.
  *
@@ -22,7 +22,7 @@
  * and INV-7 from *raises* to *reports*. So the ruling is about which invariant bends,
  * and § 1.6 pins the current *raising* behaviour separately from the class locations —
  * so a reversal fails the location tests and the behaviour tests independently, and
- * the dev can see which of the two they are changing.
+ * a reader can see which of the two they are changing.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -66,7 +66,7 @@ function errorSubclasses(): readonly { name: string; ctor: new (...args: never[]
 }
 
 // ---------------------------------------------------------------------------
-// 1. TENSION 1 — the unratified default, pinned
+// 1. TENSION 1 — the deliberate default, pinned
 // ---------------------------------------------------------------------------
 
 describe('Tension 1 (UNRATIFIED): the two validation classes live in slots.ts and are re-exported', () => {
@@ -195,7 +195,7 @@ describe('Tension 1 (UNRATIFIED): the two validation classes live in slots.ts an
     // Deliberately its own case. Reversing Tension 1 means `slots.ts` returns a
     // discriminated result instead of throwing, which relaxes INV-6/INV-7 from
     // *raises* to *reports* — so the behaviour change and the location change fail
-    // different tests, and the dev can see which one a proposed patch actually makes.
+    // different tests, and a reader can see which one a proposed patch actually makes.
     expect(() => slotToAddress('0x')).toThrow(ChainSlotMalformedError);
     expect(() => toRpcAddress('T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb')).toThrow(
       ChainAddressUnusableError,
@@ -205,7 +205,7 @@ describe('Tension 1 (UNRATIFIED): the two validation classes live in slots.ts an
   it('adds no member to SF-0\'s three-diagnosis family', () => {
     // INV-19's negative. SF-0's own enumeration asserts its family is exactly three,
     // and `code` there is a template-literal type over `EnvironmentDiagnosis` — so a
-    // fourth member fails **both** suites, which is the condition the dev's decision
+    // fourth member fails **both** suites, which is the condition the reuse decision
     // (b) attached to the SF-0 amendment.
     const subclassNames = errorSubclasses().map(entry => entry.name);
     for (const name of subclassNames) {

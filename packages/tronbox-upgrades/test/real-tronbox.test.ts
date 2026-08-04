@@ -34,7 +34,7 @@ import {
  * loudly rather than surfacing later as a behavioural bug.
  *
  * It also promotes `evidence/probes.js` — the executable evidence behind SF-0
- * Research's ⚗ claims — to a test case, which that file's own header asks for
+ * the research ⚗ claims — to a test case, which that file's own header asks for
  * ("Promote these to vitest cases at the Tests stage").
  *
  * Scope note: the facts pinned below are the ones *this stage's* four invariant
@@ -489,7 +489,7 @@ describe.skipIf(installedVersions.length === 0 || !fs.existsSync(PROBES))(
     it.each(installedVersions)(
       'runs every research probe green against %s',
       installName => {
-        // SF-0 Research's ⚗ claims, executable. Each probe pins a fact the seam is
+        // SF-0 the research ⚗ claims, executable. Each probe pins a fact the seam is
         // built on, and running the whole file per version is what makes an
         // upstream change fail loudly here instead of surfacing as a behavioural
         // bug somewhere downstream.

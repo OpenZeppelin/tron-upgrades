@@ -98,7 +98,7 @@ describe('SF-10 INV-38: `recorded` is bounded, and truncation is never silent', 
 
   it('reports the FINAL suppressed count, not the count when the cap was reached', () => {
     /*
-     * The non-vacuity case for Code Draft's Dev Note 3, made executable.
+     * The non-vacuity case for the implementation's third recorded note, made executable.
      *
      * An implementation that froze the truncation note at the moment the cap was
      * reached would report 1 here and 1 again after nine more suppressions — which
@@ -127,7 +127,7 @@ describe('SF-10 INV-38: `recorded` is bounded, and truncation is never silent', 
 
   it('suppresses the advisory write too, so `recorded` stays a superset of what the user saw', () => {
     /*
-     * Code Draft's deliberate choice, asserted rather than assumed: past the cap
+     * a deliberate implementation choice, asserted rather than assumed: past the cap
      * the note is neither recorded *nor* written. Continuing to write while no
      * longer recording would make `recorded` a non-superset of the terminal output,
      * which is a worse failure than truncation — the user would see a warning the

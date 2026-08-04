@@ -227,7 +227,7 @@ describe('INV-27: precedence is fixed, resolved once, with no fallback between s
   });
 
   it('refuses an empty environment variable rather than falling through', () => {
-    // Code Draft's decided default, and INV-27's rule at the *source* level: only
+    // the implementation's decided default, and INV-27's rule at the *source* level: only
     // `undefined` counts as absent. A user who sets the variable and typos it must
     // be told, not silently served from the derived endpoint of a node that happens
     // to answer. That is the sibling's defect in SF-1's clothes: a blanket catch plus
@@ -482,7 +482,7 @@ describe('INV-29: exactly one module reads the handle, along exactly two paths',
   });
 
   it('reports a present-but-wrong-type path as invariant-violated, not as missing', () => {
-    // Code Draft's third structural state, pinned. `handle-malformed` renders as
+    // the implementation's third structural state, pinned. `handle-malformed` renders as
     // "is absent" or "threw when read", and neither is true of a numeric
     // `fullNode.host` — reporting `'missing'` would be the wrong message about the
     // right problem, which is the failure class SF-1 exists to remove.

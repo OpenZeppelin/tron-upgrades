@@ -265,7 +265,7 @@ describe('INV-30 (type-level): the host handle is not an EthereumProvider', () =
   });
 
   it('declares ChainAccess.provider as the engine\'s own interface, so no consumer casts', () => {
-    // Code Draft's one corrected Design claim, as a type assertion. A single
+    // the one corrected specification claim, as a type assertion. A single
     // `send(string, unknown[]) => Promise<unknown>` does **not** satisfy
     // `EthereumProvider`: assignability to an overloaded interface requires
     // compatibility with every signature, and `Promise<unknown>` is not assignable to
