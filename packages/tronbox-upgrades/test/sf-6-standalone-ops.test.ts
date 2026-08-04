@@ -117,6 +117,12 @@ function buildFake(spec: Spec = {}) {
 
     hashWithoutMetadata: (bytecode: string) => bytecode.slice(0, 16),
 
+    callThroughFacade: async (request: { at: string }) => {
+      log.push('callThroughFacade');
+      return { address: request.at, transactionHash: 'ee'.repeat(32) };
+    },
+    ownerOf: async () => null,
+
     async inferKind(reference) {
       log.push(`inferKind:${reference.name}`);
       return spec.inferredKind ?? 'uups';

@@ -891,6 +891,8 @@ describe('INV-32 — applied to the real tree', () => {
     // reaches the engine ZERO times statically — the toolkit's engine access
     // is a dynamic import, recorded as a deferred edge, never a static one.
     expect(entry?.moduleSpecifiers.map(edge => edge.specifier).sort()).toEqual([
+      './admin',
+      './admin/errors',
       './adopt',
       './adopt/errors',
       './deploy',
@@ -1463,6 +1465,7 @@ describe('INV-1 — `openRecord` is the only way in; the consumers that would te
     // both through the face. A second consumer, or a route change, edits this
     // list deliberately or fails here.
     expect(recordImportsFromOutside(allSources())).toEqual([
+      `${path.join('admin', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('adopt', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('deploy', 'sender.ts')} -> canonicalizeAddress`,
       `${path.join('deploy', 'sender.ts')} -> CanonicalAddress`,

@@ -133,6 +133,11 @@ function buildFake(spec: Spec = {}) {
     proxyArtifact: () => ({}) as never,
     looksLikeProxyAdmin: async () => false,
     hashWithoutMetadata: (bytecode: string) => `H(${bytecode})`,
+    callThroughFacade: async (request: { at: string }) => {
+      log.push('callThroughFacade');
+      return { address: request.at, transactionHash: 'ee'.repeat(32) };
+    },
+    ownerOf: async () => null,
     inferKind: async () => 'uups' as const,
     fetchOrDeployImplementation: async () => {
       log.push('fetchOrDeployImplementation');
