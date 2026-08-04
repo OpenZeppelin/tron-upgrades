@@ -948,8 +948,9 @@ function stateNamespaceShortfall(
     ],
     remedy:
       'Add new members at the end of each namespaced struct and leave reserved ' +
-      'padding in place; a reordering or a retype inside a namespace needs ' +
-      'checking by hand before this upgrade goes out.',
+      'padding in place. Renames, retypes, reorders and deletions inside a ' +
+      'namespace are still refused; a change that needs slot positions is ' +
+      'refused rather than silently accepted.',
   });
 }
 
