@@ -28,6 +28,7 @@ import {
   createOperationToolkit,
   handlesFrom,
   HANDLE_OPTION_KEYS,
+  readPriorDeployedAddress,
   readWriteBackHash,
   encodeInitializer,
   type OperationContext,
@@ -89,10 +90,8 @@ export async function runDeployProxy(
   const deployer = toolkit.requireDeployer();
 
   // 4 — replay recognition, before any spend (INV-9).
-  const decision = decideDeployReplay(
-    toolkit.priorDeployedAddress(contract),
-    toolkit.replayVerdicts(),
-  );
+  const prior = toolkit.priorDeployedAddress(contract);
+  const decision = decideDeployReplay(prior, toolkit.replayVerdicts());
   if (decision.kind === 'refuse') {
     throw new StaleProxyRecordError(decision.address, decision.because);
   }
@@ -104,7 +103,12 @@ export async function runDeployProxy(
     const priorHash = readWriteBackHash(contract);
     return Object.freeze({
       contract: await toolkit.contractAt(contract, decision.address),
-      address: decision.address,
+      // The artifact's own spelling, not the record's canonical form: the
+      // result pins `address` tool-verbatim (INV-47), and a replayed run
+      // answering a different spelling than the run it replays would fail
+      // any caller comparing the two. `prior` is non-null on this branch —
+      // a `reuse` decision exists only for a named prior address.
+      address: prior as string,
       transaction: transactionIdentity(priorHash, 'deployProxy (reused)'),
       notes: operationNotes(toolkit.channel.recorded),
     });
@@ -187,6 +191,20 @@ export async function runDeployProxy(
     return writeBack;
   });
 
+  // 8b — the recognition key, completed. The replay module documents the key
+  //     as the artifact's per-network write-back, but the queue's OWN
+  //     write-backs left the logical contract naming the implementation it
+  //     deployed along the way — a replayed migration reading that entry
+  //     refuses as unrecorded, and a consumer's `.deployed()` answers the
+  //     implementation instead of the proxy. The entry must name the proxy,
+  //     address and transaction hash both, mirroring the host action's shape.
+  const replayMemory = contract as {
+    address?: unknown;
+    transactionHash?: unknown;
+  };
+  replayMemory.address = outcome.address;
+  replayMemory.transactionHash = outcome.transactionHash;
+
   // 9 — the wildcard statement (INV-17): a required effect of the wildcard
   //     path, stated where the user reads output.
   if (toolkit.network.configuredId.syntax === 'wildcard') {
@@ -215,10 +233,14 @@ export async function deployProxy(
   args: readonly unknown[] = [],
   options: RawOperationOptions = {},
 ): Promise<DeployedProxy> {
+  // The record session reconciles only addresses it is given, so the replay
+  // decision's verdict exists exactly when the prior address is named here.
+  const prior = readPriorDeployedAddress(contract);
   const context = await createOperationToolkit({
     handles: handlesFrom(options),
     rawOptions: options,
     acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+    addresses: prior === null ? [] : [{ address: prior }],
   });
   return runDeployProxy(context, contract, args);
 }

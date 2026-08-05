@@ -132,14 +132,14 @@ function collect(): readonly Publishable[] {
         if (entry.name !== 'node_modules' && entry.name !== 'dist') walk(full);
         continue;
       }
-      if (!/\.(ts|js|md)$/.test(entry.name)) continue;
+      if (!/\.(ts|js|mjs|md)$/.test(entry.name)) continue;
       found.push({
         relative: path.relative(packageRoot, full),
         text: fs.readFileSync(full, 'utf8'),
       });
     }
   };
-  for (const top of ['src', 'test', 'docs']) walk(path.join(packageRoot, top));
+  for (const top of ['src', 'test', 'docs', 'e2e']) walk(path.join(packageRoot, top));
   // Root-level publication files join the scanned set the day they exist. The
   // existence pins in the manifest test below are what make an appearance
   // deliberate; this clause is what makes it scanned.
@@ -201,7 +201,7 @@ describe('publication hygiene: every reference resolves inside the published rep
    */
   it('ranges over the whole published tree, and says so by counting it', () => {
     expect(all.length).toBeGreaterThan(100);
-    for (const top of ['src', 'test', 'docs']) {
+    for (const top of ['src', 'test', 'docs', 'e2e']) {
       expect(
         all.filter(file => file.relative.startsWith(`${top}${path.sep}`)).length,
         `${top}/ contributed no file`,

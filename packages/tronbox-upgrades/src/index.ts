@@ -41,8 +41,10 @@ export type {
 
 export type {
   AdoptionOutcome,
+  AlreadyHeldAuthorityTransfer,
   AuthorityTransfer,
   ContractHandle,
+  ExecutedAuthorityTransfer,
   DeployedBeacon,
   DeployedProxy,
   ImplementationDeployment,

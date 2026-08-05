@@ -342,7 +342,11 @@ describe('deployProxy — the order is the contract', () => {
       fakeAbstraction({ priorAddress: PROXY_ADDR }),
       [42],
     );
-    expect(result.address).toBe(canonicalizeAddress(PROXY_ADDR));
+    // The artifact's own spelling, not the record's canonical form: the
+    // result pins `address` tool-verbatim, and a replayed run answering a
+    // different spelling than the run it replays fails any caller comparing
+    // the two — measured live before this line pinned it.
+    expect(result.address).toBe(PROXY_ADDR);
     expect(fake.log).not.toContain('queue');
     expect(fake.log.some(entry => entry.startsWith('hostDeploy:'))).toBe(false);
     expect(fake.log).not.toContain('recordProxy');

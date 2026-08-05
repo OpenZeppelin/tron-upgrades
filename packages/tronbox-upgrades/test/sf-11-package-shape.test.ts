@@ -43,10 +43,10 @@ describe('the tarball npm would publish', () => {
     expect(listing).toContain('contracts/Proxies.sol');
   });
 
-  it('ships nothing from src/, test/, docs/ or the evidence trees', () => {
+  it('ships nothing from src/, test/, docs/, e2e/ or the evidence trees', () => {
     for (const entry of listing) {
       expect(
-        /^(src|test|docs|artifacts)\//.test(entry),
+        /^(src|test|docs|artifacts|e2e)\//.test(entry),
         `${entry} should not be published`,
       ).toBe(false);
     }

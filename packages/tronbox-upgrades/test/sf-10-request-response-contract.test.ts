@@ -611,14 +611,30 @@ describe('SF-10 INV-5: every result type is total — no optional fields', () =>
     const adoptionBoth: Required<AdoptionOutcome> = adoption;
     const adoptionBack: AdoptionOutcome = adoptionBoth;
 
+    // Both members of the discriminated union, round-tripped separately: the
+    // executed transfer carries its transaction, the already-held replay
+    // carries `null` — declared, never left undefined.
     const authority: AuthorityTransfer = {
       notes,
+      proxy: 'TProxy',
+      alreadyHeld: false,
       transaction,
       previousOwner: 'TOld',
       newOwner: 'TNew',
     };
     const authorityBoth: Required<AuthorityTransfer> = authority;
     const authorityBack: AuthorityTransfer = authorityBoth;
+
+    const authorityHeld: AuthorityTransfer = {
+      notes,
+      proxy: 'TProxy',
+      alreadyHeld: true,
+      transaction: null,
+      previousOwner: 'TNew',
+      newOwner: 'TNew',
+    };
+    const authorityHeldBoth: Required<AuthorityTransfer> = authorityHeld;
+    const authorityHeldBack: AuthorityTransfer = authorityHeldBoth;
 
     // One own-key sweep over every result: every declared key present, no
     // undefined value. This is the runtime half — an interface says nothing about
@@ -632,6 +648,7 @@ describe('SF-10 INV-5: every result type is total — no optional fields', () =>
       validationBack,
       adoptionBack,
       authorityBack,
+      authorityHeldBack,
     ];
     for (const result of results) {
       for (const [key, value] of Object.entries(result)) {
