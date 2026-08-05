@@ -676,16 +676,19 @@ describe('INV-47: host-shaped but consumer-agnostic', () => {
     }
   });
 
-  it('imports nothing outside node builtins, the seam itself and the manifest', () => {
-    // The dependency direction, checkable. `../../package.json` is the one
-    // non-relative-within-seam specifier and it is INV-19's single home for the
-    // declared peer range.
+  it('imports nothing outside node builtins, the seam itself, the manifest and the shared leaf', () => {
+    // The dependency direction, checkable. `../../package.json` is INV-19's
+    // single home for the declared peer range, and `../host-sharing` is the one
+    // sanctioned shared leaf: it imports nothing at all, so depending on it
+    // acquires no other directory — the collapse of the twice-declared
+    // host-sharing refusal ruled for the packaging pass.
     for (const source of environmentSources()) {
       for (const specifier of source.importSpecifiers) {
         const permitted =
           /^node:(fs|path)$/.test(specifier) ||
           /^\.\/[a-z-]+$/.test(specifier) ||
-          specifier === '../../package.json';
+          specifier === '../../package.json' ||
+          specifier === '../host-sharing';
         expect(
           permitted,
           `${source.relative} imports ${specifier}`,
@@ -696,12 +699,14 @@ describe('INV-47: host-shaped but consumer-agnostic', () => {
 
   it('imports no sibling sub-feature module, in either direction', () => {
     // One-way: consumers depend on the seam, the seam depends on nothing in the
-    // package. The first import back from `environment/` into an operation module
-    // creates the cycle that makes the check unenforceable in both directions.
+    // package — except the one shared LEAF (`../host-sharing`, which itself
+    // imports nothing, so the edge acquires no directory). The first import
+    // back from `environment/` into an operation module creates the cycle that
+    // makes the check unenforceable in both directions.
     for (const source of environmentSources()) {
       expect(
         source.importSpecifiers.filter(specifier =>
-          /^\.\.\/(?!\.\/)(?!\.\.\/package\.json)/.test(specifier),
+          /^\.\.\/(?!\.\/)(?!\.\.\/package\.json)(?!host-sharing$)/.test(specifier),
         ),
         `${source.relative} reaches out of the seam`,
       ).toEqual([]);

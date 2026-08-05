@@ -199,10 +199,11 @@ describe('INV-49: no module in the plugin imports the host, by any path', () => 
       // Added by SF-10. These two rows are also SF-10 INV-43's
       // directory rule read off the same scan: `src/options/**` may import
       // `@openzeppelin/upgrades-core` and nothing else, while `src/output/**`
-      // imports nothing at all and `src/results/**` imports only `../output` —
-      // so any non-relative specifier appearing under `output/` or `results/`
-      // here is a violation of SF-10's leaf property, not merely a new
-      // dependency. The engine is a declared runtime dependency of this package.
+      // imports nothing at all and `src/results/**` imports only `../output`
+      // and the shared `../host-sharing` leaf — so any non-relative specifier
+      // appearing under `output/` or `results/` here is a violation of SF-10's
+      // leaf property, not merely a new dependency. The engine is a declared
+      // runtime dependency of this package.
       `options${path.sep}resolve.ts: @openzeppelin/upgrades-core (import)`,
       `options${path.sep}types.ts: @openzeppelin/upgrades-core (import)`,
       // Added by SF-5 — three rows, additive. The operation toolkit reaches
