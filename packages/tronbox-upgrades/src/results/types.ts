@@ -122,12 +122,33 @@ export interface AdoptionOutcome extends OperationResult {
   readonly contract: ContractHandle;
 }
 
-/** SF-8. */
-export interface AuthorityTransfer extends OperationResult {
+/**
+ * SF-8. Two capabilities, two members (INV-5's rule applied as a discriminated
+ * union): an executed transfer carries its transaction; the already-held
+ * replay sent nothing and says so — `alreadyHeld` is the discriminant, and
+ * `transaction` is `null` exactly there, never left undefined.
+ */
+export interface ExecutedAuthorityTransfer extends OperationResult {
+  readonly proxy: string;
+  readonly alreadyHeld: false;
   readonly transaction: TransactionIdentity;
+  /** `null` when nothing on-chain answered owner() before the transfer. */
+  readonly previousOwner: string | null;
+  readonly newOwner: string;
+}
+
+export interface AlreadyHeldAuthorityTransfer extends OperationResult {
+  readonly proxy: string;
+  readonly alreadyHeld: true;
+  readonly transaction: null;
+  /** The holder — identical to `newOwner`; that identity is why nothing sent. */
   readonly previousOwner: string;
   readonly newOwner: string;
 }
+
+export type AuthorityTransfer =
+  | ExecutedAuthorityTransfer
+  | AlreadyHeldAuthorityTransfer;
 
 /**
  * A result was constructed without the transaction identity the plugin guarantees.

@@ -103,7 +103,7 @@ export async function runDeployBeacon(
         : null;
   const beaconAbstraction = toolkit.proxyArtifact('UpgradeableBeacon');
 
-  const writeBack = await toolkit.queue(deployer, async () => {
+  const outcome = await toolkit.queue(deployer, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
@@ -114,12 +114,20 @@ export async function runDeployBeacon(
       owner,
     ]);
     await confirmOrRefuse(context, deployed.transactionHash);
-    return deployed;
+    return { deployed, implementationAddress };
   });
 
+  // The declared result promises every field it names: `contract` is the
+  // beacon's own handle (implementation()/upgradeTo/owner ABI), and
+  // `implementation` is what the beacon was deployed pointing at.
   return Object.freeze({
-    address: writeBack.address,
-    transaction: transactionIdentity(writeBack.transactionHash, 'deployBeacon'),
+    contract: await toolkit.contractAt(beaconAbstraction, outcome.deployed.address),
+    address: outcome.deployed.address,
+    transaction: transactionIdentity(
+      outcome.deployed.transactionHash,
+      'deployBeacon',
+    ),
+    implementation: outcome.implementationAddress,
     notes: operationNotes(toolkit.channel.recorded),
   }) as unknown as DeployedBeacon;
 }

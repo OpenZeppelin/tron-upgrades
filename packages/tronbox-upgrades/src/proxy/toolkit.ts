@@ -376,6 +376,15 @@ export async function createOperationToolkit(request: {
    * state-changing call in the same process.
    */
   readonly mode?: 'state-changing' | 'validate-only';
+  /**
+   * The addresses this operation is about to act on, passed through to the
+   * record session verbatim: the session produces a reconciliation verdict
+   * only for addresses named here (it cannot enumerate proxies it has no
+   * record of), so an operation whose replay decision reads
+   * `replayVerdicts()` must name its prior address or the decision sees an
+   * empty report and refuses a perfectly recorded proxy.
+   */
+  readonly addresses?: readonly { address: string }[];
 }): Promise<OperationContext> {
   const mode = request.mode ?? 'state-changing';
   const processEnv = request.processEnv ?? process.env;
@@ -411,6 +420,7 @@ export async function createOperationToolkit(request: {
           root: env.paths.root,
           env: processEnv,
           chain,
+          addresses: request.addresses ?? [],
         });
 
   // The deferred loads, in one place — every module whose static closure

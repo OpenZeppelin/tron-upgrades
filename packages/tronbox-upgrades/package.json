@@ -15,6 +15,7 @@
     "build": "tsc",
     "prepublishOnly": "npm run build && npm test",
     "test": "npm run test:types && vitest run",
+    "test:e2e": "node e2e/run.mjs",
     "test:types": "tsc -p tsconfig.test.json",
     "test:watch": "vitest",
     "prepack": "npm run build"
