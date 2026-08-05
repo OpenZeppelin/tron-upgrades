@@ -113,7 +113,7 @@ describe('SF-10 INV-43: the three directories import nothing from the package', 
     ]);
   });
 
-  it('has `src/results/**` importing only `../output`, and only for a type', () => {
+  it('has `src/results/**` importing only `../output` (a type) and the shared leaf', () => {
     expect(
       sourcesIn('results').flatMap(source => packageSpecifiers(source)),
     ).toEqual([]);
@@ -123,7 +123,13 @@ describe('SF-10 INV-43: the three directories import nothing from the package', 
         .filter(entry => entry.specifier.startsWith('..'))
         .map(entry => `${source.relative} -> ${entry.specifier}`),
     );
-    expect(crossDirectory).toEqual(['results/types.ts -> ../output']);
+    // `../host-sharing` is the collapse of the twice-declared host-sharing
+    // refusal onto one shared leaf; the leaf imports nothing, so this edge
+    // acquires no directory and the layer stays a dependency root.
+    expect(crossDirectory.sort()).toEqual([
+      'results/augmentation.ts -> ../host-sharing',
+      'results/types.ts -> ../output',
+    ]);
     // And it is a type-only import, so the edge does not exist at runtime either.
     expect(sourceNamed('results/types.ts').text).toContain(
       "import type { DegradedNote } from '../output';",

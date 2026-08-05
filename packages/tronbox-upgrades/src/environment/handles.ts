@@ -148,73 +148,29 @@ export function supplied(value: unknown): boolean {
 export const REDACTED_HOST_HANDLE =
   '[TronBox host handle — redacted, not serialized]';
 
-/**
- * The host-object augmentation policy, expressed as an injected
- * predicate: *the plugin may define non-enumerable accessors on a host object it
- * has verified it does not share with the host's own cache; it may never mutate a
- * shared instance.*
+/*
+ * The host-object augmentation policy's vocabulary — the injected predicate,
+ * its factory and the refusal — lives in `../host-sharing`, the one shared
+ * leaf this seam and the result layer may both import (each is a dependency
+ * root the other must not import, so for one release the refusal class
+ * existed twice under one name; the shared leaf is the recorded collapse).
+ * Re-exported here so the seam's face is unchanged: every sealing site in
+ * this seam names its evidence through `hostSharingGuard`, because the
+ * handles arrive as arguments (`types.ts:RawMigrationHandles`) rather than
+ * being fetched from anywhere.
  *
- * The predicate is **required, never optional**. An optional guard defaulting to
- * "no check" is the silent-degradation class the policy exists to remove, and a
- * required one makes the compiler force every sealing site to name where its
- * shared-instance knowledge comes from.
+ * The refusal is deliberately **not** a `TronBoxEnvironmentError` — INV-10
+ * fixes that family at three, and this is not a diagnosis of the user's
+ * environment.
  */
-export interface HostSharingGuard {
-  /**
-   * Where the caller's knowledge comes from, quoted verbatim in the refusal. A
-   * refusal that names the policy but not its evidence leaves the reader unable
-   * to tell a real collision from a mis-supplied guard.
-   */
-  readonly evidence: string;
+import {
+  HostInstanceSharedError,
+  hostSharingGuard,
+  type HostSharingGuard,
+} from '../host-sharing';
 
-  /** `true` when the host holds its own reference to `target`. */
-  isHostShared(target: object): boolean;
-}
-
-/**
- * The guard for a caller that can enumerate every host object it holds — which
- * every sealing site in this seam can, because the handles arrive as arguments
- * (`types.ts:RawMigrationHandles`) rather than being fetched from anywhere.
- *
- * Non-object members of `hostObjects` are dropped: a primitive cannot be the
- * target of a mutation, so keeping it would make the set look larger than the
- * knowledge behind it.
- */
-export function hostSharingGuard(
-  evidence: string,
-  hostObjects: readonly unknown[],
-): HostSharingGuard {
-  const shared = new Set<object>(hostObjects.filter(isObjectLike));
-  return Object.freeze({
-    evidence,
-    isHostShared: (target: object): boolean => shared.has(target),
-  });
-}
-
-/**
- * Refusal under the augmentation policy: the object about to be mutated is one
- * the host also holds.
- *
- * Deliberately **not** a `TronBoxEnvironmentError` — INV-10 fixes that family at
- * three, and this is not a diagnosis of the user's environment. It reports a
- * plugin defect, or a host change the plugin has not been updated for, which is
- * why it names the member it declined to install and the guard's evidence rather
- * than a slot and a property path.
- */
-export class HostInstanceSharedError extends Error {
-  constructor(
-    readonly member: string,
-    readonly evidence: string,
-  ) {
-    super(
-      `Refusing to install "${member}" on an object TronBox also holds a ` +
-        'reference to. The plugin never mutates a shared host instance; it ' +
-        'defines accessors only on an object it has verified is its own. ' +
-        `Guard evidence: ${evidence}.`,
-    );
-    this.name = 'HostInstanceSharedError';
-  }
-}
+export { HostInstanceSharedError, hostSharingGuard };
+export type { HostSharingGuard };
 
 /**
  * Freezes a slot and gives it a non-enumerable `toJSON` that replaces the named

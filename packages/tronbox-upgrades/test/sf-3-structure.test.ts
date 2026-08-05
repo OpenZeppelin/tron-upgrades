@@ -814,13 +814,14 @@ describe('INV-32 — the walker: transitive, static-only, and `typeOnly`-aware',
 
 describe('INV-32 — applied to the real tree', () => {
   it('the record layer\'s own runtime closure spans the seam and the chain layer, and contains no runtime engine import', () => {
-    // The substantive live claim, and it is not vacuous: 33 modules, three
-    // directories, five type-only engine edges and one deferred one.
+    // The substantive live claim, and it is not vacuous: 34 modules (the seam
+    // now carries the shared host-sharing leaf), three directories plus that
+    // leaf, five type-only engine edges and one deferred one.
     const closure = runtimeStaticClosure(
       specifierIndex(allSources()),
       path.join('record', 'index.ts'),
     );
-    expect(closure.modules.length).toBe(33);
+    expect(closure.modules.length).toBe(34);
     expect(closure.engineRuntimeEdges).toEqual([]);
     expect(
       closure.typeOnlyEdges.filter(edge =>
@@ -952,7 +953,7 @@ describe('INV-32 — applied to the real tree', () => {
       scanText("export * from './record';\n", 'index.ts').moduleSpecifiers,
     );
     const closure = runtimeStaticClosure(index, 'index.ts');
-    expect(closure.modules.length).toBe(34);
+    expect(closure.modules.length).toBe(35);
     expect(closure.engineRuntimeEdges).toEqual([]);
   });
 });
