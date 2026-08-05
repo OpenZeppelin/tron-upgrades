@@ -2,7 +2,7 @@
  * The proxy-lifecycle refusal family. Same construction rules as the
  * deployment seam's: one closed hierarchy, one class per cause, structured
  * fields, the message rendered by the constructor so fields and text cannot
- * disagree (INV-8's family pattern).
+ * disagree.
  */
 
 /** The base every proxy-lifecycle refusal extends. */
@@ -12,7 +12,7 @@ export abstract class ProxyOperationRefusedError extends Error {
 
 /**
  * The proxy's reported `UPGRADE_INTERFACE_VERSION` is outside the closed set
- * the dispatch matrix knows (INV-5). Refusing is the only safe answer: a
+ * the dispatch matrix knows. Refusing is the only safe answer: a
  * guessed entry point sends a live proxy a call its generation does not
  * implement — or worse, one it implements with different semantics.
  */
@@ -34,7 +34,7 @@ export class UnknownProxyGenerationError extends ProxyOperationRefusedError {
 }
 
 /**
- * The proxy artifact is not in the project's build output (INV-8, scenario 6).
+ * The proxy artifact is not in the project's build output (scenario 6).
  * The remedy is the one-import-file step, stated verbatim rather than pointed
  * at.
  */
@@ -53,7 +53,7 @@ export class ProxyArtifactMissingError extends ProxyOperationRefusedError {
 }
 
 /**
- * More than one artifact answers to the proxy contract's bare name (INV-8).
+ * More than one artifact answers to the proxy contract's bare name.
  * Never picked silently: TronBox's artifact index is bare-name keyed, so the
  * pick would be decided by directory iteration order.
  */
@@ -75,7 +75,7 @@ export class ProxyArtifactCollisionError extends ProxyOperationRefusedError {
 
 /**
  * The target is a beacon proxy: its implementation lives on the beacon, so an
- * in-place upgrade through the proxy is the wrong operation (INV-4). Refused
+ * in-place upgrade through the proxy is the wrong operation. Refused
  * BEFORE kind processing, whose missing-record default would otherwise route
  * it down the transparent path.
  */
@@ -108,7 +108,7 @@ export class NotTransparentProxyError extends ProxyOperationRefusedError {
 
 /**
  * The upgrade transaction confirmed and the implementation slot does not hold
- * the new address (INV-3) — success was NOT assumed from the receipt.
+ * the new address — success was NOT assumed from the receipt.
  */
 export class UpgradeVerificationFailedError extends ProxyOperationRefusedError {
   readonly code = 'upgrade-verification-failed';
@@ -128,8 +128,8 @@ export class UpgradeVerificationFailedError extends ProxyOperationRefusedError {
 }
 
 /**
- * The ported TRC1967Proxy rejects empty initialization data for both kinds
- * (INV-11), so the refusal happens here — before any spend — with the two
+ * The ported TRC1967Proxy rejects empty initialization data for both kinds,
+ * so the refusal happens here — before any spend — with the two
  * user mistakes distinguished, because their remedies differ.
  */
 export class EmptyInitializerRefusedError extends ProxyOperationRefusedError {
@@ -154,7 +154,7 @@ export class EmptyInitializerRefusedError extends ProxyOperationRefusedError {
 }
 
 /**
- * A prior deployment's record cannot vouch for this replay (INV-9): the
+ * A prior deployment's record cannot vouch for this replay: the
  * artifact remembers an address, and the record layer reports it stale,
  * unrecorded, or never seen. Redeploying beside it would leave two proxies
  * answering one name, so the operation stops and says which investigation
@@ -188,7 +188,7 @@ export class StaleProxyRecordError extends ProxyOperationRefusedError {
 }
 
 /**
- *`initialOwner` looks like a ProxyAdmin contract (INV-12): the v5 transparent
+ *`initialOwner` looks like a ProxyAdmin contract: the v5 transparent
  * proxy deploys its OWN admin owned by `initialOwner`, so handing it an
  * existing ProxyAdmin is almost always a v4-era habit that buries the real
  * owner one contract deeper.

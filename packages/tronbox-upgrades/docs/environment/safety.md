@@ -18,7 +18,7 @@ else about a handle is.
 
 ### What is actually protected, and by what
 
-There are **two mechanisms, and they are not interchangeable** (INV-40).
+There are **two mechanisms, and they are not interchangeable**.
 
 **1. The mechanism is structural.** A host handle never reaches a formatter at all. Every
 message the seam renders is composed from the seam's own projected slots, through the
@@ -52,8 +52,9 @@ and the credential is on a terminal and in a CI log.
 
 ### Why the handles are exposed at all
 
-Because a slot that hid them would not be a usable capability. `scheduling.deployer` is
-INV-29's one deliberate exception — SF-4 needs the deployer's queue. `artifacts.intercept`
+Because a slot that hid them would not be a usable capability. `scheduling.deployer` is the
+one deliberate exception to handles being named rather than modelled — the deploy seam needs
+the deployer's queue. `artifacts.intercept`
 is the artifact write-back path, and substituting `config.resolver` for it is the quietest
 failure in this surface (see [`api-reference.md`](./api-reference.md#intercept)).
 
@@ -153,7 +154,7 @@ interface TronBoxLogger {
 }
 ```
 
-`logger.warn` does not compile. That is the enforcement (INV-35) — the unsound call is
+`logger.warn` does not compile. That is the enforcement — the unsound call is
 unwritable — and it is deliberate, because **four of TronBox's five logger-injection paths
 supply a single-method object**, verified:
 
@@ -194,9 +195,9 @@ Note the `.call(logger, …)` — `console.warn` does not need a receiver but a 
 wrapper may, and getting that wrong reintroduces the same `TypeError` on the path you were
 trying to protect.
 
-**SF-0 never calls the logger itself** (INV-32). It never touches `console` either — not
-`console.warn`, not `console.error`, not in an error path. `output` is a capability handed
-to SF-10, and SF-10 owns the warning channel.
+**The environment seam never calls the logger itself.** It never touches `console` either —
+not `console.warn`, not `console.error`, not in an error path. `output` is a capability handed
+to the option/result surface, and the option/result surface owns the warning channel.
 
 ---
 
@@ -229,23 +230,25 @@ Comparing it would throw `EnvironmentInconsistentError` on **every** `tronbox te
 
 ### What to do instead
 
-**Do not make degraded-mode reporting depend on the log channel.** SF-10 owns the output and
-warning channel outright and resolved this: degraded-mode statements ride the **returned
-result** as enumerated values, and failures ride **typed errors**. Logging is advisory only.
+**Do not make degraded-mode reporting depend on the log channel.** The option/result surface
+owns the output and warning channel outright and resolved this: degraded-mode statements ride
+the **returned result** as enumerated values, and failures ride **typed errors**. Logging is
+advisory only.
 
 If a statement matters, it must survive a discarding channel. Put it in the return value or
 in a thrown error.
 
 > The `output` slot is documented here as making **no** visibility claim. Its contract beyond
 > that — the shape of degraded-mode notes, the warning channel's construction, the plugin's
-> own quiet control — is SF-10's and is not described in this document.
+> own quiet control — belongs to the option/result surface and is not described in this
+> document.
 
 ---
 
 ## Degraded modes are routine, not exceptional
 
 There are exactly **two** reduced-verification modes, and each is reported as data rather
-than as a failure or a silence (INV-34). Both are ordinary states you will hit in normal
+than as a failure or a silence. Both are ordinary states you will hit in normal
 use.
 
 ### 1. Only one Config lineage was reachable
@@ -276,7 +279,8 @@ switch (resolution.status) {
   case 'unique':
     return resolution.contract;
   case 'ambiguous':
-    // Policy is SF-5's. `ArtifactNameAmbiguousError` exists for that decision.
+    // Policy belongs to the proxy operations.
+    // `ArtifactNameAmbiguousError` exists for that decision.
     return decideAmbiguity(resolution.candidates, resolution.unverifiedContract);
   case 'indeterminate':
     // Routine. Proceed with reduced verification, and say so in the result.
@@ -286,7 +290,7 @@ switch (resolution.status) {
 
 Note the field names: only the `unique` branch has `contract`. The other two carry
 `unverifiedContract`, and the asymmetry is the enforcement — storing an unverified
-abstraction into a `contract`-typed position is impossible without renaming it (INV-5).
+abstraction into a `contract`-typed position is impossible without renaming it.
 
 ---
 
@@ -294,7 +298,7 @@ abstraction into a `contract`-typed position is impossible without renaming it (
 
 ### It reads nothing from the chain
 
-No network request of any kind, no chain read, no dev-node detection (INV-30). It does not
+No network request of any kind, no chain read, no dev-node detection. It does not
 resolve `'*'` to a concrete network id — TronBox never does either. It reads no
 implementation, admin or beacon slot.
 
@@ -304,7 +308,7 @@ about the chain. If you need to know which chain you are talking to, ask the cha
 ### The configured sender is not the effective sender
 
 `network.sender.kind` is the literal `'configured-not-authoritative'`, and it is wrapped in
-an object precisely so a call site cannot skip the caveat (INV-7). The effective sender is
+an object precisely so a call site cannot skip the caveat. The effective sender is
 chosen at send time — `TronWrap._getAccounts` replaces `_accounts` wholesale on a TRE node
 while resetting `privateKeyByAccount` — so **an authority preflight against
 `sender.address` can pass while the transaction sends from a different account.**
@@ -351,15 +355,16 @@ The `exists` probe is `fs.existsSync`, chosen because it is stat-class **and** c
 so an unreadable parent directory answers "not there" rather than escaping as an untranslated
 host failure. The recorded cost: a permission-denied path is reported as absent. This is the
 same direction TronBox's own resolver collapses it in, and splitting it would require a third
-reader method, which INV-31 forbids at exactly two.
+reader method, and the design caps that count at exactly two.
 
 ### A packaged artifact you load gets written back into your build directory
 
-Because everything routes through the intercept (INV-24), an artifact loaded via
+Because everything routes through the intercept, an artifact loaded via
 `resolvePackaged` **enters the intercept cache and is written back by `artifactor.saveAll`**.
 Proxy bytecode loaded from `node_modules` will land in the project's build directory at the
 end of the migration. This is a consequence of using the write-back path correctly, not a
-defect — but it is a visible side effect on the user's tree, and the policy for it is SF-5's.
+defect — but it is a visible side effect on the user's tree, and the policy for it belongs to
+the proxy operations.
 
 Relatedly, `resolvePackaged` **refuses a `./`-prefixed path as a matter of contract**,
 because `ResolverIntercept.prototype.require` strips a leading `./` before delegating.
@@ -374,23 +379,24 @@ tested on POSIX only; no Windows CI matrix entry exists yet.
 ### The declared TronBox range is quoted, never validated
 
 `getDeclaredTronBoxRange()` returns `peerDependencies.tronbox` verbatim and the seam never
-compares against it (INV-19). A TronBox *version* string is unavailable in principle —
+compares against it. A TronBox *version* string is unavailable in principle —
 `require('tronbox')` never resolves, because the package declares no `main` and has no root
 `index.js`. The structural `handle-malformed` diagnosis **is** the version check.
 
-> The manifest's current value is not yet a validated support range — setting it is SF-2's.
+> The manifest's current value is not yet a validated support range — setting it belongs to
+> the validation ladder.
 > The seam quotes whatever it finds, so do not treat the string in an error message as a
 > tested compatibility claim. The seam itself is verified against **4.9.0 and 4.8.0**.
 
 ### It never retries, schedules, or grows
 
-No retry, no timer, no unbounded cache (INV-39). The only cache is the per-composite
+No retry, no timer, no unbounded cache. The only cache is the per-composite
 ambiguity-index memo, holding one report. There is no module-scope mutable state anywhere in
-`src/environment/**` (INV-20), so a stale composite carried across migrations is not a rule
+`src/environment/**`, so a stale composite carried across migrations is not a rule
 to remember but a state that cannot be represented.
 
 **If you memoize a composite yourself, key it on `deployer` or `artifacts` — never on the
-`Config`** (INV-22). The `Config` is shared across migrations while `deployer` and
+`Config`.** The `Config` is shared across migrations while `deployer` and
 `artifacts` are fresh per migration, so a `Config`-keyed memo serves migration *N*'s
 composite to migration *N+1*. When you key on one handle, `resolveEnvironment`'s
 resolver-pairing check covers the other.

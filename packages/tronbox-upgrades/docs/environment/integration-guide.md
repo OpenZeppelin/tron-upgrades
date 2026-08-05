@@ -43,7 +43,8 @@ export function validateContract(options: ValidateOptions): string {
     case 'unique':
       return resolution.sourcePath;
     case 'ambiguous':
-      // Detection only. The refusal-or-pick policy is SF-5's.
+      // Detection only. The refusal-or-pick policy belongs to
+      // the proxy operations.
       return resolution.candidates[0]?.sourcePath ?? options.contractName;
     case 'indeterminate':
       // Routine — build info is never written under `tronbox test`.
@@ -57,10 +58,10 @@ export function validateContract(options: ValidateOptions): string {
 `spec.require` is not documentation. It changes both the type and the work performed:
 
 - **The type.** A slot you did not name is *absent from the type*, so a later refactor cannot
-  quietly start reading it. This is what lets every consumer omit null checks (INV-1).
+  quietly start reading it. This is what lets every consumer omit null checks.
 - **The work.** The cross-check compares exactly the field groups the requested slots expose,
   and the ambiguity index is built only if something asks for it. A resolution that does not
-  request the index performs **zero** disk and zero network operations (INV-45).
+  request the index performs **zero** disk and zero network operations.
 
 So `require: ['paths']` and `require: slotNames` are genuinely different calls, not different
 spellings of one call.
@@ -155,7 +156,7 @@ export function cachedEnvironment(handles: RawMigrationHandles) {
 ```
 
 `deployer` and `artifacts` are fresh per migration; the `Config` is **shared** across them.
-A `Config`-keyed memo serves migration *N*'s composite to migration *N+1* (INV-22). When you
+A `Config`-keyed memo serves migration *N*'s composite to migration *N+1*. When you
 key on one handle, `resolveEnvironment`'s own resolver-pairing check covers the other — that
 is what makes a single-handle key safe.
 
@@ -217,7 +218,7 @@ Three rules for an implementation of this interface:
    keep a fallback for readers that decline it, which is where the missing-versus-malformed
    split would quietly regress to one message.
 3. **Both methods must be synchronous.** An `async` reader does not type-check, and that is
-   deliberate (INV-38).
+   deliberate.
 
 To reach all three `IndeterminateReason` branches, return each `read` status in turn:
 `{ status: 'absent' }`, `{ status: 'unreadable', file, cause }`, and a `files` entry whose
@@ -261,7 +262,7 @@ export function capabilityTable(): string {
 
 `absentIn` is computed as the complement of `providedIn` over all five contexts, so the two
 can never disagree, and `EnvironmentIncompleteError`'s own message renders from this same
-table (INV-14).
+table.
 
 `slotNames` is a frozen tuple, so it also serves as the "everything" spec:
 
@@ -304,7 +305,7 @@ nothing.
 Key on `deployer` or `artifacts`.
 
 **Reading a TronBox-internal property path from your own module.** `src/environment/**` is the
-only directory permitted to do that (INV-28) — not `.options.options`, not `.resolver.options`,
+only directory permitted to do that — not `.options.options`, not `.resolver.options`,
 not `.basePath`, not `_values`, not `network_config`. If you need a value the seam does not
 project, add it to the seam so it goes through the cross-check and the allow-list, rather than
 reaching around.

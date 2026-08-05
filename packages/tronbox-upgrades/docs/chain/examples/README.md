@@ -33,23 +33,23 @@ See [`../safety.md`](../safety.md#the-engine-gets-accessprovider-and-nothing-els
 a `ChainAccess`, or an `EndpointDescriptor` + `JsonRpcPost` as a parameter. Fixtures that
 model a real handle — including axios's absolute-URL header behaviour, which is what makes
 the credential guarantee measurable rather than asserted — live in
-`test/helpers/sf-1-chain.ts`.
+`test/helpers/chain-fixtures.ts`.
 
-**They never set a timeout or add a retry.** SF-1 makes exactly one round-trip per `send`
-and inherits the timeout the user configured for the network. A `JsonRpcPost` that retried
-would make a transport failure look like a slow success, and would return the second
-attempt's outcome as if it were the first.
+**They never set a timeout or add a retry.** The chain layer makes exactly one round-trip
+per `send` and inherits the timeout the user configured for the network. A `JsonRpcPost`
+that retried would make a transport failure look like a slow success, and would return the
+second attempt's outcome as if it were the first.
 
 ## Where the real fixtures live
 
-For richer fixtures than these, read the suite. `test/helpers/sf-1-chain.ts` ships the handle
-fixture, a recording transport, and the identity fixtures. Three suites are worth reading as
-usage documentation in their own right:
+For richer fixtures than these, read the suite. `test/helpers/chain-fixtures.ts` ships the
+handle fixture, a recording transport, and the identity fixtures. Three suites are worth
+reading as usage documentation in their own right:
 
-- `test/sf-1-composite-lifecycle.test.ts` § 8 drives the **real** `Manifest.forNetwork`
+- `test/chain-composite-lifecycle.test.ts` § 8 drives the **real** `Manifest.forNetwork`
   through `access.provider` and shows both refusals reaching upstream and being absorbed.
-- `test/sf-1-credential-reachability.test.ts` drives the *forbidden* implementation
+- `test/chain-credential-reachability.test.ts` drives the *forbidden* implementation
   directly — handing an absolute different-origin URL to `fullNode.request` — to prove the
   fixture can observe a leak that does not happen.
-- `test/sf-1-diagnosis-and-readers.test.ts` § 8 drives every reader with a bare
+- `test/chain-diagnosis-and-readers.test.ts` § 8 drives every reader with a bare
   `{ send }` object and no `ChainAccess` in existence.

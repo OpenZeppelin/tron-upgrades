@@ -2,14 +2,14 @@
  * The chain-observed instance identity, its comparator, and the manifest file
  * name the refusal message has to be able to cite.
  *
- * **INV-25: nothing in this module — nothing in `src/chain/**` — decides whether a
+ * **Nothing in this module — nothing in `src/chain/**` — decides whether a
  * chain is a development, disposable, local or dev node.** No chain-id allow-list,
  * no client-version match, no port heuristic, no `isDevelopmentNetwork`-shaped
  * predicate. The mechanism dissolves the need: block 1's hash is immutable on a
  * persistent chain and per-boot on a disposable one, so the *same* comparison is a
  * no-op on mainnet and a refusal on a wiped TRE.
  *
- * That is what keeps SF-1 clear of the hazard the spec names — "inferring
+ * That is what keeps the chain layer clear of the hazard the spec names — "inferring
  * 'disposable' from an unrecognized chain id would misclassify a legitimate
  * private production chain" — and the dissolution is only durable while the
  * classification stays absent. The first `if (chainId === TRE_CHAIN_ID)` added for
@@ -24,14 +24,15 @@ import { requireResultShape, type TronEthereumProvider } from './provider';
 /**
  * A chain instance's fingerprint, read from the chain.
  *
- * INV-10: every field that participates in a comparison is **canonicalized before
+ * Every field that participates in a comparison is **canonicalized before
  * it is returned**. The originally specified shape for `chainId` was "`0x`-prefixed lowercase hex,
  * as the node reports it", and those two clauses can disagree — if a node version
  * changes its hex casing, or a proxy uppercases it, an un-canonicalized comparison
  * reports `changed` with `signal: 'chain-id'`, whose message leads with "a
- * different network", the strongest and most alarming claim SF-1 makes, for a chain
- * that has not changed at all. A false refusal on the strongest wording is how a
- * correct safety feature gets disabled by its users. Canonical wins.
+ * different network", the strongest and most alarming claim the chain layer
+ * makes, for a chain that has not changed at all. A false refusal on the
+ * strongest wording is how a correct safety feature gets disabled by its
+ * users. Canonical wins.
  */
 export interface ChainInstanceIdentity {
   /** `0x` + lowercase hex, reduced to its minimal form. */
@@ -48,11 +49,11 @@ export interface ChainInstanceIdentity {
    * `eth_getBlockByNumber('0xfffffffff')` returns `{"result":null}`.
    */
   readonly firstBlockHash: string | null;
-  /** Scrubbed endpoint that answered (INV-42). Diagnostic only; never a comparison operand. */
+  /** Scrubbed endpoint that answered. Diagnostic only; never a comparison operand. */
   readonly observedThrough: string;
 }
 
-/** What SF-3 persists. A subset, so a partially written record is representable. */
+/** What the record layer persists. A subset, so a partially written record is representable. */
 export interface RecordedChainInstance {
   readonly chainId: string;
   readonly genesisHash?: string;
@@ -151,11 +152,12 @@ async function readBlockHash(
 }
 
 /**
- * Reads the fingerprint. Three round-trips (INV-40): `eth_chainId`, and
+ * Reads the fingerprint. Three round-trips: `eth_chainId`, and
  * `eth_getBlockByNumber` at `0x0` and `0x1` with `false` for full transactions.
  *
- * `eth_getBlockByNumber` is the **eighth** method — SF-1's own, not the engine's.
- * It is the one place SF-1 depends on a method upgrades-core never calls, and it is
+ * `eth_getBlockByNumber` is the **eighth** method — the chain layer's own, not
+ * the engine's. It is the one place the chain layer depends on a method
+ * upgrades-core never calls, and it is
  * safe to depend on for a reason worth stating: java-tron's *block-query* methods
  * accept heights and named tags, while its *state* methods accept only `latest`.
  * Do not generalize either way.
@@ -171,7 +173,7 @@ export async function readChainInstanceIdentity(
   const genesisHash = await readBlockHash(send, endpoint, GENESIS_BLOCK_TAG);
   if (genesisHash === null) {
     // Every chain has a genesis block. An endpoint that says otherwise is not
-    // describing a chain SF-1 can fingerprint.
+    // describing a chain the chain layer can fingerprint.
     inconsistent(
       endpoint,
       'the endpoint reports no genesis block, so it is not serving a chain this ' +
@@ -179,7 +181,7 @@ export async function readChainInstanceIdentity(
     );
   }
 
-  // INV-10's free internal cross-check: the chain id **is** the last four bytes
+  // Canonicalizing every field yields a free internal cross-check: the chain id **is** the last four bytes
   // of the genesis hash (`0x…4196a1d22b6653dc` vs `0x2b6653dc`, confirmed live on
   // mainnet). A disagreement means the endpoint answered two questions from two
   // different chains — a load balancer in front of two nodes, most plausibly —
@@ -226,12 +228,12 @@ function changed(
 }
 
 /**
- * Pure and total (INV-25): no I/O, no ambient state, and a defined answer for
+ * Pure and total: no I/O, no ambient state, and a defined answer for
  * every input. Signals are compared chain-id → genesis-hash → first-block-hash,
  * and the disagreeing one is reported so the message can differ — a chain-id
  * change means a *different network*, which is a stronger statement than a wipe.
  *
- * **INV-10: every comparison is over the entire canonicalized value.** No prefix,
+ * **Every comparison is over the entire canonicalized value.** No prefix,
  * no suffix, no truncation, no fixed-width slice. That is not a stylistic
  * preference: **a TRON block hash leads with the 8-byte block height.** Mainnet
  * block 1 is `0x0000000000000001` + `0ff5414c…`, block 0 is `0x0000000000000000` +
@@ -242,7 +244,8 @@ function changed(
  * The discriminating material is only the trailing 24 bytes.
  *
  * Both sides are canonicalized here rather than trusted, so a record written by an
- * older SF-3 in a different casing does not read as a different chain.
+ * earlier version of the record layer in a different casing does not read as
+ * a different chain.
  *
  * **`indeterminate` never produces a refusal**, and that clause is load-bearing:
  * it is the state **every** existing project is in on the first run after this
@@ -278,7 +281,7 @@ export function compareChainInstance(
     // The record carries no first-block hash to compare — `null` is not a hash.
     // A chain that had no block 1 when the record was written and has one now is
     // indistinguishable from one that was wiped and has since produced a block, so
-    // this is genuinely undecidable and takes the non-refusing branch (INV-25).
+    // this is genuinely undecidable and takes the non-refusing branch.
     return observed.firstBlockHash === null
       ? same()
       : indeterminate('recorded-identity-incomplete');
@@ -308,13 +311,14 @@ export function compareChainInstance(
  * all four measured ids), so every TRON network resolves to `unknown-<decimal>`:
  * mainnet `unknown-728126428`, Nile `unknown-3448148188`, Shasta
  * `unknown-2494104990`, TRE `unknown-3360022319`. A name no user would guess, which
- * is exactly why INV-26 requires the refusal to be able to cite it.
+ * is exactly why the refusal must be able to cite it.
  *
  * The decimal is computed with the **same** `parseInt(hex, 16)` upstream uses in
  * `getChainId`, because the name has to match the file upgrades-core actually
- * writes — not because that parse is a good one. INV-4's guard is what makes it
- * safe here, and the guard is re-applied rather than assumed, since SF-3 calls this
- * with a value that has crossed a persistence boundary.
+ * writes — not because that parse is a good one. The shape-validation guard
+ * is what makes it safe here, and the guard is re-applied rather than
+ * assumed, since the record layer calls this with a value that has crossed a
+ * persistence boundary.
  *
  * Honours `MANIFEST_DEFAULT_DIR` through `env`, including upstream's truthiness
  * fallback (`process.env.MANIFEST_DEFAULT_DIR || '.openzeppelin'`), so an empty
@@ -335,9 +339,9 @@ export function manifestPathFor(
     configured !== undefined && configured.length > 0
       ? configured
       : MANIFEST_DEFAULT_DIR;
-  // A `/` join rather than `node:path` — INV-33 keeps every Node built-in out of
-  // this directory, and this string is a name rendered into a message, not a path
-  // SF-1 opens. SF-1 opens nothing.
+  // A `/` join rather than `node:path` — no Node built-in belongs in
+  // this directory, and this string is a name rendered into a message, not a
+  // path the chain layer opens. The chain layer opens nothing.
   return `${dir.replace(/\/+$/, '')}/unknown-${String(decimal)}.json`;
 }
 

@@ -88,7 +88,7 @@ export interface ValidatedImplementation {
 export interface OperationToolkit {
   readonly network: NetworkEnvironment;
   readonly artifacts: ArtifactAccess;
-  /** The operation's channel: notes recorded here ride the result (INV-16 of SF-10). */
+  /** The operation's channel: notes recorded here ride the result. */
   readonly channel: OutputChannel;
   readonly session: RecordSession;
   readonly chain: ChainAccess;
@@ -99,16 +99,16 @@ export interface OperationToolkit {
     address: string,
   ): Promise<ContractHandle>;
 
-  /** INV-1's subject: runs first, refuses on an unsafe implementation. */
+  /** The validation step: runs first, refuses on an unsafe implementation. */
   validateImplementation(
     contractName: string,
     resolved: ResolvedForProxyOps,
   ): Promise<ValidatedImplementation>;
 
-  /** INV-18: consulted only AFTER validation; throws `DeployerAbsentError`. */
+  /** The deployer gate: consulted only AFTER validation; throws `DeployerAbsentError`. */
   requireDeployer(): QueueHost;
 
-  /** INV-13: the operation's single queued step. */
+  /** The operation's single queued step. */
   queue<T>(host: QueueHost, step: () => Promise<T> | T): Promise<T>;
 
   /** The artifact write-back, read from the host's public surface (never internals). */
@@ -123,7 +123,7 @@ export interface OperationToolkit {
   looksLikeProxyAdmin(address: string): Promise<boolean>;
 
   /**
-   * INV-2's subject on the upgrade path: the implementation deploy, routed
+   * The implementation deploy on the upgrade path: routed
    * through the engine's `fetchOrDeployGetDeployment` so replay reuse is
    * upstream's own. `deploy` runs only when the record has no live entry.
    */
@@ -260,7 +260,7 @@ export const HANDLE_OPTION_KEYS: readonly string[] = [
 
 /**
  * Encodes initializer data over the abstraction's public `abi`. `'0x'` is a
- * refusal, not a value (INV-11): the ported TRC1967Proxy rejects empty
+ * refusal, not a value: the ported TRC1967Proxy rejects empty
  * initialization data for both kinds.
  */
 export function encodeInitializer(
@@ -274,7 +274,7 @@ export function encodeInitializer(
   }
   // A static import, deliberately: ethers is already a static runtime import
   // of the record layer, and a constructed `require` here would widen the one
-  // site INV-49's instrument permits.
+  // site the import-boundary scan's instrument permits.
   const iface = new Interface(abi as never);
   const name = initializer ?? 'initialize';
   const fragment = iface.getFunction(name, [...args] as never);

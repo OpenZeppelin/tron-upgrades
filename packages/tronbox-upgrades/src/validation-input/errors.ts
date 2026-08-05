@@ -2,12 +2,12 @@ import type { Cause } from './causes';
 import type { Diagnosis } from './diagnose';
 
 /**
- * SF-2's three error classes.
+ * The validation ladder's three error classes.
  *
  * **Why this module exists, when the planned module list named twelve and none of
  * them was this one.** `ValidationInputInvariantError` and `CompilerRetiredError`
  * were specified with the error handling, and the invariant set adds a third,
- * `ValidationInputRefusedError` (INV-20), but no module in the twelve owns them.
+ * `ValidationInputRefusedError`, but no module in the twelve owns them.
  * The two candidates both fail:
  *
  * - `index.ts` — nine modules raise an invariant error, so every one of them
@@ -26,7 +26,7 @@ import type { Diagnosis } from './diagnose';
 /**
  * A broken invariant — always a plugin bug, never a user-facing condition.
  *
- * INV-1: the only two things `deriveValidationInput` may throw are this and
+ * The only two things `deriveValidationInput` may throw are this and
  * {@link CompilerRetiredError}. Every *user* condition is one of the eleven
  * enumerated causes, returned as a value.
  */
@@ -44,12 +44,12 @@ export class ValidationInputInvariantError extends Error {
 }
 
 /**
- * A `CompilerHandle` was used after its `compile` threw (INV-24).
+ * A `CompilerHandle` was used after its `compile` threw.
  *
  * Loud on purpose. Emscripten's abort poisons the module, so a silently reused
- * handle turns one contract's memory ceiling into every later contract's:
- * `evidence/probe-wasm-memory-ceiling.js` uses one fresh child process per trial
- * for exactly this reason.
+ * handle turns one contract's memory ceiling into every later contract's: a
+ * live compile probe uses one fresh child process per trial for exactly this
+ * reason.
  */
 export class CompilerRetiredError extends Error {
   readonly code = 'COMPILER_RETIRED' as const;
@@ -66,18 +66,18 @@ export class CompilerRetiredError extends Error {
 }
 
 /**
- * The one construct through which a refusal becomes user-visible output
- * (INV-20).
+ * The one construct through which a refusal becomes user-visible output.
  *
  * **The absence of a `string` parameter is the enforcement.** A consumer cannot
  * word its own refusal sentence here — that is a compile error rather than a
- * review finding — so eleven causes cannot become thirty-three messages as
- * SF-5, SF-6 and SF-7 are written. Follows the plugin's typed-error idiom:
- * `src/chain/errors.ts:152-153`, `src/options/errors.ts:107-108`.
+ * review finding — so eleven causes cannot become thirty-three messages as the
+ * proxy operations, the standalone operations, and adoption (forceImport) are
+ * written. Follows the plugin's typed-error idiom: `src/chain/errors.ts:152-153`,
+ * `src/options/errors.ts:107-108`.
  *
- * SF-2 never constructs or throws this. `deriveValidationInput` returns the
- * refusal as a value (INV-1); the operation boundary decides whether carrying it
- * or throwing it is right for its own contract.
+ * The validation ladder never constructs or throws this. `deriveValidationInput`
+ * returns the refusal as a value; the operation boundary decides whether
+ * carrying it or throwing it is right for its own contract.
  *
  * The cause is exposed as `refusedCause` rather than `cause` because ES2022's
  * `Error.cause` means *the error this one wraps*, and a `Cause` is not an error.

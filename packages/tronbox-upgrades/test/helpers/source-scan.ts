@@ -4,8 +4,9 @@ import ts from 'typescript';
 import { environmentSrcDir, packageRoot, srcDir } from './locate';
 
 /**
- * AST-based source scanning for SF-0's *absence* invariants — INV-20, 28, 30,
- * 31, 32, 38, 39, 43, 44, 47, and **INV-49**.
+ * AST-based source scanning for the environment seam's *absence* invariants —
+ * the many places its design commits to never referencing something specific,
+ * of which the host-import boundary below is the strictest.
  *
  * Deliberately not regex over raw text. Half of the forbidden identifiers
  * (`process`, `network_config`, `_values`, `console`, `Promise`) appear in the
@@ -15,22 +16,22 @@ import { environmentSrcDir, packageRoot, srcDir } from './locate';
  * contains the literal `/^\.\//` whose text includes `//`, so a naive
  * line-comment strip eats the rest of that line.
  *
- * **INV-49 turned that preference into a requirement.** The corrected
- * `errors.ts:declaredTronBoxRange` comment contains the literal strings
- * `require.resolve('tronbox')` and `require('tronbox/package.json')` — as prose
- * explaining why the seam does *not* do that. So a grep for a host specifier
- * returns two hits in the one file whose comment documents the hazard, and the
- * first person the scan fires on would be right to revert it.
- * `inv-49-host-import-boundary.test.ts` asserts that difference directly rather
+ * **The host-import boundary turned that preference into a requirement.** The
+ * corrected `errors.ts:declaredTronBoxRange` comment contains the literal
+ * strings `require.resolve('tronbox')` and `require('tronbox/package.json')`
+ * — as prose explaining why the seam does *not* do that. So a grep for a host
+ * specifier returns two hits in the one file whose comment documents the
+ * hazard, and the first person the scan fires on would be right to revert it.
+ * `host-import-boundary.test.ts` asserts that difference directly rather
  * than trusting this note.
  *
  * The TypeScript compiler is already a devDependency, so parsing is free and the
  * result distinguishes a value reference from a comment, a type position, and a
  * property name.
  *
- * SF-11 owns the packaged version of these checks (INV-28, INV-47, INV-49); this
- * module is SF-0 proving its own side now rather than deferring every absence to a
- * sub-feature that has not been built.
+ * The packaging sub-feature owns the packaged version of these checks; this
+ * module is the environment seam proving its own side now rather than
+ * deferring every absence to a sub-feature that has not been built.
  */
 
 export interface IdentifierUse {
@@ -52,10 +53,11 @@ export interface TopLevelConst {
 /**
  * A module specifier written as a static string, with the syntax that carries it.
  *
- * INV-49's subject. `importSpecifiers` was enough for the invariants that only
- * needed to know whether `util` or `fs` was imported, but INV-49 forbids the host
- * *by any path*, so every syntax that names a module has to be collected —
- * `require`, `require.resolve`, `import()` and `import x = require()` included.
+ * The host-import boundary's subject. `importSpecifiers` was enough for the
+ * invariants that only needed to know whether `util` or `fs` was imported, but
+ * the host-import boundary forbids the host *by any path*, so every syntax
+ * that names a module has to be collected — `require`, `require.resolve`,
+ * `import()` and `import x = require()` included.
  */
 export interface ModuleSpecifier {
   readonly specifier: string;
@@ -72,16 +74,17 @@ export interface ModuleSpecifier {
    * `true` when the specifier is erased at compile time — `import type …`, or an
    * import whose every named binding is individually `type`-marked.
    *
-   * **Added by SF-1, and it closes a real hole in INV-49's pin.**
-   * `src/chain/index.ts:15` is `import type { EthereumProvider } from
-   * '@openzeppelin/upgrades-core'`, and without this field the pinned allow-list
-   * row rendered it as `(import)` — indistinguishable from a **runtime** import of
-   * the same specifier. So the row that was added to record a type-only import
-   * would also have silently admitted a future value import of upgrades-core from
-   * that module, which INV-48 forbids ("`src/chain/**` may import
-   * `src/environment/**` and upgrades-core **types** only"). A pin that cannot
-   * tell the permitted case from the forbidden one is not pinning the invariant it
-   * was added for.
+   * **Added by the chain layer, and it closes a real hole in the host-import
+   * boundary's pin.** `src/chain/index.ts:15` is `import type
+   * { EthereumProvider } from '@openzeppelin/upgrades-core'`, and without this
+   * field the pinned allow-list row rendered it as `(import)` —
+   * indistinguishable from a **runtime** import of the same specifier. So the
+   * row that was added to record a type-only import would also have silently
+   * admitted a future value import of upgrades-core from that module, which
+   * the chain layer's own import-boundary invariant forbids ("`src/chain/**`
+   * may import `src/environment/**` and upgrades-core **types** only"). A pin
+   * that cannot tell the permitted case from the forbidden one is not pinning
+   * the invariant it was added for.
    */
   readonly typeOnly: boolean;
 }
@@ -90,9 +93,10 @@ export interface ModuleSpecifier {
  * A `require(…)` / `import(…)` / `require.resolve(…)` whose argument is **not** a
  * string literal.
  *
- * The completeness clause for INV-49's scan, and the reason the invariant is
- * checkable at all: a computed specifier is invisible to any static scan, so the
- * scan's guarantee is only as strong as the absence of these. Zero of them plus
+ * The completeness clause for the host-import boundary's scan, and the reason
+ * the invariant is checkable at all: a computed specifier is invisible to any
+ * static scan, so the scan's guarantee is only as strong as the absence of
+ * these. Zero of them plus
  * zero host specifiers is a proof; zero host specifiers alone is not.
  */
 export interface DynamicSpecifierSite {
@@ -116,15 +120,16 @@ export interface ScannedSource {
   /**
    * The source text of every `${…}` expression in a template literal.
    *
-   * INV-40's primary mechanism is structural — "a host handle never reaches a
-   * formatter" — and template interpolation is the formatter the invariant's own
-   * violation scenario names (`logger.log(\`resolved: ${env.output}\`)`). The
+   * The credential-redaction guarantee's primary mechanism is structural —
+   * "a host handle never reaches a formatter" — and template interpolation is
+   * the formatter the invariant's own violation scenario names
+   * (`logger.log(\`resolved: ${env.output}\`)`). The
    * `toJSON` backstop is invisible to it, so this is the one channel a
    * serialization sweep provably cannot cover.
    */
   readonly templateExpressions: readonly string[];
   readonly importSpecifiers: readonly string[];
-  /** Every statically written module specifier, in every syntax (INV-49). */
+  /** Every statically written module specifier, in every syntax. */
   readonly moduleSpecifiers: readonly ModuleSpecifier[];
   /** Every module-loading call whose specifier is computed rather than literal. */
   readonly dynamicSpecifierSites: readonly DynamicSpecifierSite[];
@@ -380,8 +385,8 @@ function scanSource(
         node.expression.expression.text === 'require'
       ) {
         // `require.resolve` loads nothing, but it is still a dependency on the
-        // host's file layout, so INV-49 covers it. Collected as its own kind so a
-        // failure message can say which syntax was used.
+        // host's file layout, so the host-import boundary covers it. Collected
+        // as its own kind so a failure message can say which syntax was used.
         recordSpecifierArgument(node, 'require-resolve');
       }
     }
@@ -458,7 +463,8 @@ function scanFile(file: string, rootDir: string): ScannedSource {
 }
 
 /**
- * Scan TypeScript held in a string rather than on disk — for INV-49's fixtures.
+ * Scan TypeScript held in a string rather than on disk — for the host-import
+ * boundary's fixtures.
  *
  * The fixtures must not be real files under `src/` or `test/`: `tsconfig.test.json`
  * includes both, so a fixture that genuinely imports the host would fail
@@ -483,25 +489,32 @@ export function environmentSources(): readonly ScannedSource[] {
   return scanDirectory(environmentSrcDir, environmentSrcDir);
 }
 
-/** Every module under `src/` that is *not* part of the seam (INV-28's subject). */
+/**
+ * Every module under `src/` that is *not* part of the seam — the ones barred
+ * from reading a TronBox-internal property path.
+ */
 export function nonEnvironmentSources(): readonly ScannedSource[] {
   return scanDirectory(srcDir, srcDir).filter(
     source => !source.relative.startsWith(`environment${path.sep}`),
   );
 }
 
-/** Every module under `src/`, seam included — INV-49's subject, which has no exception. */
+/**
+ * Every module under `src/`, seam included — the host-import boundary's
+ * subject, which has no exception.
+ */
 export function allSources(): readonly ScannedSource[] {
   return scanDirectory(srcDir, srcDir);
 }
 
 /**
- * The ten modules of `src/chain/**` — SF-1's absence invariants' subject.
+ * The ten modules of `src/chain/**` — the chain layer's absence invariants'
+ * subject.
  *
  * Relative paths are rooted at `src/chain/` rather than at `src/`, so a failure
- * message reads `policy.ts` rather than `chain/policy.ts`. Nine of SF-1's fifty
- * invariants are prohibitions whose enforcement is that a thing is *not there*, and
- * this is what they range over.
+ * message reads `policy.ts` rather than `chain/policy.ts`. Nine of the chain
+ * layer's fifty invariants are prohibitions whose enforcement is that a thing
+ * is *not there*, and this is what they range over.
  */
 export function chainSources(): readonly ScannedSource[] {
   const chainDir = path.join(srcDir, 'chain');
@@ -509,7 +522,7 @@ export function chainSources(): readonly ScannedSource[] {
 }
 
 /**
- * A specifier that names the TronBox host package (INV-49).
+ * A specifier that names the TronBox host package.
  *
  * Deliberately narrower than `/tronbox/`: the plugin's own package is
  * `tronbox-upgrades`, and a pattern that matched it would fire on the day the
@@ -531,8 +544,8 @@ export function hostSpecifiers(
 }
 
 /**
- * The INV-49 violation report over a set of scanned modules: one string per
- * offending site, empty when the invariant holds.
+ * The host-import-boundary violation report over a set of scanned modules:
+ * one string per offending site, empty when the invariant holds.
  *
  * Returning renderable strings rather than a boolean is deliberate — the assertion
  * that reads this compares against `[]`, so a failure prints the file, line,
@@ -562,7 +575,7 @@ export interface TypedInterpolation {
    * `AbsolutePath` (`string & { … }`, which interpolates as its string part).
    *
    * False for `unknown`, `any`, and every object type — which is the whole set a
-   * host handle can inhabit inside the seam, since INV-25 admits handles as
+   * host handle can inhabit inside the seam, since handles enter it typed as
    * `unknown`.
    */
   readonly isPrimitive: boolean;
@@ -592,16 +605,18 @@ let programCache: ts.Program | undefined;
 /**
  * The package's own `ts.Program`, built once per test file.
  *
- * Extracted from `typedInterpolations` when INV-49's clause 6 became the second
- * checker-level assertion in the suite. Two independent programs over the same 53
- * files would double the cost of every file that reads both and, worse, would let
- * the two answers be derived from different `tsconfig` readings — so the program is
- * the shared thing and each scan keeps its own projection of it.
+ * Extracted from `typedInterpolations` when the host-import boundary's
+ * clause 6 became the second checker-level assertion in the suite. Two
+ * independent programs over the same 53 files would double the cost of every
+ * file that reads both and, worse, would let the two answers be derived from
+ * different `tsconfig` readings — so the program is the shared thing and each
+ * scan keeps its own projection of it.
  *
  * `tsconfig.json` rather than `tsconfig.test.json` on purpose: the subject of both
- * scans is `src/`, and pulling `test/` into the program would put the suite's own
- * deliberate `createRequire` uses (`sf-10-fixtures.ts:53`, `real-tronbox.test.ts`)
- * inside the range of a scan whose whole claim is about the plugin.
+ * scans is `src/`, and pulling `test/` into the program would put the suite's
+ * own deliberate `createRequire` uses (`surface-fixtures.ts:53`,
+ * `real-tronbox.test.ts`) inside the range of a scan whose whole claim is
+ * about the plugin.
  */
 function srcProgram(): ts.Program {
   if (programCache !== undefined) {
@@ -637,14 +652,15 @@ let interpolationCache: readonly TypedInterpolation[] | undefined;
  * Every `${…}` in `src/environment/**`, with the **type-checker's** verdict on
  * what is being interpolated.
  *
- * This is the one scan in the suite that needs a `ts.Program` rather than a bare
- * parse, and INV-40 is why. Its primary mechanism is structural — "a host handle
- * never reaches a formatter" — and the honest test for that is not a hand-kept
- * deny-list of handle names, which is over-broad (`ambiguity.ts` interpolates a
- * `Dirent`'s `name`, and `network.ts` must never interpolate its `entry`) and
- * under-broad the moment a handle is bound to a fresh local. The property that
- * actually holds is stronger and needs no list: **a host handle enters the seam as
- * `unknown` (INV-25), so every interpolated expression is statically a primitive.**
+ * This is the one scan in the suite that needs a `ts.Program` rather than a
+ * bare parse, and the credential-redaction guarantee is why. Its primary
+ * mechanism is structural — "a host handle never reaches a formatter" — and
+ * the honest test for that is not a hand-kept deny-list of handle names,
+ * which is over-broad (`ambiguity.ts` interpolates a `Dirent`'s `name`, and
+ * `network.ts` must never interpolate its `entry`) and under-broad the moment
+ * a handle is bound to a fresh local. The property that actually holds is
+ * stronger and needs no list: **a host handle enters the seam typed as
+ * `unknown`, so every interpolated expression is statically a primitive.**
  * Anything a handle could reach is `unknown` or an object type, and the only way to
  * make it renderable is to pass it through a projection — which is exactly the
  * mechanism.
@@ -709,10 +725,11 @@ export interface TypedArgument {
  * A call made **through a `createRequire` product** — anywhere under `src/`,
  * whatever the binding holding it is named.
  *
- * INV-49's clause 6, and the reason it needs a `ts.Program` rather than the bare
- * parse the rest of this module uses. INV-49 bans `createRequire` under `src/`
- * because a call through the *constructed* resolver is invisible to the specifier
- * scan — `recordSpecifierArgument` fires only for a callee spelled literally
+ * The host-import boundary's clause 6, and the reason it needs a `ts.Program`
+ * rather than the bare parse the rest of this module uses. The host-import
+ * boundary bans `createRequire` under `src/` because a call through the
+ * *constructed* resolver is invisible to the specifier scan —
+ * `recordSpecifierArgument` fires only for a callee spelled literally
  * `require` / `require.resolve` / `import`. One file is exempted
  * (`validation-input/compiler.ts`), so for that file the ban's protection is zero
  * and something has to bound where its resolver can point.
@@ -732,7 +749,7 @@ export interface TypedArgument {
  *
  * The one composition this rests on: that `createRequire` is the only way a resolver
  * gets minted under `src/`, which is pinned independently by the `forbidden` regex
- * over `allSources()` in `inv-49-host-import-boundary.test.ts` (`_load` and
+ * over `allSources()` in `host-import-boundary.test.ts` (`_load` and
  * `_resolveFilename` stay banned outright, in the exempted file too).
  */
 export interface ResolverCallSite {
@@ -887,11 +904,11 @@ export function resolverCallProgram(
  * The declared members of an interface body, with doc comments stripped.
  *
  * Interface-shape assertions are how three invariants state "exactly these
- * members" (INV-31's two reader methods, INV-43's one dependency, INV-35's one
- * logger method). Documenting a member must not change the member list, so
- * comment lines are filtered rather than counted — otherwise the assertion turns
- * into a prose-diff and gets relaxed the first time it fires for the wrong
- * reason.
+ * members" (the reader's two methods, the seam's one injected dependency, the
+ * logger's one guaranteed method). Documenting a member must not change the
+ * member list, so comment lines are filtered rather than counted —
+ * otherwise the assertion turns into a prose-diff and gets relaxed the first
+ * time it fires for the wrong reason.
  */
 export function interfaceMembers(body: string): readonly string[] {
   return body
@@ -917,9 +934,10 @@ export interface CallSite {
  * Every call to `calleeName` across the scanned modules, with its arguments as
  * written.
  *
- * INV-29's five-handle rule is a rule about the seam's own `sealSlot` sites, not
- * about which handles happen to be credential-reachable in some upstream version —
- * so the enforceable form of it is "exactly these five calls exist, and each names
+ * The handle-sealing rule's five-handle count is a rule about the seam's own
+ * `sealSlot` sites, not about which handles happen to be credential-reachable
+ * in some upstream version — so the enforceable form of it is "exactly these
+ * five calls exist, and each names
  * its handle keys". A count alone would let a sixth handle-bearing slot ship
  * unsealed as long as somebody deleted an existing seal in the same commit.
  */

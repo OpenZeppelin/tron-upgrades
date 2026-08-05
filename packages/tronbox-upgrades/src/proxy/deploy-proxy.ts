@@ -1,7 +1,7 @@
 /**
  * `deployProxy` — the ordered pipeline over the operation toolkit.
  *
- * The order IS the contract (INV-1, INV-16, INV-18, INV-13): validation first,
+ * The order IS the contract: validation first,
  * every pre-spend refusal before the queue, exactly one queued step, and the
  * result assembled from the write-back and the channel — never from a queue
  * value. `runDeployProxy` is the whole behaviour; `deployProxy` is the
@@ -73,7 +73,7 @@ export async function runDeployProxy(
   const { toolkit, resolved } = context;
   const name = nameOf(contract);
 
-  // 1 — validation, before anything else may refuse or spend (INV-1, INV-18).
+  // 1 — validation, before anything else may refuse or spend.
   const validated = await toolkit.validateImplementation(name, resolved);
 
   // 2 — the linked-library gate, on the same artifact validation described.
@@ -86,10 +86,10 @@ export async function runDeployProxy(
     resolved.unsafeAllowLinkedLibraries,
   );
 
-  // 3 — only now may the context's missing deployer refuse (INV-18's order).
+  // 3 — only now may the context's missing deployer refuse.
   const deployer = toolkit.requireDeployer();
 
-  // 4 — replay recognition, before any spend (INV-9).
+  // 4 — replay recognition, before any spend.
   const prior = toolkit.priorDeployedAddress(contract);
   const decision = decideDeployReplay(prior, toolkit.replayVerdicts());
   if (decision.kind === 'refuse') {
@@ -104,7 +104,7 @@ export async function runDeployProxy(
     return Object.freeze({
       contract: await toolkit.contractAt(contract, decision.address),
       // The artifact's own spelling, not the record's canonical form: the
-      // result pins `address` tool-verbatim (INV-47), and a replayed run
+      // result pins `address` tool-verbatim, and a replayed run
       // answering a different spelling than the run it replays would fail
       // any caller comparing the two. `prior` is non-null on this branch —
       // a `reuse` decision exists only for a named prior address.
@@ -114,17 +114,17 @@ export async function runDeployProxy(
     });
   }
 
-  // 5 — pre-queue refusals that need no chain (INV-16, INV-11, INV-5's guard).
+  // 5 — pre-queue refusals that need no chain.
   assertNoCheatcodeCollision(resolved.constructorArgs);
   const kind = resolved.kind === 'uups' ? 'uups' : 'transparent';
   const abi = (contract as { abi?: readonly unknown[] }).abi ?? [];
   const initData = encodeInitializer(abi, kind, args, resolved.initializer);
 
-  // 6 — the sender, resolved once, threaded to preflight and comparison (INV-12).
+  // 6 — the sender, resolved once, threaded to preflight and comparison.
   const sender = toolkit.resolveSender();
 
-  // 7 — the proxy artifact (INV-8) and, for transparent, the initialOwner
-  //     probe (revert means "not a ProxyAdmin"; transport raises — INV-12).
+  // 7 — the proxy artifact and, for transparent, the initialOwner
+  //     probe (revert means "not a ProxyAdmin"; transport raises).
   const proxyName =
     kind === 'transparent'
       ? PROXY_CONTRACT_NAMES.transparent
@@ -148,7 +148,7 @@ export async function runDeployProxy(
   }
 
   // 8 — ONE queued step: implementation, proxy, confirmation, verification
-  //     (INV-13; INV-3's settlement contract belongs to the queue seam).
+  //     (the settlement contract belongs to the queue seam).
   const outcome = await toolkit.queue(deployer, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
@@ -172,8 +172,9 @@ export async function runDeployProxy(
       throw new ConfirmationIndeterminateError(verdict);
     }
 
-    // INV-13's comparison — and when the node omits the sender, the skip is
-    // SAID, through the advisory channel, rather than performed silently.
+    // The sender-identity comparison — and when the node omits the sender,
+    // the skip is SAID, through the advisory channel, rather than performed
+    // silently.
     const signer = await toolkit.signerOf(writeBack.transactionHash);
     if (signer !== null) {
       assertSignerMatches(sender, signer);
@@ -205,7 +206,7 @@ export async function runDeployProxy(
   replayMemory.address = outcome.address;
   replayMemory.transactionHash = outcome.transactionHash;
 
-  // 9 — the wildcard statement (INV-17): a required effect of the wildcard
+  // 9 — the wildcard statement: a required effect of the wildcard
   //     path, stated where the user reads output.
   if (toolkit.network.configuredId.syntax === 'wildcard') {
     toolkit.channel.note(
@@ -219,8 +220,8 @@ export async function runDeployProxy(
 
   return Object.freeze({
     contract: await toolkit.contractAt(contract, outcome.address),
-    // Tool-verbatim, deliberately not canonicalized (INV-47 of the result
-    // contract): the record got the canonical form above.
+    // Tool-verbatim, deliberately not canonicalized — a rule of the result
+    // contract: the record got the canonical form above.
     address: outcome.address,
     transaction: transactionIdentity(outcome.transactionHash, 'deployProxy'),
     notes: operationNotes(toolkit.channel.recorded),

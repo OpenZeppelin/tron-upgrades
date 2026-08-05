@@ -3,16 +3,17 @@
  * refused, which are required, which results must satisfy a shape, and which
  * methods carry a block tag at which parameter index.
  *
- * **INV-45: this module has zero imports.**
+ * **This module has zero imports.**
  *
- * INV-11 is why these are tables. Two concrete regressions they prevent: an
- * early four-method minimum was written down and then measured wrong twice
- * over, and a `switch` hides the set so the next person re-derives it from the
- * code paths they happen to read. And `eth_getBlockByNumber` is the one method
- * upgrades-core never calls, so a later
- * "simplify the required set to what the engine needs" removes exactly the
- * method the instance fingerprint depends on — silently disabling INV-26 while
- * every engine-facing test still passes.
+ * That data requirement is why these are tables. Two concrete regressions
+ * they prevent: an early four-method minimum was written down and then
+ * measured wrong twice over, and a `switch` hides the set so the next person
+ * re-derives it from the code paths they happen to read. And
+ * `eth_getBlockByNumber` is the one method upgrades-core never calls, so a
+ * later "simplify the required set to what the engine needs" removes exactly
+ * the method the instance fingerprint depends on — silently disabling the
+ * chain-instance-change safety check while every engine-facing test still
+ * passes.
  *
  * A test can read a table; it can only restate a `switch`. Spec scenario 7 asks
  * for a test that fails if the refusal is softened, and that is only possible
@@ -28,7 +29,7 @@ export type MethodPolicy =
  * (`manifest.js:getDevInstanceMetadata`). Refused here, locally, before any
  * request.
  *
- * INV-12: refusing locally makes it SF-1's declared property. Forwarding makes
+ * Refusing locally makes it the chain layer's declared property. Forwarding makes
  * it a property of java-tron's method registry — and depending on a third
  * party's continued *absence* of a feature is the borrowed-premise failure the
  * no-spoofing rule rejects, in mirror image. Forwarding works today on
@@ -47,13 +48,14 @@ export const refusedMethods = Object.freeze([
 ] as const);
 
 /**
- * The engine's seven, plus `eth_getBlockByNumber` — the eighth, which is SF-1's
- * own and which upgrades-core never calls.
+ * The engine's seven, plus `eth_getBlockByNumber` — the eighth, which is the
+ * chain layer's own and which upgrades-core never calls.
  *
  * It is safe to depend on for a reason worth stating: java-tron's *block-query*
  * methods accept heights and named tags, while its *state* methods accept only
- * `latest`. Do not generalize either way (INV-20 refuses tags uniformly for the
- * state methods precisely because the node is not uniform).
+ * `latest`. Do not generalize either way (the block-tag refusal rule refuses
+ * tags uniformly for the state methods precisely because the node is not
+ * uniform).
  */
 export const requiredMethods = Object.freeze([
   'eth_chainId',
@@ -85,7 +87,7 @@ const forward: MethodPolicy = Object.freeze({ kind: 'forward' } as const);
 
 /**
  * Defaults to `{ kind: 'forward' }`. Reads the table; a `switch` would hide the
- * policy where a table can be asserted (INV-11).
+ * policy where a table can be asserted.
  */
 export function policyFor(method: string): MethodPolicy {
   return Object.prototype.hasOwnProperty.call(methodPolicies, method)
@@ -130,7 +132,7 @@ const HEX_DATA = /^0x[0-9a-fA-F]*$/;
  * - `eth_getCode`        `provider.js:isEmpty`               `code.replace(/^0x/, '')`
  * - `eth_call`           `upgrade-interface-version.js:13`   `encodedVersion.replace(/^0x/, '')`
  *
- * **INV-4 deliberately exceeds the one-line `typeof` guard per method that was
+ * **This deliberately exceeds the one-line `typeof` guard per method that was
  * originally specified.** `typeof value === 'string'` is the floor, not the check,
  * and measurably insufficient for the one method whose value becomes the
  * manifest key. `getChainId` is `parseInt(id.replace(/^0x/, ''), 16)`, and
@@ -147,7 +149,7 @@ const HEX_DATA = /^0x[0-9a-fA-F]*$/;
  * Either way every deployment record for that network lands in a file no later
  * run consults, with no error at any layer and no symptom until the next upgrade
  * reports the proxy as unregistered. That is the silent-misplacement failure
- * SF-1's High stakes rating names, reached through one unvalidated `parseInt`.
+ * the chain layer's High stakes rating names, reached through one unvalidated `parseInt`.
  */
 export const stringResultMethods: Readonly<Record<string, ResultShapeRule>> =
   Object.freeze({
@@ -214,8 +216,8 @@ const historicalReadsUnsupported =
  * **EIP-1898 block object** — for **every** method carrying a block parameter,
  * uniformly, even though the node's own handling is not uniform.
  *
- * INV-20, and the non-uniformity is exactly why the refusal must be uniform.
- * Measured live at write time:
+ * The refusal is deliberately uniform, and the non-uniformity is exactly why
+ * it must be. Measured live at write time:
  *
  * - `eth_call` with `{"blockNumber":"0x1"}` is validated and then **silently
  *   answered from present state** — present-day data for a historical question,

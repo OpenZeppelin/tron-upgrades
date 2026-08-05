@@ -1,5 +1,5 @@
 /**
- * The deployment seam's own types. No imports (INV-19's module rule): every type
+ * The deployment seam's own types. No imports, by module rule: every type
  * here is structural, so the seam's contracts are readable without following an
  * import chain, and nothing below it can create a cycle.
  *
@@ -10,7 +10,7 @@
  */
 
 /**
- * What the confirmation gate returns, and the only thing it can return (INV-7):
+ * What the confirmation gate returns, and the only thing it can return:
  * three disjoint outcomes, none representable as another. `success: boolean` is
  * deliberately not expressible — a boolean collapses *reverted* and
  * *indeterminate*, whose remedies point opposite directions.
@@ -27,8 +27,8 @@ export type ConfirmationVerdict =
  * transaction types): the affirmation lives at `info.receipt.result ===
  * 'SUCCESS'`. The top-level `info.result` key exists **only on failure**
  * (`'FAILED'`), and a plain TRX transfer carries no `receipt.result` at all —
- * so a gate keyed on `info.result !== 'FAILED'` passes everything, which is the
- * vacuous predicate INV-8 exists to ban.
+ * so a gate keyed on `info.result !== 'FAILED'` passes everything, which is
+ * exactly the vacuous predicate a three-outcome verdict exists to ban.
  */
 export interface ConfirmedSuccessful {
   readonly kind: 'confirmed-successful';
@@ -57,8 +57,8 @@ export interface ConfirmedReverted {
  * deciding have different remedies. `wait-exhausted`: the polling bound ran out
  * (the transaction may still land; check the hash). `receipt-field-absent`: a
  * receipt arrived without the one field that affirms success, so treating it as
- * success would be the exact vacuity INV-8 bans; treating it as reverted would
- * invent a failure the chain never reported.
+ * success would be the exact vacuity a three-outcome verdict exists to ban;
+ * treating it as reverted would invent a failure the chain never reported.
  */
 export interface ConfirmationIndeterminate {
   readonly kind: 'indeterminate';
@@ -75,7 +75,7 @@ export interface ConfirmationBounds {
 }
 
 /**
- * The resolved effective sender (INV-12). Resolved exactly once per operation,
+ * The resolved effective sender. Resolved exactly once per operation,
  * before any authority preflight, and threaded by value to both the preflight
  * and the send — never re-derived between them. `unconfigured` is a state, not
  * an error: the host will fall back to its own default account, and whether
@@ -88,7 +88,7 @@ export type EffectiveSender =
 
 /**
  * The host deployer as the seam exposes it: the queue-registration face and
- * nothing else. `queue.ts` is the only module that touches it (INV-19).
+ * nothing else. `queue.ts` is the only module that touches it.
  */
 export interface QueueHost {
   then(step: (...args: unknown[]) => unknown): unknown;
@@ -98,7 +98,7 @@ export interface QueueHost {
  * What a queued step produced, read from the abstraction write-back — never
  * from the awaited chain value, which pre-start does not exist per step (the
  * chain settles once, with the last step's value) and post-start belongs to the
- * host (INV-4).
+ * host.
  */
 export interface WriteBack {
   readonly address: string;

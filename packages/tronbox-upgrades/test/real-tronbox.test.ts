@@ -27,34 +27,29 @@ import {
  * installed TronBox trees.
  *
  * Every other file in this suite drives plain-object fixtures, which is what
- * INV-43 exists to make possible. The cost of that is a fixture that can drift
- * from the tool without anything failing. This file is the drift canary: it asks
- * the real `Config`, `Deployer` and `Resolver` the same questions the fixtures
- * answer, on **both** supported minors, so a fact that changes upstream fails here
- * loudly rather than surfacing later as a behavioural bug.
+ * the handles-only dependency boundary exists to make possible. The cost of that
+ * is a fixture that can drift from the tool without anything failing. This file
+ * is the drift canary: it asks the real `Config`, `Deployer` and `Resolver` the
+ * same questions the fixtures answer, on **both** supported minors, so a fact
+ * that changes upstream fails here loudly rather than surfacing later as a
+ * behavioural bug.
  *
- * It also promotes `evidence/probes.js` — the executable evidence behind SF-0's
- * research claims — to a test case, which that file's own header asks for.
+ * It also promotes the executable probes file — the evidence behind the
+ * environment seam's research claims — to a test case, which that file's own
+ * header asks for.
  *
  * Scope note: the facts pinned below are the ones *this file's* four invariant
- * categories rest on — INV-31/35/40/43/44/45's host premises. The probe spawn
+ * categories rest on — the host premises behind the logger-shape,
+ * credential-reachability, and import-boundary invariants. The probe spawn
  * covers the rest of the research claims wholesale, including the ones belonging
  * to categories other files own.
  *
- * Both guards are graceful skips rather than failures. The TronBox trees are
- * devDependencies of the workspace root, and `evidence/probes.js` lives in the
- * artifacts tree, which is a separate repository — so a checkout of the code repo
- * alone legitimately has neither.
+ * The version guard is a graceful skip rather than a failure: the TronBox
+ * trees are devDependencies of the workspace root, so an install without them
+ * legitimately has none to probe.
  */
 
-const PROBES = path.join(
-  repoRoot,
-  'artifacts',
-  '001-tronbox-upgrades-plugin',
-  'sf-0-tronbox-environment',
-  'evidence',
-  'probes.js',
-);
+const PROBES = path.join(__dirname, 'fixtures', 'host-probes.js');
 
 const installedVersions = tronBoxVersionsUnderTest.filter(tronBoxIsInstalled);
 
@@ -165,9 +160,10 @@ describe.skipIf(installedVersions.length === 0)(
       });
 
       it('copies networks onto the snapshot by reference', () => {
-        // What makes INV-16 implementable through *both* lineages: the snapshot's
-        // `networks` is the same object as the live Config's, with the per-network
-        // entries intact, so the source-of-truth check works either way.
+        // What makes the fixture-parity invariant implementable through *both*
+        // lineages: the snapshot's `networks` is the same object as the live
+        // Config's, with the per-network entries intact, so the source-of-truth
+        // check works either way.
         const config = liveConfig(installName);
         const snapshot = config.with({ reset: true });
         expect(snapshot.networks).toBe(config.networks);
@@ -176,7 +172,8 @@ describe.skipIf(installedVersions.length === 0)(
       it('substitutes deployParameters constants for the derived getters', () => {
         // The fixture defaults in `helpers/config-fixtures.ts`, pinned. These are
         // the values that make an unconfigured network read as a complete,
-        // plausible, entirely fictional configuration — INV-16's whole reason.
+        // plausible, entirely fictional configuration — the fixture-parity
+        // invariant's whole reason.
         const config = liveConfig(installName);
         expect(config.feeLimit).toBe(DEPLOY_PARAMETER_FEE_LIMIT);
         expect(config.userFeePercentage).toBe(
@@ -188,8 +185,8 @@ describe.skipIf(installedVersions.length === 0)(
       });
 
       it('declares callValue, tokenValue, tokenId and from as present-but-undefined', () => {
-        // Absent and present-but-`undefined` are different states (INV-4, INV-17),
-        // and the fixtures reproduce the second because that is what the tool does:
+        // Absent and present-but-`undefined` are different states, and the
+        // fixtures reproduce the second because that is what the tool does:
         // `deployParameters` declares `tokenValue`/`tokenId`/`from` as `undefined`,
         // and `callValue`'s `||` chain falls through its own falsy `0`.
         const config = liveConfig(installName);
@@ -215,13 +212,13 @@ describe.skipIf(installedVersions.length === 0)(
         ).toBe(false);
       });
 
-      it('INV-35: injects a single-method logger on every path but the un-quieted CLI', () => {
+      it('injects a single-method logger on every path but the un-quieted CLI', () => {
         // `Config`'s own default and the `Deployer`'s default, checked against the
         // real classes. `logger.warn` in a validating operation's warning path
         // would therefore be a `TypeError` under `--quiet`, under `tronbox test`,
         // and through the deployer's own wrapper — a crash instead of the
-        // degraded-mode statement SC-003 requires, and only for users who asked
-        // for less output.
+        // degraded-mode statement the degraded-mode disclosure requirement
+        // demands, and only for users who asked for less output.
         const config = liveConfig(installName);
         expect(Object.keys(config.logger as object)).toEqual(['log']);
 
@@ -243,34 +240,36 @@ describe.skipIf(installedVersions.length === 0)(
         expect(typeof console.warn).toBe('function');
       });
 
-      it('INV-40: hides privateKey behind its own getter while network_config carries it', () => {
-        // The credential is one property away from the values SF-0 legitimately
-        // projects: `config.privateKey` is hardcoded to `null` — safe and useless
-        // as a presence check — while the real key lives on `network_config`, the
-        // merged object the seam reads `txDefaults` from.
+      it('hides privateKey behind its own getter while network_config carries it', () => {
+        // The credential is one property away from the values the environment
+        // seam legitimately projects: `config.privateKey` is hardcoded to `null`
+        // — safe and useless as a presence check — while the real key lives on
+        // `network_config`, the merged object the seam reads `txDefaults` from.
         const config = liveConfig(installName);
         expect(config.privateKey).toBeNull();
         expect(config.network_config.privateKey).toBe(SENTINEL_PRIVATE_KEY);
         // Freshly merged on every access, which is why hiding `networks` would not
-        // close the live reachability INV-29 documents and INV-40
-        // deliberately does not range over — see `sensitive-data.test.ts`.
+        // close the live reachability the no-raw-host-object rule documents and
+        // the privateKey-hiding invariant deliberately does not range over — see
+        // `sensitive-data.test.ts`.
         expect(config.network_config).not.toBe(config.network_config);
       });
 
-      it('INV-29 / INV-40: makes the key reachable by three routes from both credential-bearing handles, shallowest depth 4', () => {
-        // The premise of INV-40's narrow scoping, pinned against the tool rather
-        // than against a fixture: the reachability is a *discovered necessity*, not a
-        // choice the seam made — which is why that narrow scoping was accepted as
-        // correct rather than widened to cover it.
+      it('makes the key reachable by three routes from both credential-bearing handles, shallowest depth 4', () => {
+        // The premise of the privateKey-hiding invariant's narrow scoping, pinned
+        // against the tool rather than against a fixture: the reachability is a
+        // *discovered necessity*, not a choice the seam made — which is why that
+        // narrow scoping was accepted as correct rather than widened to cover it.
         //
         // **Two subjects, not one — added later.** `artifacts.intercept` is
         // credential-reachable on exactly the same terms as `scheduling.deployer`,
         // which is the door nobody had written down. Both bottom out in the *same*
         // `Config`, which is why the terms are identical rather than merely similar:
         // `config-lineage.ts` reads `deployer.options.options` and
-        // `artifacts.resolver` precisely because they are two routes to one object
-        // (INV-12). The operative consequence, handed to SF-4 and SF-10: a diagnostic
-        // that avoids the deployer and inspects the intercept is **not safer**.
+        // `artifacts.resolver` precisely because they are two routes to one
+        // object. The operative consequence, handed to the deploy seam and the
+        // option/result surface: a diagnostic that avoids the deployer and
+        // inspects the intercept is **not safer**.
         //
         // **The count is pinned rather than bounded, and that needed a different
         // enumerator.** The earlier assertion was `>= 2` plus an exact shallowest
@@ -319,7 +318,8 @@ describe.skipIf(installedVersions.length === 0)(
           expect(shallowestRouteDepth(routes), `${label} shallowest depth`).toBe(4);
 
           // And the cycle that makes redaction load-bearing rather than cosmetic:
-          // without the seam's `toJSON`, INV-40's own stated test is not executable.
+          // without the seam's `toJSON`, the privateKey-hiding invariant's own
+          // stated test is not executable.
           // It holds at **both** handles, which is why `sealSlot`'s application to
           // `artifacts` is a necessity on the same footing as to `scheduling`.
           expect(() => JSON.stringify(subject), label).toThrow(TypeError);
@@ -337,7 +337,7 @@ describe.skipIf(installedVersions.length === 0)(
         expect(globalVisited.length).toBeLessThan(3);
       });
 
-      it('INV-29 / INV-40: reaches no credential from the logger or a receipt callback', () => {
+      it('reaches no credential from the logger or a receipt callback', () => {
         // The negative half of the two-reachable claim, against the real host. Without
         // it, "two of the five sealed handles are credential-reachable" is a claim
         // nobody checked the other side of — and a route enumerator returning `[]` for
@@ -346,7 +346,8 @@ describe.skipIf(installedVersions.length === 0)(
         //
         // Every logger shape TronBox injects, plus a bare receipt function. `Config`'s
         // default logger's own keys come back as exactly `["log"]`, which independently
-        // corroborates INV-35 from a probe written for a different purpose.
+        // corroborates the single-method-logger invariant from a probe written for
+        // a different purpose.
         const config = liveConfig(installName);
         const Deployer = hostModule<
           new (options: Record<string, unknown>) => { logger: object }
@@ -376,13 +377,14 @@ describe.skipIf(installedVersions.length === 0)(
         ).toBeGreaterThan(0);
 
         // `chain.tronWrap` is deliberately absent from this list. A live `TronWrap`
-        // needs a reachable node, so it cannot be probed here — INV-29 covers it **by
-        // rule, not by measurement**, and the seam relies on neither the module-scope
-        // `let privateKeyByAccount` nor the host's own `HIDDEN_PROPS` mask. An
-        // unprobed handle is not a safe one; see `sensitive-data.test.ts`.
+        // needs a reachable node, so it cannot be probed here — the
+        // no-raw-host-object rule covers it **by rule, not by measurement**, and
+        // the seam relies on neither the module-scope `let privateKeyByAccount`
+        // nor the host's own `HIDDEN_PROPS` mask. An unprobed handle is not a safe
+        // one; see `sensitive-data.test.ts`.
       });
 
-      it('INV-43 / INV-49: refuses the bare name while every subpath resolves', () => {
+      it('refuses the bare name while every subpath resolves', () => {
         // **Corrected later.** This case previously read "is not requirable,
         // so the seam cannot import a singleton from it" — which is half true and the
         // wrong half was load-bearing. Bare-name resolution *is* impossible: no
@@ -391,13 +393,13 @@ describe.skipIf(installedVersions.length === 0)(
         // addressable** — an `exports` map is what closes a package, so its absence is
         // the opposite of a promise that internals will stay reachable.
         //
-        // So the boundary is defeatable by subpath, which is why INV-49 exists as a
-        // stated invariant with its own regression test
-        // (`inv-49-host-import-boundary.test.ts`) rather than resting on the host
-        // being unimportable. INV-43's conclusion survives its reason: everything the
-        // plugin needs still arrives through the handles, and the seam's only injected
-        // dependency is a reader — now because that is the right boundary, not because
-        // the alternative is impossible.
+        // So the boundary is defeatable by subpath, which is why that fact is
+        // captured as its own stated invariant with its own regression test
+        // (`host-import-boundary.test.ts`) rather than resting on the host being
+        // unimportable. This invariant's conclusion survives its reason: everything
+        // the plugin needs still arrives through the handles, and the seam's only
+        // injected dependency is a reader — now because that is the right
+        // boundary, not because the alternative is impossible.
         const root = tronBoxRoot(installName);
         const manifest = JSON.parse(
           fs.readFileSync(path.join(root, 'package.json'), 'utf8'),
@@ -471,8 +473,9 @@ describe.skipIf(installedVersions.length === 0)(
           sameObject: true,
         });
 
-        // INV-40 through the real host: the sentinel is nowhere in what a user
-        // could paste into an issue, even though it is reachable from the handle.
+        // The privateKey-hiding invariant through the real host: the sentinel is
+        // nowhere in what a user could paste into an issue, even though it is
+        // reachable from the handle.
         expect(JSON.stringify(env)).not.toContain(SENTINEL_PRIVATE_KEY);
         expect(JSON.stringify(env.provenance)).not.toContain(
           SENTINEL_PRIVATE_KEY,
@@ -483,15 +486,15 @@ describe.skipIf(installedVersions.length === 0)(
 );
 
 describe.skipIf(installedVersions.length === 0 || !fs.existsSync(PROBES))(
-  'evidence/probes.js promoted to a test case',
+  'the executable probes file promoted to a test case',
   () => {
     it.each(installedVersions)(
       'runs every research probe green against %s',
       installName => {
-        // SF-0 the research ⚗ claims, executable. Each probe pins a fact the seam is
-        // built on, and running the whole file per version is what makes an
-        // upstream change fail loudly here instead of surfacing as a behavioural
-        // bug somewhere downstream.
+        // The environment seam's research ⚗ claims, executable. Each probe pins a
+        // fact the seam is built on, and running the whole file per version is
+        // what makes an upstream change fail loudly here instead of surfacing as
+        // a behavioural bug somewhere downstream.
         const output = execFileSync(
           process.execPath,
           [PROBES, tronBoxRoot(installName)],

@@ -21,14 +21,20 @@ import {
 // asymmetrically:
 //
 // - `unsatisfiedSlot` **is** on the face now (`src/environment/index.ts:23`), added
-//   as the one-line additive SF-0 amendment SF-1 needed so `src/chain/errors.ts`
-//   could mint the `chain` slot's failures through the only sanctioned route
-//   (SF-0's INV-14, SF-1's INV-18). It is no longer a deep import at all.
+//   as the one-line additive amendment the chain layer needed so
+//   `src/chain/errors.ts` could mint the `chain` slot's failures through the
+//   only sanctioned route (the environment seam's rule that `unsatisfiedSlot`
+//   is the only constructor for an `UnsatisfiedSlot`, so messages always agree
+//   with the slot table; and the chain layer's rule appending the
+//   invocation-context clause to every message). It is no longer a deep import
+//   at all.
 // - `sealSlot` is **deliberately not** on the face, and that is a settled design
-//   property rather than an undecided one: SF-1 holds no handle in any field of any
-//   exported object (INV-3 / INV-9 / INV-42), so it meets SF-0's INV-40 guarantee by
-//   construction rather than by redaction and has no need of it. SF-1 was expected to
-//   concluded the adapter would require sealing; it does not.
+//   property rather than an undecided one: the chain layer holds no handle in
+//   any field of any exported object — handle-bearing by closure only, with no
+//   message or enumerable property carrying the raw endpoint URL — so it meets
+//   the environment seam's no-secret-leak guarantee by construction rather
+//   than by redaction and has no need of it. The adapter was expected to
+//   require sealing; it does not.
 //
 // `test/` already deep-imports `errors`, `artifacts`, `network` and `types`, so the
 // remaining deep imports below follow the established convention rather than widening
@@ -81,11 +87,13 @@ import {
 } from './helpers/source-scan';
 
 /**
- * Sensitive Data Handling — INV-40, INV-41, INV-42.
+ * Sensitive Data Handling — no secret ever reaches a slot or message, the
+ * cross-check payload stays allow-listed, and no error or provenance field
+ * carries file content.
  *
  * The technique is leak probing, and the fixtures are built so the secret is
- * genuinely one property away from the values SF-0 legitimately projects rather
- * than parked somewhere unreachable. `build/components/Config.js:Config`'s
+ * genuinely one property away from the values the environment seam legitimately
+ * projects rather than parked somewhere unreachable. `build/components/Config.js:Config`'s
  * `privateKey` getter always returns `null` — safe, and useless as a presence
  * check — while the real key lives on `network_config.privateKey`, and
  * `network_config` is the merged object the seam reads `txDefaults` from. So the
@@ -93,23 +101,25 @@ import {
  *
  * Every fixture in `helpers/fixture-catalogue.ts` configures
  * {@link SENTINEL_PRIVATE_KEY} on the selected network, which is what makes
- * INV-40's own stated test — "run that assertion across **all** fixtures, not
- * one" — mechanical rather than aspirational.
+ * the no-secret-leak property's own stated test — "run that assertion across
+ * **all** fixtures, not one" — mechanical rather than aspirational.
  *
- * INV-40 states two mechanisms and ranks them, and the tests below are
- * organized to match. The **primary** mechanism is structural — a host handle never
- * reaches a formatter, and every message is composed from the seam's own projected
- * slots — which is what makes the guarantee hold for `util.inspect`, `console.log`,
- * template interpolation and own-enumerable traversal alike. `handles.ts:sealSlot`'s
- * `toJSON` is a **backstop** covering serialization only. So each channel is swept
+ * The no-secret-leak property states two mechanisms and ranks them, and the
+ * tests below are organized to match. The **primary** mechanism is structural
+ * — a host handle never reaches a formatter, and every message is composed
+ * from the seam's own projected slots — which is what makes the guarantee
+ * hold for `util.inspect`, `console.log`, template interpolation and
+ * own-enumerable traversal alike. `handles.ts:sealSlot`'s `toJSON` is a
+ * **backstop** covering serialization only. So each channel is swept
  * separately: `JSON.stringify` (the backstop), `util.inspect(…, { depth: null })`
  * (the channel `toJSON` is invisible to), and an AST scan asserting no handle is
  * interpolated anywhere in `src/environment/**` (the mechanism itself).
  *
- * An earlier pass recorded the un-narrowed reading as an expected failure, because
- * "no credential in any slot field" cannot hold alongside INV-29's `scheduling`
- * exposure. INV-40 now states the invariant's *subject* instead of narrowing
- * INV-29, so the property is now stated truthfully and every test here passes.
+ * An earlier pass recorded the un-narrowed reading as an expected failure,
+ * because "no credential in any slot field" cannot hold alongside the
+ * five-handle rule's `scheduling` exposure. The no-secret-leak property now
+ * states its own *subject* instead of narrowing the five-handle rule, so the
+ * property is now stated truthfully and every test here passes.
  */
 
 const SECRET_SENTINELS: readonly string[] = [
@@ -128,8 +138,8 @@ function caught(act: () => unknown): unknown {
 
 /**
  * Every string reachable from a **live** object graph by own enumerable
- * properties — the pre-serialization view, which is what INV-40's literal
- * wording ranges over. Distinct from {@link collectStrings}, which walks the
+ * properties — the pre-serialization view, which is what the no-secret-leak
+ * property's literal wording ranges over. Distinct from {@link collectStrings}, which walks the
  * post-`toJSON` tree.
  */
 function liveStrings(root: unknown): readonly string[] {
@@ -162,12 +172,12 @@ function inconsistentFrom(act: () => unknown): EnvironmentInconsistentError {
 }
 
 // ---------------------------------------------------------------------------
-// INV-40
+// no-secret-leak
 // ---------------------------------------------------------------------------
 
-describe('INV-40: no secret enters a slot, provenance, or a message', () => {
+describe('no secret enters a slot, provenance, or a message', () => {
   it('leaks no sentinel through any observable of any fixture in the catalogue', () => {
-    // INV-40's own stated test, run across every fixture. A leak that only shows
+    // The no-secret-leak property's own stated test, run across every fixture. A leak that only shows
     // up on the disagreement path, or only inside an `IndeterminateReason`, is
     // exactly what a single-fixture assertion misses.
     const probes = allFixtureProbes();
@@ -245,7 +255,7 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
   });
 
   it('diagnoses a throwing privateKey accessor rather than treating it as absent', () => {
-    // A raising getter is a different state from an absent key (INV-17), and
+    // A raising getter is a different state from an absent key, and
     // collapsing it into `false` would report "no signing key configured" for a
     // project that has one.
     const entry = networkEntry();
@@ -394,7 +404,7 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
     // Not cosmetic. A real `Deployer` reaches its Config, whose
     // `resolver.options` closes a cycle, so plain `JSON.stringify(composite)`
     // throws `TypeError: Converting circular structure to JSON` without the
-    // `toJSON` seal — meaning INV-40's own stated test would not be *executable*,
+    // `toJSON` seal — meaning the no-secret-leak property's own stated test would not be *executable*,
     // let alone passing. The premise is asserted first so this cannot pass for
     // the wrong reason.
     const shape = migrateShapedHandles();
@@ -413,14 +423,15 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
   });
 
   /**
-   * INV-40, ranging over what the seam projects — a passing property.
+   * The no-secret-leak property, ranging over what the seam projects — a
+   * passing property.
    *
    * An earlier wording said "any slot field" without stating the subject, which
-   * made it unsatisfiable alongside INV-29: the `scheduling` slot exposes the whole
-   * `deployer` because SF-4 needs the queue, and from a real deployer a configured
+   * made it unsatisfiable alongside the five-handle rule: the `scheduling` slot exposes the whole
+   * `deployer` because the deploy seam needs the queue, and from a real deployer a configured
    * `privateKey` is reachable by own-enumerable traversal at depth 4 —
    * `deployer.options.options.network_config.privateKey`, verified against 4.9.0
-   * and 4.8.0. SF-0 recorded that as an expected failure. The current wording states
+   * and 4.8.0. The environment seam's suite recorded that as an expected failure. The current wording states
    * the subject: the invariant ranges over what the seam *produces* — the fields it
    * projects, `provenance`, and every message — and not over the live graph
    * reachable *through* a handle it deliberately hands over. Under that wording the
@@ -449,7 +460,7 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
   });
 
   it('prints no sentinel through util.inspect at full depth, on every fixture', () => {
-    // INV-40's promoted assertion, and the one the serialization sweep provably
+    // The no-secret-leak property's promoted assertion, and the one the serialization sweep provably
     // cannot cover: `toJSON` is invisible to `util.inspect`, so a composite that
     // passed `JSON.stringify` could still print a credential to a terminal or a CI
     // log. `depth: null` is required rather than tidy — the default of `2` renders
@@ -496,7 +507,7 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
   });
 
   it('passes no host handle to a formatter anywhere in the seam', () => {
-    // INV-40's **primary** mechanism, which is structural rather than a backstop.
+    // The no-secret-leak property's **primary** mechanism, which is structural rather than a backstop.
     // Redaction protects `JSON.stringify` and nothing else, so if `toJSON` were
     // understood as *the* protection then the next slot with a handle would be
     // protected exactly until someone wrote ``logger.log(`resolved: ${env.output}`)``
@@ -508,7 +519,7 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
     // interpolates a `Dirent`'s `name`, `network.ts` must never interpolate its
     // `entry`, and either way the list is defeated the moment a handle is bound to
     // a fresh local. The property that actually holds needs no list — a handle
-    // enters the seam as `unknown` (INV-25), so **every** interpolated expression
+    // enters the seam as `unknown`, so **every** interpolated expression
     // is statically a primitive, and the only route from `unknown` to renderable is
     // through a projection.
     const interpolations = typedInterpolations();
@@ -535,7 +546,8 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
     expect(expressions).not.toContain('lineage.config');
 
     // And no formatter is even named in the seam, so there is no second channel to
-    // audit. `console` is INV-32's; these are the programmatic ones.
+    // audit. `console` is covered by a separate guarantee; these are the
+    // programmatic ones.
     const formatters = /^(inspect|format|formatWithOptions)$/;
     for (const source of environmentSources()) {
       expect(
@@ -551,9 +563,9 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
     }
   });
 
-  it('pins the live reachability INV-29 documents, and that INV-40 does not range over', () => {
-    // Not a deferral record. INV-40 states its own subject, which resolves the
-    // conflict *by scoping* rather than by narrowing INV-29 — so these exposures are
+  it('pins the live reachability the five-handle rule documents, and that the no-secret-leak property does not range over', () => {
+    // Not a deferral record. The no-secret-leak property states its own subject, which resolves the
+    // conflict *by scoping* rather than by narrowing the five-handle rule — so these exposures are
     // deliberate and this test is their documentation. Naming both means a future
     // reader knows the exposure is two-handled: `artifacts` reaches the key too, so
     // narrowing `scheduling` alone would not change the picture.
@@ -587,7 +599,7 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
 });
 
 // ---------------------------------------------------------------------------
-// INV-29 / INV-40 — the augmentation policy guard, proven non-vacuous
+// the augmentation policy guard, proven non-vacuous
 // ---------------------------------------------------------------------------
 
 /**
@@ -612,10 +624,10 @@ describe('INV-40: no secret enters a slot, provenance, or a message', () => {
  *
  * These import `sealSlot`, `hostSharingGuard` and `HostInstanceSharedError` from the
  * module rather than from `../src/environment`, because none is on the seam's public
- * face and whether SF-1 reuses the seam's error idiom was open.
+ * face and whether the chain layer reuses the seam's error idiom was open.
  * Deep-importing follows this suite's existing convention.
  */
-describe('INV-29 / INV-40: the host-augmentation guard refuses a shared instance', () => {
+describe('the host-augmentation guard refuses a shared instance', () => {
   const EVIDENCE = 'the object under test was handed in by the host';
 
   it('refuses to install toJSON on an object the host also holds', () => {
@@ -642,7 +654,7 @@ describe('INV-29 / INV-40: the host-augmentation guard refuses a shared instance
     expect(error.message).toContain('toJSON');
 
     // And it is deliberately outside the three-member `TronBoxEnvironmentError`
-    // family (INV-10): this reports a plugin defect, not a diagnosis of the user's
+    // family: this reports a plugin defect, not a diagnosis of the user's
     // environment.
     expect(error).not.toBeInstanceOf(TronBoxEnvironmentError);
   });
@@ -688,7 +700,7 @@ describe('INV-29 / INV-40: the host-augmentation guard refuses a shared instance
       origin: 'deployer',
     });
     // The live field is the same object, untouched — redaction is serialization-only
-    // (INV-29 exposes the handle as a capability), and the embedded host object never
+    // (the five-handle rule exposes the handle as a capability), and the embedded host object never
     // received a `toJSON` of its own.
     expect(slot.deployer).toBe(hostObject);
     expect(Object.prototype.hasOwnProperty.call(hostObject, 'toJSON')).toBe(false);
@@ -743,7 +755,7 @@ describe('INV-29 / INV-40: the host-augmentation guard refuses a shared instance
   });
 
   it('requires a guard at exactly five sealing sites, so a sixth handle cannot ship unsealed', () => {
-    // INV-29's rule stated over the thing the seam controls: its own sealing sites.
+    // The five-handle rule stated over the thing the seam controls: its own sealing sites.
     // The count *and* the per-site handle keys, because a count alone would let a
     // sixth handle-bearing slot ship as long as an existing seal was deleted in the
     // same commit.
@@ -772,12 +784,12 @@ describe('INV-29 / INV-40: the host-augmentation guard refuses a shared instance
 });
 
 // ---------------------------------------------------------------------------
-// INV-29 — the five-handle rule, and what is measured versus what is ruled
+// the five-handle rule, and what is measured versus what is ruled
 // ---------------------------------------------------------------------------
 
 /**
- * INV-29's widened subject: **all five sealed handles are unsafe to log,
- * two verified reachable today.**
+ * The five-handle rule's widened subject: **all five sealed handles are
+ * unsafe to log, two verified reachable today.**
  *
  * The rule is deliberately not keyed to today's reachable set. Reachability is a
  * property of the *host's* object graph — a `v4.10` that added a `.config`
@@ -795,7 +807,7 @@ describe('INV-29 / INV-40: the host-augmentation guard refuses a shared instance
  * last case exists to keep a reader from mistaking the fixture's zero routes for a
  * measurement of the real one.
  */
-describe('INV-29: all five sealed handles are unsafe to log, two verified reachable today', () => {
+describe('all five sealed handles are unsafe to log, two verified reachable today', () => {
   const SEALED_HANDLES: readonly {
     readonly slot: 'chain' | 'receipts' | 'scheduling' | 'artifacts' | 'output';
     readonly member: string;
@@ -838,9 +850,9 @@ describe('INV-29: all five sealed handles are unsafe to log, two verified reacha
   it('reaches the credential from both credential-bearing handles, through the fixtures', () => {
     // The fixture half of the measurement, and its limits stated rather than
     // glossed. What the fixtures reproduce is that the credential *is* own-enumerably
-    // reachable from both handles — which is the premise INV-40's narrow scoping
-    // rests on, and the reason `sealSlot` applies to `artifacts` on the same footing
-    // as to `scheduling`.
+    // reachable from both handles — which is the premise the no-secret-leak
+    // property's narrow scoping rests on, and the reason `sealSlot` applies to
+    // `artifacts` on the same footing as to `scheduling`.
     //
     // What they do **not** reproduce is the route *count*. A plain-object Config has
     // no private `_values` backing store and its `network_config` merge is not an own
@@ -876,7 +888,8 @@ describe('INV-29: all five sealed handles are unsafe to log, two verified reacha
     // Both bottom out in the *same* Config, which is why the two exposures have
     // identical terms rather than merely similar ones: `config-lineage.ts` reads
     // `deployer.options.options` and `artifacts.resolver` precisely because they are
-    // two routes to one object (INV-12), and credential reachability is that same
+    // two routes to one object (the rule that neither lineage's object is
+    // preferred), and credential reachability is that same
     // coincidence read from the other side. So a diagnostic that avoided the deployer
     // and inspected the intercept would not be safer.
     expect(shape.resolver.options).toBe(shape.config);
@@ -948,8 +961,9 @@ describe('INV-29: all five sealed handles are unsafe to log, two verified reacha
   });
 
   it('names all five in the redaction rule and none of them in the projected surface', () => {
-    // The two invariants read together, over the same composite: INV-29 exposes the
-    // five as named capabilities, INV-40 ranges over what the seam *projects*. So
+    // The two properties read together, over the same composite: the
+    // five-handle rule exposes the five as named capabilities, and the
+    // no-secret-leak property ranges over what the seam *projects*. So
     // every one of the five is absent from the projected surface by construction,
     // which is what makes the two statements compatible rather than a conflict that
     // was resolved by narrowing one of them.
@@ -976,12 +990,12 @@ describe('INV-29: all five sealed handles are unsafe to log, two verified reacha
 });
 
 // ---------------------------------------------------------------------------
-// INV-41
+// the cross-check allow-list
 // ---------------------------------------------------------------------------
 
-describe('INV-41: the cross-check payload is allow-listed, so a future upstream key cannot leak', () => {
+describe('the cross-check payload is allow-listed, so a future upstream key cannot leak', () => {
   it('renders the disagreement verbatim while a sentinel key sits on both lineages', () => {
-    // INV-41's own stated test. The `inconsistent` message *must* name both
+    // This property's own stated test. The `inconsistent` message *must* name both
     // values verbatim — correct and useful for `contracts_build_directory`, and
     // disastrous for a credential — so the protection has to be the field set,
     // not the rendering.
@@ -1038,7 +1052,7 @@ describe('INV-41: the cross-check payload is allow-listed, so a future upstream 
     // The stronger form: the *only* difference between the lineages is a
     // secret-bearing key nobody listed, and the resolution succeeds silently
     // rather than surfacing it. That is the intended behaviour — a field outside
-    // the exposed surface is not SF-0's to compare — and it is what makes the
+    // the exposed surface is not the environment seam's to compare — and it is what makes the
     // allow-list a closed hole rather than a delayed one.
     const shape = testShapedHandles(
       { extra: { futureCredential: SENTINEL_PRIVATE_KEY } },
@@ -1057,7 +1071,7 @@ describe('INV-41: the cross-check payload is allow-listed, so a future upstream 
     // vacuously.
     const rejected = {
       kind: 'config-lineage-field',
-      // @ts-expect-error INV-41: `privateKey` is not a member of ConfigScalarField.
+      // @ts-expect-error `privateKey` is not a member of ConfigScalarField.
       field: 'privateKey',
       viaDeployer: SENTINEL_PRIVATE_KEY,
       viaArtifacts: SENTINEL_MNEMONIC,
@@ -1086,8 +1100,9 @@ describe('INV-41: the cross-check payload is allow-listed, so a future upstream 
 
   it('leaves signingKeyConfigured on the list as a boolean, never as the key', () => {
     // Included in the allow-list because omitting an exposed scalar would
-    // reinstate INV-12's silent preference for that one field — and safe to
-    // include because it is a boolean by construction.
+    // reinstate the silent preference for that one field the
+    // no-preferred-lineage rule forbids — and safe to include because it is a
+    // boolean by construction.
     expect([...configLineageFields]).toContain('signingKeyConfigured');
     const shape = testShapedHandles(
       { networks: { development: networkEntry({ privateKey: SENTINEL_PRIVATE_KEY }) } },
@@ -1114,10 +1129,10 @@ describe('INV-41: the cross-check payload is allow-listed, so a future upstream 
 });
 
 // ---------------------------------------------------------------------------
-// INV-42
+// no file content in errors or provenance
 // ---------------------------------------------------------------------------
 
-describe('INV-42: errors and provenance carry identifiers and paths, never file or source content', () => {
+describe('errors and provenance carry identifiers and paths, never file or source content', () => {
   it('carries no build-info file content into a candidate', () => {
     // The reader fixtures embed {@link SENTINEL_FILE_CONTENT} in every abi,
     // bytecode and metadata field, so there is real content for the assertion to
@@ -1333,7 +1348,7 @@ describe('INV-42: errors and provenance carry identifiers and paths, never file 
       contractName: 'Box',
       buildInfoFile: projectPathsFixture().buildInfoDirectory,
     };
-    // @ts-expect-error INV-42: ArtifactCandidate has no content-bearing field.
+    // @ts-expect-error ArtifactCandidate has no content-bearing field.
     const widened: ArtifactCandidate = { ...candidate, abi: [] };
     expect(sortedOwnKeys(candidate)).toEqual([
       'buildInfoFile',

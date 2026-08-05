@@ -160,9 +160,9 @@ export async function describeBeacon(
 }
 
 /**
- * The one place `| undefined` is permitted in SF-1's surface, and it mirrors
- * upstream's documented contract for a **present, answering** contract with no such
- * getter (`src/chain/read.ts:390`). It is the only one.
+ * The one place `| undefined` is permitted in the chain layer's surface, and
+ * it mirrors upstream's documented contract for a **present, answering**
+ * contract with no such getter (`src/chain/read.ts:390`). It is the only one.
  */
 export async function interfaceVersion(
   access: ChainAccess,

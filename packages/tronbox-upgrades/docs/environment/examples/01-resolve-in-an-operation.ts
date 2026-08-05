@@ -27,7 +27,7 @@ export function validateContract(options: ValidateOptions): string {
   });
 
   // `paths` and `artifacts` were required, so they are non-optional here — no
-  // null check, which is INV-1's whole purpose.
+  // null check, which is the whole purpose of asking for slots by name.
   const resolution = env.artifacts.resolve(options.contractName);
 
   // `output` was optional, so it is `OutputChannelSlot | undefined`.
@@ -37,8 +37,8 @@ export function validateContract(options: ValidateOptions): string {
     case 'unique':
       return resolution.sourcePath;
     case 'ambiguous':
-      // Detection only — the refusal-or-pick policy belongs to SF-5. Note the
-      // field is `unverifiedContract`, not `contract`.
+      // Detection only — the refusal-or-pick policy belongs to the proxy
+      // operations. Note the field is `unverifiedContract`, not `contract`.
       return resolution.candidates[0]?.sourcePath ?? options.contractName;
     case 'indeterminate':
       // Routine, not exceptional: build info is never written under
@@ -108,8 +108,8 @@ export function describeEnvironmentFailure(
  * Memoize per migration — keyed on a handle, never on the `Config`.
  *
  * `deployer` and `artifacts` are fresh per migration while the `Config` is shared
- * across them, so a `Config`-keyed memo serves migration N's composite to N+1
- * (INV-22). Keying on one handle is safe because `resolveEnvironment`'s own
+ * across them, so a `Config`-keyed memo serves migration N's composite to N+1.
+ * Keying on one handle is safe because `resolveEnvironment`'s own
  * resolver-pairing check covers the other.
  */
 type Resolved = ReturnType<typeof resolveFor>;

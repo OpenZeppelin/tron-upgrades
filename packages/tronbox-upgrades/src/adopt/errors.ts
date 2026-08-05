@@ -1,6 +1,6 @@
 /**
- * The adoption refusal family (INV-8's family pattern: one class per cause,
- * structured fields, the message rendered here).
+ * The adoption refusal family: one class per cause, structured fields, the
+ * message rendered here.
  */
 
 import { ProxyOperationRefusedError } from '../proxy/errors';
@@ -22,7 +22,7 @@ export class NothingToAdoptError extends ProxyOperationRefusedError {
 }
 
 /**
- * Scenario 3 / INV-1: the on-chain code is not the named contract. Refused by
+ * Scenario 3: the on-chain code is not the named contract. Refused by
  * name because recording a plausible-looking wrong baseline silently corrupts
  * every later safety check.
  */
@@ -37,7 +37,7 @@ export class AdoptionVerificationFailedError extends ProxyOperationRefusedError 
   }
 }
 
-/** Scenario 6 / INV-2: the caller's kind contradicts the chain's, named both ways. */
+/** Scenario 6: the caller's kind contradicts the chain's, named both ways. */
 export class AdoptionKindMismatchError extends ProxyOperationRefusedError {
   readonly code = 'adoption-kind-mismatch';
   constructor(

@@ -1,6 +1,6 @@
 /**
  * The deployment seam's refusal family: one closed hierarchy, one class per
- * cause, each with its own remedy (INV-6). Causes with different user remedies
+ * cause, each with its own remedy. Causes with different user remedies
  * are never collapsed — *confirmation exhausted* and *transaction reverted* are
  * the canonical pair, because "raise the bound and re-check" and "fix the
  * contract" point opposite directions, and a user handed the wrong one re-sends
@@ -20,7 +20,7 @@ export abstract class DeploymentRefusedError extends Error {
 
 /**
  * A state-changing operation was invoked in a context that provides no
- * deployer, and the refusal names exactly what is missing (INV-18). Validation
+ * deployer, and the refusal names exactly what is missing. Validation
  * in the same context does not refuse — it degrades, because it can. Deployment
  * refuses because there is nothing to send the transaction through.
  */
@@ -82,7 +82,7 @@ export class ConfirmationIndeterminateError extends DeploymentRefusedError {
 
 /**
  * The identity the authority preflight inspected is not the identity that
- * signed (INV-13). Both are named in canonical form, because the mismatch is
+ * signed. Both are named in canonical form, because the mismatch is
  * the diagnosis and the pair is the evidence.
  */
 export class SenderMismatchError extends DeploymentRefusedError {
@@ -102,8 +102,8 @@ export class SenderMismatchError extends DeploymentRefusedError {
 }
 
 /**
- * The implementation links an external library and no expert opt-out was set
- * (INV-20). The message names the weaker baseline as a requirement of the
+ * The implementation links an external library and no expert opt-out was set.
+ * The message names the weaker baseline as a requirement of the
  * opt-in, not as politeness: a library address swap changes behavior without
  * changing storage layout, and no other validation catches it.
  */
@@ -124,7 +124,7 @@ export class LinkedImplementationRefusedError extends DeploymentRefusedError {
 
 /**
  * The host's linking flow returned, and the bytecode still carries an
- * unresolved placeholder (INV-21). The host's `link` returns silently when the
+ * unresolved placeholder. The host's `link` returns silently when the
  * placeholder it was asked to fill does not exist, so a normal return proves
  * nothing — this error is what makes that silence loud.
  */
@@ -143,8 +143,8 @@ export class LinkVerificationFailedError extends DeploymentRefusedError {
 }
 
 /**
- * The transaction identity about to be reported was not produced by this run
- * (INV-11): the host took its skip path and handed back a previous
+ * The transaction identity about to be reported was not produced by this run:
+ * the host took its skip path and handed back a previous
  * deployment's hash — a stale truth, which is harder to spot than a
  * placeholder and is refused for the same reason.
  */
@@ -163,7 +163,7 @@ export class StaleTransactionIdentityError extends DeploymentRefusedError {
 
 /**
  * The final constructor argument is a plain object, which the host's deploy
- * action treats as a cheatcode slot and mutates (INV-5) — it destructures
+ * action treats as a cheatcode slot and mutates — it destructures
  * `overwrite` off it and forwards the remainder, so the constructor would
  * receive a struct the caller never wrote.
  */
@@ -183,8 +183,8 @@ export class CheatcodeSlotCollisionError extends DeploymentRefusedError {
 }
 
 /**
- * The seam broke one of its own rules — a queued step tried to settle twice
- * (INV-3), or a bridge was reused. A plugin bug, deliberately outside
+ * The seam broke one of its own rules — a queued step tried to settle twice,
+ * or a bridge was reused. A plugin bug, deliberately outside
  * {@link DeploymentRefusedError}: nothing the user did causes it and no user
  * action remedies it, so it must not be catchable by a handler scoped to
  * refusals.

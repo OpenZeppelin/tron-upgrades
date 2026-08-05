@@ -1,16 +1,17 @@
 /**
  * The four injectable seams, and the one you may be *required* to supply.
  *
- * `ChainAccessDependencies` is the complete set of things SF-1 takes from its
- * environment (`src/chain/index.ts:117`). Every one has a stated default, so the
- * common case passes nothing.
+ * `ChainAccessDependencies` is the complete set of things the chain layer takes
+ * from its environment (`src/chain/index.ts:117`). Every one has a stated
+ * default, so the common case passes nothing.
  *
- * The seam that matters is `post`. When the endpoint you resolve is a **different
- * origin** than the network's own node, SF-1 will not route the request through the
- * node's HTTP client — that client is an axios instance carrying whatever `headers`
- * and `auth` it was created with, and axios applies both to an *absolute* request
- * URL while ignoring `baseURL` (`src/chain/endpoint.ts:467-489`). `headers` is
- * exactly where a TronGrid API key is configured. So the precedence is:
+ * The seam that matters is `post`. When the endpoint you resolve is a
+ * **different origin** than the network's own node, the chain layer will not
+ * route the request through the node's HTTP client — that client is an axios
+ * instance carrying whatever `headers` and `auth` it was created with, and
+ * axios applies both to an *absolute* request URL while ignoring `baseURL`
+ * (`src/chain/endpoint.ts:467-489`). `headers` is exactly where a TronGrid
+ * API key is configured. So the precedence is:
  *
  *     deps.post  →  globalThis.fetch (read at factory time)  →  refuse
  *
@@ -34,7 +35,7 @@ import { resolveEnvironment, type RawMigrationHandles } from '../../../src/envir
 /**
  * The whole contract: take a payload, return the parsed body.
  *
- * Two rules, both of which SF-1's own transports follow:
+ * Two rules, both of which the chain layer's own transports follow:
  *
  *  - **Reject on a non-2xx status, with the status attached** as `status` or
  *    `response.status`. `transport.ts` reads either structurally and reports
@@ -45,8 +46,8 @@ import { resolveEnvironment, type RawMigrationHandles } from '../../../src/envir
  *    (`src/chain/transport.ts:153-165`). A poster that rejected instead would make
  *    the two transports disagree about what a proxy error page is.
  *
- * Do not add a retry and do not set a timeout: SF-1 makes exactly one round-trip
- * per `send` and inherits the timeout the user configured
+ * Do not add a retry and do not set a timeout: the chain layer makes exactly
+ * one round-trip per `send` and inherits the timeout the user configured
  * (`src/chain/transport.ts:245`).
  */
 type MinimalResponse = {
@@ -91,10 +92,11 @@ export function postThrough(
 // ---------------------------------------------------------------------------
 
 /**
- * `endpointOverride` is SF-1's own DI seam and outranks the environment variable.
- * It is **not** a user-facing option: a per-network key in `tronbox-config.js` was
- * rejected because reading `networks[<name>].<key>` is a TronBox-internal property
- * path, which only `src/environment/**` may do (`src/chain/index.ts:118-125`).
+ * `endpointOverride` is the chain layer's own DI seam and outranks the
+ * environment variable. It is **not** a user-facing option: a per-network key
+ * in `tronbox-config.js` was rejected because reading `networks[<name>].<key>`
+ * is a TronBox-internal property path, which only `src/environment/**` may do
+ * (`src/chain/index.ts:118-125`).
  *
  * Precedence is fixed and there is **no fallback between sources**
  * (`src/chain/endpoint.ts:315`): a present-but-unusable value is refused, never
@@ -108,11 +110,11 @@ export const precedence = [
 ] as const;
 
 /**
- * `env` is injected rather than read from the global at module load, and SF-1 reads
- * it **once, at factory time** (`src/chain/index.ts:207`). A module-load read would
- * bake the endpoint into the process, so under `tronbox console` — where switching
- * network mid-session is legitimate — the override would silently keep pointing at
- * the first network.
+ * `env` is injected rather than read from the global at module load, and the
+ * chain layer reads it **once, at factory time** (`src/chain/index.ts:207`). A
+ * module-load read would bake the endpoint into the process, so under
+ * `tronbox console` — where switching network mid-session is legitimate — the
+ * override would silently keep pointing at the first network.
  */
 export function withExplicitEnvironment(
   rpcUrl: string,
@@ -160,9 +162,10 @@ export async function openAcrossOrigins(
 }
 
 /**
- * All four seams at once — which is also how SF-1's own test suite drives it. The
- * suite is the first consumer that is not TronBox, so a reached-for dependency
- * would mean a live node were needed to test a pure classification.
+ * All four seams at once — which is also how the chain layer's own test suite
+ * drives it. The suite is the first consumer that is not TronBox, so a
+ * reached-for dependency would mean a live node were needed to test a pure
+ * classification.
  *
  * There is deliberately **no fifth seam**, no `createChainAccessUnchecked` and no
  * `skipProbe` (`src/chain/index.ts:180-184`): an escape hatch is worse than no

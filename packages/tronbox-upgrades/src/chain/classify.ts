@@ -1,7 +1,7 @@
 /**
  * The TVM-vs-EVM error vocabulary: what a node error *means*.
  *
- * **INV-45: this module has zero imports.** `JsonRpcErrorPayload` is declared
+ * **This module has zero imports.** `JsonRpcErrorPayload` is declared
  * here rather than in `transport.ts` for that reason — it is this function's
  * input type, and importing it would make the pure classifier depend on the
  * module that performs I/O. `transport.ts` imports it from here, which is the
@@ -19,7 +19,8 @@
  * miss silently disables a safety check.
  * The measured diagnosis: the sibling reads only `error.message`, so a nested
  * `error.error.message` or a thrown string yields `''`. The fix is not a deeper
- * walk at the classification site (INV-15 forbids one); it is that
+ * walk at the classification site (a nested walk through the error shape is
+ * not allowed); it is that
  * classification never sees an unvalidated shape, so there is nothing to walk.
  */
 export interface JsonRpcErrorPayload {
@@ -30,7 +31,7 @@ export interface JsonRpcErrorPayload {
    * message and no payload (`tronbox/tre:1.0.4` = v4.7.3). When there is no
    * payload it is the **literal string `"{}"`**, not absent — confirmed live on
    * 4.8.2, where *non-revert* errors carry `"{}"` too. So `data`'s presence
-   * proves nothing and any decoding is gated on a `0x` prefix (INV-15).
+   * proves nothing and any decoding is gated on a `0x` prefix.
    */
   readonly data?: unknown;
 }
@@ -57,16 +58,16 @@ export type TvmDiagnosis =
   | { readonly kind: 'method-unsupported' }
   /** `-32602` — the node rejected an argument. A plugin defect, or a bad tag. */
   | { readonly kind: 'argument-rejected' }
-  /** Anything else. INV-16: never silently treated as a probe outcome. */
+  /** Anything else. Never silently treated as a probe outcome. */
   | { readonly kind: 'unclassified' };
 
-/** The two members that are a normal outcome of a probe. Named once (INV-16). */
+/** The two members that are a normal outcome of a probe. Named once. */
 export type ProbeDiagnosis = Extract<
   TvmDiagnosis,
   { readonly kind: 'no-contract-at-address' | 'reverted' }
 >;
 
-/** INV-5-style exhaustiveness: a sixth member becomes a compile error. */
+/** Exhaustiveness check: a sixth member becomes a compile error. */
 function assertNever(value: never, context: string): never {
   throw new Error(`${context}: unhandled variant ${JSON.stringify(value)}`);
 }
@@ -98,8 +99,9 @@ function saysNoContract(message: string): boolean {
 /**
  * Measured: `-32000` + `"REVERT opcode executed"`.
  *
- * INV-16 is why this is a positive match on `-32000` rather than a `default:
- * reverted` arm: **"out of energy" arrives on the same `-32000`**, and it is a
+ * This is a positive match on `-32000` rather than a `default:
+ * reverted` arm, because a catch-all must never be mistaken for a normal
+ * probe outcome: **"out of energy" arrives on the same `-32000`**, and it is a
  * real failure with a real remedy (raise the fee limit, or fund the account).
  * Classified as a revert it would make `looksLikeProxyAdmin` return `false` and
  * skip a transparent-proxy admin check because the account ran out of a resource
@@ -111,7 +113,7 @@ function saysReverted(message: string): boolean {
 
 /**
  * Revert data exists only from java-tron v4.8.1, and below that `data` is the
- * literal string `"{}"`. INV-15: gate on the `0x` prefix, so `"{}"` — which
+ * literal string `"{}"`. Decoding is gated on the `0x` prefix, so `"{}"` — which
  * arrives on non-revert errors too — is never mistaken for a payload.
  */
 function revertData(data: unknown): string | undefined {
@@ -120,7 +122,7 @@ function revertData(data: unknown): string | undefined {
 
 /**
  * Keys on JSON-RPC `code` **first** and message only to disambiguate within a
- * code — never message alone (INV-15).
+ * code — never message alone.
  *
  * The sibling's predicate matches a bare `revert` case-insensitively anywhere in
  * any message, which also matches a contract-authored or node-authored string
@@ -128,7 +130,7 @@ function revertData(data: unknown): string | undefined {
  * false positive into a **silently disabled safety check**.
  *
  * Performs no nested traversal of `error.error`, `error.cause` or `error.data`
- * (INV-15) — by the time this is callable, `transport.ts` has already refused
+ * — by the time this is callable, `transport.ts` has already refused
  * anything that would need one.
  */
 export function classifyNodeError(error: JsonRpcErrorPayload): TvmDiagnosis {
@@ -159,7 +161,7 @@ export function classifyNodeError(error: JsonRpcErrorPayload): TvmDiagnosis {
 
 /**
  * `true` iff the diagnosis is a normal outcome of a probe. Exactly two members,
- * named once (INV-16).
+ * named once.
  *
  * Written as an exhaustive `switch` so a sixth `TvmDiagnosis` member forces a
  * decision at compile time rather than falling into a permissive default — the

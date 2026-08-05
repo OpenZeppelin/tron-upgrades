@@ -5,7 +5,7 @@
  *
  * All four ride the operation toolkit; the validate pair uses its
  * `validate-only` mode, which resolves no chain, no receipts, no scheduling
- * and opens no record (INV-1 of this surface) — while still configuring the
+ * and opens no record — while still configuring the
  * record LOCATION before the engine loads, so a validate call cannot poison a
  * later deploy in the same process.
  */
@@ -96,7 +96,7 @@ export async function validateImplementation(
  * sibling adaptation measured: an omitted `kind` is inferred from the
  * REFERENCE contract, never the candidate — a candidate that dropped its
  * upgrade entry point would self-infer `transparent`, which makes the engine
- * suppress exactly the missing-entry-point error that matters (INV-3).
+ * suppress exactly the missing-entry-point error that matters.
  */
 export async function runValidateUpgrade(
   context: OperationContext,

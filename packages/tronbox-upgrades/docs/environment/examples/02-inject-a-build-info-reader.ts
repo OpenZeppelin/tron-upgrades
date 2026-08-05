@@ -1,7 +1,7 @@
 /**
  * Pattern 2 — inject a `BuildInfoReader` so your own tests need no build tree.
  *
- * `deps.buildInfoReader` is the seam's one injection point (INV-43). It exists so
+ * `deps.buildInfoReader` is the seam's one injection point. It exists so
  * the routine degraded paths are reachable without constructing a deliberately
  * corrupt build directory on a real disk.
  */
@@ -29,7 +29,7 @@ function basename(file: AbsolutePath): string {
  *
  * Both methods are answered from the same store, so the fixture is a real second
  * host rather than one live method and one stub. Both are synchronous, which is
- * not optional — an `async` reader does not type-check (INV-38).
+ * not optional — an `async` reader does not type-check.
  */
 export function inMemoryReader(
   store: ReadonlyMap<string, unknown>,
@@ -92,7 +92,7 @@ export function resolveWithFixture(
 // ---------------------------------------------------------------------------
 // Reaching each degraded branch. All three `IndeterminateReason` kinds come from
 // a `read` result, so an empty store, an `unreadable` status and a file whose
-// `output` carries no `contracts` record cover the closed union (INV-34).
+// `output` carries no `contracts` record cover the closed union.
 // ---------------------------------------------------------------------------
 
 /** `IndeterminateReason.kind === 'build-info-absent'`. */
@@ -127,7 +127,7 @@ export function shapelessReader(): BuildInfoReader {
 /**
  * A probe that answers `false`, driving `resolvePackaged`'s "does not exist"
  * message; answer `true` for the "exists but could not be loaded" message. The
- * two have different remedies, which is the whole point of the split (INV-18).
+ * two have different remedies, which is the whole point of the split.
  */
 export function existenceProbeReader(answer: boolean): BuildInfoReader {
   return { read: () => ({ status: 'absent' }), exists: () => answer };

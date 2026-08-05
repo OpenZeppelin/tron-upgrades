@@ -1,5 +1,5 @@
 /**
- * The upgrade-dispatch matrix (INV-5): a pure function from probed facts to a
+ * The upgrade-dispatch matrix: a pure function from probed facts to a
  * plan, with a closed row set and a named refusal for anything outside it.
  *
  * The generations, measured from the sibling adaptation and upstream:
@@ -13,9 +13,10 @@
  *
  * "Absent" means the `UPGRADE_INTERFACE_VERSION` getter reverted — a
  * legitimate state, not an error. The probe classification (revert versus
- * transport failure, INV-6) is SF-1's: `readUpgradeInterfaceVersion` answers
- * `undefined` for the optional-call revert and raises for everything else, so
- * by the time this function runs, "absent" already means what it says.
+ * transport failure) belongs to the chain layer: `readUpgradeInterfaceVersion`
+ * answers `undefined` for the optional-call revert and raises for everything
+ * else, so by the time this function runs, "absent" already means what it
+ * says.
  *
  * The entry point is NEVER taken from the new implementation's ABI: the
  * upgrade call runs against the CURRENT generation's contract (the admin, or

@@ -19,7 +19,7 @@ import { ValidationInputInvariantError } from './errors';
 /**
  * The longest library name TronBox can encode, and the field it encodes into.
  *
- * F-9, measured end to end: clone `src/components/Compile/index.js:227-242` at
+ * Measured end to end: clone `src/components/Compile/index.js:227-242` at
  * `v4.9.0` builds `'__' + libraryName`, pads with `_` **while shorter than 40**,
  * and splices the result over a 40-character window — it never truncates. Combined
  * with upgrades-core's normalisation `/__\w{36}__/g` (`dist/version.js:26`), which
@@ -34,12 +34,12 @@ import { ValidationInputInvariantError } from './errors';
  * Reproduced through the host with a 45-character name: the persisted artifact's
  * `bytecode` had an **odd** hex digit count, and `hashBytecode` threw
  * `Bytecode is not a valid hex string` — a message that names neither the library
- * nor the cause, which is why cause 10 exists (INV-14, INV-42).
+ * nor the cause, which is why cause 10 exists.
  *
- * INV-35 allows F-9's numeric literals in this file and nowhere else. Only two
- * of the four it names are reachable as *code* — `36` and `39`; the 40-character
- * field and the 37–38 band appear in this comment because they are the
- * measurement, not a branch.
+ * An explicit exception permits these measured numeric literals in this file
+ * and nowhere else. Only two of the four it names are reachable as *code* —
+ * `36` and `39`; the 40-character field and the 37–38 band appear in this
+ * comment because they are the measurement, not a branch.
  */
 export const MAX_LIBRARY_NAME_LENGTH = 36;
 const CORRUPTING_NAME_LENGTH = 39;
@@ -49,7 +49,7 @@ const CORRUPTING_NAME_LENGTH = 39;
  *
  * Both booleans are required, so **both comparisons must be performed** to
  * construct the record — the absence of `metadataOnlyDifference` therefore means
- * the two agreed, never that nobody looked (INV-31).
+ * the two agreed, never that nobody looked.
  */
 export interface ArtifactIdentityComparison {
   readonly withoutMetadataMatches: boolean;
@@ -60,7 +60,7 @@ export interface ArtifactIdentityComparison {
 
 /**
  * The **one** `getVersion` call site, behind a wrapper whose signature requires
- * both bytecodes (C4, INV-33).
+ * both bytecodes.
  *
  * Upstream is `getVersion(bytecode, linkedBytecode?, constructorArgs = '')` and its
  * body is `linkedWithoutMetadata: hashBytecodeWithoutMetadata(linkedBytecode ??
@@ -72,12 +72,13 @@ export interface ArtifactIdentityComparison {
  * *That bug passes every test that does not specifically look for it*, which is
  * why the arity is enforced by a wrapper rather than by review.
  *
- * INV-42: exactly one upstream error is relayed unwrapped —
+ * Exactly one upstream error is relayed unwrapped —
  * `Abstract contract not allowed here`, which upgrades-core throws on empty
  * bytecode and which is its own clear message for a real user error (validating an
  * abstract contract). Everything else is wrapped, because the only *measured* way
- * TronBox produces bytecode upstream cannot hash is F-9's library overrun, and that
- * is already cause 10 — so a hex failure that reaches here is unexplained and
+ * TronBox produces bytecode upstream cannot hash is the library-name overrun
+ * measured above, and that is already cause 10 — so a hex failure that reaches
+ * here is unexplained and
  * should say so loudly rather than be reported as somebody's project problem.
  */
 const ABSTRACT_CONTRACT_MESSAGE = 'Abstract contract not allowed here';
@@ -130,7 +131,7 @@ export function libraryNameBand(
 }
 
 export interface IdentityRequest {
-  /** `evm.bytecode` from **SF-2's own recompile** — never from the artifact. */
+  /** `evm.bytecode` from **the validation ladder's own recompile** — never from the artifact. */
   readonly recompiled: SolcBytecode;
   /** `ArtifactRecord.bytecode`, in TronBox's legacy-placeholder form. */
   readonly artifactBytecode: string;
@@ -142,7 +143,7 @@ export interface IdentityResult {
    * The artifact's two-form identity. `withoutMetadata` is the validation
    * identity (from the placeholder form); `linkedWithoutMetadata` binds deployment
    * and version identity (from the linked form). No path substitutes one for the
-   * other (INV-33).
+   * other.
    */
   readonly artifactVersion: {
     readonly withMetadata: string;
@@ -158,23 +159,25 @@ export interface IdentityResult {
  * `@openzeppelin/upgrades-core@1.46.0` is
  * `getUnlinkedBytecode(data: ValidationData, bytecode: string)`
  * (`dist/validate/query.d.ts:28`) — its first parameter is the accumulated
- * *validation log*, which SF-2 does not have and could only obtain by running
- * `validate()` itself, i.e. by doing the consumer's work twice. What it does
- * internally is exactly the two steps below, plus a version check against the log:
- * the check INV-34 forbids relying on, because its two measured mismatch
- * behaviours are a throw from three frames deep and a silent fall-through
- * returning the input unchanged (`dist/validate/query.js:130` is
+ * *validation log*, which the validation ladder does not have and could only
+ * obtain by running `validate()` itself, i.e. by doing the consumer's work
+ * twice. What it does internally is exactly the two steps below, plus a
+ * version check against the log: the check the normalisation-must-happen rule
+ * forbids relying on, because its two measured mismatch behaviours are a
+ * throw from three frames deep and a silent fall-through returning the input
+ * unchanged (`dist/validate/query.js:130` is
  * `return bytecode;`), neither of which is a staleness report.
  *
  * So the transform is taken directly from the two public primitives —
  * `extractLinkReferences` and `unlinkBytecode`, both on the package's face via
  * `dist/index.d.ts`'s `export * from './link-refs'`, declared at
- * `dist/link-refs.d.ts:9-10` — driven by **SF-2's own recompile's**
- * `linkReferences`. That is INV-34's statement satisfied more directly than
- * through the wrapper: link-ness comes from our own compile, and upstream is used
- * as a transform and never as a check.
+ * `dist/link-refs.d.ts:9-10` — driven by **the validation ladder's own
+ * recompile's** `linkReferences`. That is the normalisation-must-happen rule's
+ * statement satisfied more directly than through the wrapper: link-ness comes
+ * from our own compile, and upstream is used as a transform and never as a
+ * check.
  *
- * **The gate is `withoutMetadata`** (INV-32). It is what the manifest keys on, via
+ * **The gate is `withoutMetadata`.** It is what the manifest keys on, via
  * `linkedWithoutMetadata`, so the gate and the record agree by construction; and it
  * is the only comparison immune to the one property this design depends on and did
  * not measure — whether solc's metadata `sources` map lists the sources *supplied
@@ -195,8 +198,8 @@ export function compareArtifactIdentity(
   );
 
   /**
-   * INV-34: a normalisation that did not happen is a broken invariant, not a
-   * pass. `evidence/probe-recompile-fidelity.js` §4 measured the shape this
+   * A normalisation that did not happen is a broken invariant, not a
+   * pass. A live recompile-fidelity probe (§4) measured the shape this
    * asserts — solc-native `__$8a08b1729c508fc3c9a7a1592748312f2d$__` in the
    * recompile against TronBox's legacy
    * `__MathLib_______________________________` in the artifact, with the returned
@@ -221,7 +224,7 @@ export function compareArtifactIdentity(
    * The recompile has no separate linked form — solc's own output *is* the
    * placeholder form — so both arguments are the same string, and this value's
    * `linkedWithoutMetadata` is deliberately never read. Reading it would be
-   * exactly C4's collapse.
+   * exactly the two-identity collapse described above.
    */
   const recompiledVersion = bytecodeIdentity(
     request.recompiled.object,
@@ -238,7 +241,7 @@ export function compareArtifactIdentity(
       withoutMetadataMatches,
       withMetadataMatches,
       // Present *iff* the two disagree. `?: true` makes a falsy value
-      // unrepresentable, so the field is a pure signal (INV-31).
+      // unrepresentable, so the field is a pure signal.
       ...(withoutMetadataMatches && !withMetadataMatches
         ? { metadataOnlyDifference: true as const }
         : {}),
@@ -256,11 +259,11 @@ export function compareArtifactIdentity(
  * resolve and compile cleanly, so this is not cause 11, and the artifact is
  * well-shaped, so it is not cause 6 — but the recompile produces no code for that
  * name. Unlike a *failed* compile, which produces no output to compare and
- * therefore cannot honestly reach INV-32's gate at all, here the compile succeeded
- * and its complete output demonstrably lacks the contract. "No bytecode" does not
- * equal the artifact's bytecode, so `withoutMetadataMatches` is a truthful
- * `false`, INV-32's biconditional holds, and `tronbox compile` is exactly the
- * remedy.
+ * therefore cannot honestly reach the withoutMetadata gate at all, here the
+ * compile succeeded and its complete output demonstrably lacks the contract.
+ * "No bytecode" does not equal the artifact's bytecode, so
+ * `withoutMetadataMatches` is a truthful `false`, the withoutMetadata gate's
+ * biconditional holds, and `tronbox compile` is exactly the remedy.
  */
 export function absentFromRecompile(): ArtifactIdentityComparison {
   return Object.freeze({

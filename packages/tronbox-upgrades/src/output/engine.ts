@@ -13,18 +13,19 @@ import type { DegradedCode, DegradedNote, OutputChannel } from './types';
  *
  * **Why the bypass matters.** Without this, an engine warning reaches the terminal
  * through `console.error` with ANSI colour from `chalk`, bypassing both TronBox's
- * quiet mode and the plugin's own control — the exact bypass SF-10 scenario 5
- * forbids, arriving through a dependency rather than through plugin code. TronBox
+ * quiet mode and the plugin's own control — the exact bypass the option/result
+ * surface's scenario 5 forbids, arriving through a dependency rather than
+ * through plugin code. TronBox
  * injects the real `console` into the migration sandbox
  * (`src/components/Require.js`), so nothing downstream of it honours `--quiet`.
  *
- * INV-26: the save-and-swap in {@link runCaptureWindow} is the **only** reference
+ * The save-and-swap in {@link runCaptureWindow} is the **only** reference
  * to `console` in `src/options/**`, `src/output/**` and `src/results/**`, and no
  * module in the three directories ever *writes* to it.
  *
- * INV-28: no `await`, no `for await`, no `yield`, and no `async` function in this
+ * No `await`, no `for await`, no `yield`, and no `async` function in this
  * module. The runtime backstop for a caller that violates the same rule is
- * INV-27's thenable refusal below.
+ * the thenable-refusal check below.
  */
 
 /** One `upgrades-core` root export that can reach `dist/utils/log.js`. */
@@ -41,7 +42,7 @@ export interface EngineWarningCapableExport {
 }
 
 /**
- * INV-29: the warning-capable root-export set, recorded as data and split by
+ * The warning-capable root-export set, recorded as data and split by
  * declared synchrony.
  *
  * **Verified present at `@openzeppelin/upgrades-core@1.46.0`**, as installed:
@@ -132,7 +133,7 @@ export const capturableEngineExports: readonly EngineWarningCapableExport[] =
     ),
   );
 
-/** The subset the capture window cannot cover (INV-30). Derived, as above. */
+/** The subset the capture window cannot cover. Derived, as above. */
 export const uncapturableEngineExports: readonly EngineWarningCapableExport[] =
   Object.freeze(
     engineWarningCapableExports.filter(
@@ -149,12 +150,12 @@ export interface UncapturedEngineWarning {
   readonly detail: readonly string[];
   /** The condition under which upstream emits it. */
   readonly trigger: string;
-  /** The sub-feature that owns documenting and testing this bypass. */
+  /** The part of the plugin that owns documenting and testing this bypass. */
   readonly owner: string;
 }
 
 /**
- * INV-30: the enumerated hole, with the specific text named.
+ * The enumerated hole, with the specific text named.
  *
  * The capture mechanism covers {@link capturableEngineExports} and no more.
  * Warnings from an asynchronous engine export are **not** captured: they reach
@@ -165,8 +166,9 @@ export interface UncapturedEngineWarning {
  * alternative was to pre-check `manifest.getAdmin()` and emit the plugin's own
  * note before calling, which duplicates upstream's condition and can drift; **a
  * drifted duplicate is worse than an honest gap**, because it emits a confidently
- * wrong note instead of no note. INV-29's canary is what makes that decision safe
- * rather than lazy: a new async warning site becomes a failing test.
+ * wrong note instead of no note. The warning-capable export table's canary is
+ * what makes that decision safe rather than lazy: a new async warning site
+ * becomes a failing test.
  *
  * The text below is recorded **in full and verbatim** rather than hedged, because
  * hedged phrasing ("some warnings may bypass") is unactionable — a user who sees
@@ -175,8 +177,9 @@ export interface UncapturedEngineWarning {
  * `dist/add-proxy-to-manifest.js:addProxyToManifest`.
  *
  * The fix a reader will reach for first — wrapping the async call in the window —
- * is not available: INV-27 refuses a thenable return outright, which makes the
- * wrong fix impossible rather than merely discouraged.
+ * is not available: the thenable-refusal check refuses a thenable return
+ * outright, which makes the wrong fix impossible rather than merely
+ * discouraged.
  */
 export const uncapturedEngineWarnings: readonly UncapturedEngineWarning[] =
   Object.freeze([
@@ -190,11 +193,11 @@ export const uncapturedEngineWarnings: readonly UncapturedEngineWarning[] =
       trigger:
         "kind !== 'transparent' && await manifest.getAdmin() is truthy — on " +
         'the path of every non-transparent proxy deployment',
-      owner: 'SF-5',
+      owner: 'the proxy deployment operations',
     },
   ]);
 
-/** INV-27: an engine call returned a thenable, so the window was not synchronous. */
+/** An engine call returned a thenable, so the window was not synchronous. */
 export class EngineCallNotSynchronousError extends Error {
   readonly code = 'ENGINE_CALL_NOT_SYNCHRONOUS' as const;
   readonly call: string;
@@ -215,7 +218,7 @@ export class EngineCallNotSynchronousError extends Error {
   }
 }
 
-/** INV-32: a capture window was already open. Refused rather than nested. */
+/** A capture window was already open. Refused rather than nested. */
 export class EngineCaptureReentrantError extends Error {
   readonly code = 'ENGINE_CAPTURE_REENTRANT' as const;
   readonly call: string;
@@ -235,9 +238,9 @@ export class EngineCaptureReentrantError extends Error {
 }
 
 /**
- * INV-45: the one permitted module-scope mutable binding outside
+ * The one permitted module-scope mutable binding outside
  * `output/silence.ts`, enumerated there rather than discovered here. Holds the
- * open window's call name so INV-32's refusal can name both calls.
+ * open window's call name so the reentrancy refusal can name both calls.
  */
 let activeCall: string | undefined;
 
@@ -246,7 +249,7 @@ const NOTE_PREFIX = 'Note: ';
 
 /**
  * Every CSI escape sequence, not only the SGR colours `chalk` happens to emit
- * today. Stripping is unconditional and idempotent (INV-33): `chalk@4.1.2`
+ * today. Stripping is unconditional and idempotent: `chalk@4.1.2`
  * auto-detects the terminal, so the same upstream code path emits codes or not
  * depending on the environment, and a recorded note whose text depended on
  * whether a TTY was attached would be untestable. TronBox's own `logger.log`
@@ -277,7 +280,7 @@ function stripAnsi(text: string): string {
  * Upstream writes exactly **one** string argument —
  * `dist/utils/log.js:log` builds `parts.join('\n')` and passes it alone, verified
  * present at 1.46.0 — so a non-string argument is not upstream's format and is
- * rendered by type alone. INV-41: nothing here can serialize a host object, and
+ * rendered by type alone. Nothing here can serialize a host object, and
  * nothing here can throw. `String(value)` is deliberately avoided: it throws on a
  * symbol and invokes a caller-supplied `toString`, either of which would make the
  * relay itself fail inside the one code path that must not.
@@ -289,12 +292,12 @@ function renderCapturedWrite(args: readonly unknown[]): string {
 }
 
 /**
- * INV-33: upstream's text and level, preserved.
+ * Upstream's text and level, preserved.
  *
  * A `Warning` becomes `'engine-warning'` and a `Note` becomes `'engine-note'`;
  * both are recorded, because a note that a class of construct was **excluded from
- * validation** is a reduced-fidelity validation statement by SC-003's own
- * definition. An unrecognized prefix is recorded as `'engine-warning'` — the
+ * validation** is a reduced-fidelity validation statement by definition. An
+ * unrecognized prefix is recorded as `'engine-warning'` — the
  * stricter of the two — and never dropped: if upstream adds a third level or
  * changes its prefix, the plugin over-reports rather than under-reports.
  *
@@ -336,7 +339,7 @@ function isThenable(value: unknown): boolean {
   ) {
     return false;
   }
-  // INV-27: only a *callable* `then` counts. A plain `{ then: 1 }` is not a
+  // Only a *callable* `then` counts. A plain `{ then: 1 }` is not a
   // promise and must not be refused.
   return typeof (value as { then?: unknown }).then === 'function';
 }
@@ -346,10 +349,9 @@ type CaptureOutcome<T> =
   | { readonly synchronous: false };
 
 /**
- * The window itself, and the only site in the package that touches `console`
- * (INV-26).
+ * The window itself, and the only site in the package that touches `console`.
  *
- * INV-32: the exact saved value is restored in a `finally`, on **every** exit
+ * The exact saved value is restored in a `finally`, on **every** exit
  * path — normal return, a thrown engine error, and a thrown `.then` access. An
  * engine call that throws is the common case, not the exception, since
  * `assertUpgradeSafe` and `assertStorageUpgradeSafe` exist to throw; leaving the
@@ -359,7 +361,7 @@ type CaptureOutcome<T> =
  * `captured` is owned by the caller so the buffer survives a throw from `fn` —
  * upstream writes its warnings for *allowed* errors before throwing on a
  * disallowed one, so dropping the buffer on the throw path would discard real
- * warnings (INV-33).
+ * warnings.
  *
  * Extracted from {@link captureEngineWarnings} rather than inlined so that the
  * successful outcome carries `T` without a cast: a single function would need
@@ -391,7 +393,7 @@ function runCaptureWindow<T>(
  * Relays the buffered writes onto the channel, after the swap is gone.
  *
  * Drains the buffer so a second call cannot replay it. `channel.degraded`
- * swallows its own write failure (INV-23) and {@link engineNote} is total, so
+ * swallows its own write failure and {@link engineNote} is total, so
  * this cannot throw — which is required, because it runs in a `finally` where a
  * throw would replace the engine's own error with the relay's.
  */
@@ -406,15 +408,16 @@ function flush(channel: OutputChannel, captured: string[]): void {
  * re-emitted on this channel.
  *
  * @param channel the plugin's channel; captured writes are relayed onto it
- * @param call the engine export's name, for INV-27's and INV-32's messages. One
+ * @param call the engine export's name, for the thenable-refusal check's and
+ *   the reentrancy refusal's messages. One
  *   of {@link capturableEngineExports}' names, or a short label naming the
  *   composite call. Required rather than derived from `fn.name`, which is `''` for
  *   the arrow functions every call site uses — a refusal that cannot name the call
- *   fails INV-10.
- * @param fn the engine call. Must not be `async` and must not `await` (INV-28).
+ *   fails the same naming requirement every refusal in this package follows.
+ * @param fn the engine call. Must not be `async` and must not `await`.
  *
  * The safety argument is a **runtime refusal**, not a reading of the shipped
- * `.d.ts` (INV-27). If `fn` returns a thenable, `console.error` is restored and
+ * `.d.ts`. If `fn` returns a thenable, `console.error` is restored and
  * the call is refused rather than awaited: an `await` inside the window would
  * yield to the event loop while `console.error` is swapped, so any concurrent
  * code's write would be captured and re-emitted as a plugin engine warning —
@@ -422,14 +425,14 @@ function flush(channel: OutputChannel, captured: string[]): void {
  * no symptom. The refusal holds on a minor bump that a `.d.ts` claim would
  * silently lose to, and it holds for entry points nobody enumerated.
  *
- * INV-31: captured writes are **buffered** and flushed only after
+ * Captured writes are **buffered** and flushed only after
  * `console.error` has been restored. This is structural rather than dependent on
  * which method the emitter's probe picked: on the un-quieted CLI path the injected
  * sink *is* `console`, so a relay running inside the window would feed its own
  * stub — a duplicated, mislabelled note in the mild case and an unbounded loop in
  * the worst.
  *
- * INV-24: silencing never reaches this function. The capture still runs and the
+ * Silencing never reaches this function. The capture still runs and the
  * notes are still recorded; only the advisory write is suppressed, at the
  * emitter. A `silenceWarnings()` that short-circuited the capture would let
  * upstream's writes escape to `console.error` and bypass the host's quiet mode —
@@ -452,7 +455,7 @@ export function captureEngineWarnings<T>(
     }
     return outcome.value;
   } finally {
-    // INV-31: `runCaptureWindow`'s own `finally` has already restored
+    // `runCaptureWindow`'s own `finally` has already restored
     // `console.error` by the time this runs, on every path — including the
     // refusal above and a throw from `fn`. Exactly one flush per call.
     flush(channel, captured);

@@ -7,7 +7,7 @@ import type { AbsolutePath } from '../environment';
  * the things keys are derived from. Nothing else — no reading, no graph walking,
  * no input assembly.
  *
- * **Why this is its own module.** F-6 measured that a wrong source key does not
+ * **Why this is its own module.** Measurement showed that a wrong source key does not
  * degrade anything — it silently invalidates *every* identity the plugin
  * computes, including `hashBytecodeWithoutMetadata`, which is the manifest/impl
  * key. Changing `T.sol` to `sub/T.sol` changed the bytecode, the metadata and
@@ -15,12 +15,13 @@ import type { AbsolutePath } from '../environment';
  * creation code carries the runtime length as an immediate, so a longer key
  * shifts a `PUSH` operand *inside* the body that survives metadata trimming.
  * Nothing anywhere in the stack reports that as a key problem: the plugin would
- * refuse every validation as stale, for a reason no message mentions (G2). It
+ * refuse every validation as stale, for a reason no message mentions. It
  * gets its own file so its test is unmissable rather than buried in input
  * assembly.
  *
  * **Why the path arithmetic is here too, and not only the key derivation.**
- * INV-6's second clause is *"no other module in `src/validation-input/**` calls
+ * A containment rule's second clause is *"no other module in
+ * `src/validation-input/**` calls
  * `path.relative`, `path.resolve` or `replace(/\\/g, '/')` on a source path"*,
  * enforced by a scan naming this file as the only one. Import resolution and the
  * artifact's own `sourcePath` both need that arithmetic, so co-locating it is
@@ -28,9 +29,10 @@ import type { AbsolutePath } from '../environment';
  * *"nothing else"* constraint is about keeping graph traversal and input assembly
  * out, and they are out.
  *
- * **Everything below reproduces TronBox rather than calling it** (SF-0's INV-49 —
- * no module in this package imports the host by any path, and the host's own
- * compiler resolution has three `process.exit(1)` sites). Citations are into a
+ * **Everything below reproduces TronBox rather than calling it** — the
+ * environment seam's host-import boundary: no module in this package imports
+ * the host by any path, and the host's own compiler resolution has three
+ * `process.exit(1)` sites. Citations are into a
  * TronBox **clone** at tag `v4.9.0` — a clone of the host's own repository, not
  * the installed package: the published package ships only `build/`, one physical
  * line per file, so its line numbers are not checkable. The clone path is
@@ -64,7 +66,7 @@ export type SourceKeyResult =
  * key = key.replace(/\\/g, '/');
  * ```
  *
- * So there are two shapes and the difference is load-bearing (F-13):
+ * So there are two shapes and the difference is load-bearing:
  *
  * - An **absolute** path — every project source, because
  *   `profiler.js:dependency_graph` keys the graph on `resolved_path` and
@@ -134,8 +136,8 @@ export function resolveFileSystemImport(
  * Clone `src/components/Resolver/npm.js:91-94`:
  * `path.join(path.dirname(import_path), dependency_path).replace(/\\/g, '/')`.
  * It stays a module path on purpose, so the same source is reached by the same
- * key wherever it is imported from — which is exactly the property F-6 says the
- * identity depends on.
+ * key wherever it is imported from — which is exactly the property measurement
+ * showed the identity depends on.
  */
 export function resolveModuleImport(
   importerSpecifier: string,
@@ -184,13 +186,14 @@ export function isValidModuleSpecifier(specifier: string): boolean {
  * The artifact's own record of where it was compiled from, as an absolute path.
  *
  * The seam hands `ArtifactRecord.sourcePath` through tool-verbatim and
- * deliberately unresolved (`src/environment/types.ts:240-245`), because SF-0's
- * INV-2 forbids resolving a path against a cwd TronBox moves. Resolving it
- * against `paths.root` is a different operation and a sound one: `root` is a
- * value the seam asserted absolute, not an ambient directory. TronBox writes an
- * absolute `sourcePath` in practice (F-4), so this is the branch that never
- * fires — kept because a relative value would otherwise be silently treated as
- * relative to wherever the process happens to be.
+ * deliberately unresolved (`src/environment/types.ts:240-245`), because the
+ * environment seam forbids resolving a path against a cwd TronBox moves.
+ * Resolving it against `paths.root` is a different operation and a sound one:
+ * `root` is a value the seam asserted absolute, not an ambient directory.
+ * TronBox writes an absolute `sourcePath` in practice — measured directly — so
+ * this is the branch that never fires — kept because a relative value would
+ * otherwise be silently treated as relative to wherever the process happens to
+ * be.
  */
 export function absoluteSourcePath(
   sourcePath: string,

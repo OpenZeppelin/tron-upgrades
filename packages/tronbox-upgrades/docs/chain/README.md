@@ -6,15 +6,16 @@
 
 **This is not the package README.** It is internal documentation for the sub-features built on
 top of this surface. `@openzeppelin/tronbox-upgrades` exposes no part of it to end users
-directly; the package's public entry point is SF-11's, and the user-facing README is assembled
-and proved followable by SF-12. See [`readme-contributions.md`](./readme-contributions.md) for
-the facts this sub-feature contributes to that README.
+directly; the package's public entry point belongs to packaging, and the user-facing README is
+assembled and proved followable by the consumer end-to-end harness. See
+[`readme-contributions.md`](./readme-contributions.md) for the facts this sub-feature
+contributes to that README.
 
 **Audience:** the six sibling sub-features the source names as consumers
-(`src/chain/index.ts:8`, `src/chain/index.ts:66`) — the deployment record and address canonicalization layer (SF-3),
-proxy deploy and upgrade operations (SF-5), standalone validate/prepare (SF-6), force-import
-(SF-7), the admin surface (SF-8) and beacon workflows (SF-9) — plus packaging (SF-11) and the
-consumer end-to-end harness (SF-12).
+(`src/chain/index.ts:8`, `src/chain/index.ts:66`) — the deployment record and address
+canonicalization layer, proxy deploy and upgrade operations, standalone validate/prepare,
+force-import, the admin surface and beacon workflows — plus packaging and the consumer
+end-to-end harness.
 
 ---
 
@@ -49,10 +50,10 @@ what the engine assumes, and each has a measured failure mode:
 So the translation has to happen somewhere, and it has to happen exactly once. This directory is
 that place. Two structural rules hold the boundary:
 
-- **`src/chain/**` imports the host by no path** (INV-28) and imports `@openzeppelin/upgrades-core`
+- **`src/chain/**` imports the host by no path** and imports `@openzeppelin/upgrades-core`
   as **types only** — one type-only specifier, at `src/chain/index.ts:15`. Every reach for chain
-  state goes through the handle SF-0's seam hands over.
-- **Exactly one module reads a property off that handle, along exactly two paths** (INV-29):
+  state goes through the handle the environment seam hands over.
+- **Exactly one module reads a property off that handle, along exactly two paths**:
   `src/chain/endpoint.ts`, reading `fullNode.host` and `fullNode.request` and nothing else. Its
   typed view of the handle is module-private and not exported.
 
@@ -110,9 +111,9 @@ the host handle, anything reachable from it, or the raw endpoint URL** — both 
 (`src/chain/index.ts:80-106`). `JSON.stringify(access)` therefore cannot leak either and does not
 throw.
 
-That is why this surface needs no redaction step. SF-0's seam meets the same guarantee by
-*redacting* handles on serialization, because its slots expose them as named capabilities; this
-one meets it by *construction*, because there is no field to redact. The first field added for
+That is why this surface needs no redaction step. The environment seam meets the same guarantee
+by *redacting* handles on serialization, because its slots expose them as named capabilities;
+this one meets it by *construction*, because there is no field to redact. The first field added for
 convenience silently undoes it.
 
 `EndpointDescriptor` has exactly two members — `describe` and `origin` — and **no `url` field**,
@@ -222,5 +223,5 @@ no-secrets guarantee would have to hold in twice.
 | [`api-reference.md`](./api-reference.md) | Every export of `src/chain/index.ts`, with full TypeScript signatures |
 | [`integration-guide.md`](./integration-guide.md) | Four end-to-end consumption patterns, and the mistakes to avoid |
 | [`safety.md`](./safety.md) | Credentials, the refusal asymmetry, the manifest gap, bounded costs, and what this surface does *not* promise |
-| [`readme-contributions.md`](./readme-contributions.md) | User-observable facts contributed to the package README, including the `TRON_CHAIN_*` troubleshooting table (SF-12 assembles) |
+| [`readme-contributions.md`](./readme-contributions.md) | User-observable facts contributed to the package README, including the `TRON_CHAIN_*` troubleshooting table (the consumer end-to-end harness assembles) |
 | [`examples/`](./examples) | Five type-checked example modules |

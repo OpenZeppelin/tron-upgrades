@@ -1,36 +1,36 @@
 /**
- * SF-1's error classes and the `TRON_CHAIN_*` code namespace.
+ * The chain layer's error classes and the `TRON_CHAIN_*` code namespace.
  *
  * **Four categories, and the category boundary is the design decision.** The
  * seam's `TronBoxEnvironmentError` family is reused for exactly the one category
  * it fits — the `chain` slot cannot supply chain-state access — and the other
- * three are SF-1's own, in the seam's *idiom*, each documenting why it is not in
- * the family. That is what SF-0 itself does twice (`ArtifactNameAmbiguousError`,
- * `HostInstanceSharedError`).
+ * three are the chain layer's own, in the seam's *idiom*, each documenting why
+ * it is not in the family. That is what the environment seam itself does twice
+ * (`ArtifactNameAmbiguousError`, `HostInstanceSharedError`).
  *
- * INV-19: eleven codes, closed and enumerable from this module, no two sharing a
+ * Eleven codes, closed and enumerable from this module, no two sharing a
  * code, each with one condition and one remedy. **Nine are declared here and two
- * are re-exported from `slots.ts`** — which INV-45 forces, because a module with
- * zero imports cannot throw a class defined elsewhere. `import * as errors` sees
- * a re-export, so the enumeration and the instantiate-all-eleven check both
- * still run against this module.
+ * are re-exported from `slots.ts`** — forced by `slots.ts` having zero imports,
+ * since a module with zero imports cannot throw a class defined elsewhere.
+ * `import * as errors` sees a re-export, so the enumeration and the
+ * instantiate-all-eleven check both still run against this module.
  *
- * INV-19 also states the negative: SF-1 adds **no** subclass of
- * `TronBoxEnvironmentError` and **no** member to `EnvironmentDiagnosis` or
+ * The same rule also states the negative: the chain layer adds **no** subclass
+ * of `TronBoxEnvironmentError` and **no** member to `EnvironmentDiagnosis` or
  * `UnsatisfiedSlot.cause`. `error-semantics.test.ts:84-101` enumerates
  * `src/environment/errors.ts` and asserts that family is exactly three, and
  * `code` there is a template-literal type over `EnvironmentDiagnosis` — so a
  * fourth member fails the baseline, which is the condition attached to reusing the
  * seam's error family: the reuse holds only while the family stays at three members.
  *
- * INV-13: every value SF-1 throws is an `Error` with a non-empty string
+ * Every value the chain layer throws is an `Error` with a non-empty string
  * `message`, and that is load-bearing rather than tidy —
  * `call-optional-signature.js:12` reads `e.message` **unguarded** inside its
  * catch, so a thrown string or a message-less object raises a secondary
- * `TypeError` *inside upstream's error handler*, replacing SF-1's diagnosis with
- * a stack trace from a module the user has never heard of.
+ * `TypeError` *inside upstream's error handler*, replacing the chain layer's
+ * diagnosis with a stack trace from a module the user has never heard of.
  *
- * INV-42 / INV-9: no message, and no enumerable property, carries the raw
+ * No message, and no enumerable property, carries the raw
  * endpoint URL. Every `endpoint` parameter below is the **scrubbed** form
  * produced by `endpoint.ts`, and each site says so.
  */
@@ -48,14 +48,15 @@ export {
 } from './slots';
 
 /**
- * INV-44: the budget for any node- or network-supplied text in a message.
+ * The budget for any node- or network-supplied text in a message.
  *
  * The bound is not hygiene. The measured transport failure a reverse proxy
  * produces is an HTML error page, and axios resolves a non-JSON 2xx body as a
  * **string** rather than rejecting (executed at `axios@1.18.0`) — so the whole
  * page is in hand at the moment the failure is described. A message that embeds
  * it is unreadable, and if the proxy echoes request headers, which error pages
- * do, it is also a leak of whatever INV-43 was keeping out.
+ * do, it is also a leak of whatever the different-origin credential-leak rule
+ * was keeping out.
  */
 const RENDERED_MAX_CHARS = 200;
 
@@ -80,7 +81,7 @@ function renderValue(value: unknown): string {
   return `a ${typeof value}`;
 }
 
-/** INV-5-style exhaustiveness: a new failure kind becomes a compile error. */
+/** Exhaustiveness check: a new failure kind becomes a compile error. */
 function assertNever(value: never, context: string): never {
   throw new Error(`${context}: unhandled variant ${JSON.stringify(value)}`);
 }
@@ -106,8 +107,9 @@ export type TransportFailure =
   /**
    * 2xx with a body that is not JSON — typically an HTML error page from a
    * reverse proxy. `detail` carries a bounded excerpt: this member was
-   * originally specified shapeless, and INV-44 requires the message to state a
-   * truncated excerpt, which is only possible if the excerpt is carried.
+   * originally specified shapeless, and the rendered-text budget requires the
+   * message to state a truncated excerpt, which is only possible if the
+   * excerpt is carried.
    */
   | { readonly kind: 'non-json-body'; readonly detail: string }
   /** JSON that is not a JSON-RPC response: no `result` and no well-formed `error`. */
@@ -124,7 +126,7 @@ export type TransportFailure =
  */
 export interface ChainInstanceChange {
   readonly kind: 'changed';
-  /** Which signal disagreed. The message differs by signal (INV-26). */
+  /** Which signal disagreed. The message differs by signal. */
   readonly signal: 'chain-id' | 'genesis-hash' | 'first-block-hash';
   readonly recorded: string | null;
   readonly observed: string | null;
@@ -132,14 +134,14 @@ export interface ChainInstanceChange {
 
 // ── Category 2 — the adapter's declared refusals ─────────────────────────────
 //
-// Deliberately **not** `TronBoxEnvironmentError`s. INV-10 fixes that family at
-// three, and none of these is a diagnosis of the user's environment.
+// Deliberately **not** `TronBoxEnvironmentError`s. The seam's error family is
+// fixed at three, and none of these is a diagnosis of the user's environment.
 
 /**
  * Thrown for `anvil_metadata` and `hardhat_metadata`, from a table, before any
- * request (INV-12).
+ * request.
  *
- * INV-35: this **reaches no user**, and the claim is an enumeration rather than a
+ * This **reaches no user**, and the claim is an enumeration rather than a
  * hope — `getAnvilMetadata` and `getHardhatMetadata` have exactly two call sites
  * in `@openzeppelin/upgrades-core@1.46.0`, both inside
  * `getDevInstanceMetadata`'s nested try/catch. So the message is deliberately
@@ -161,7 +163,7 @@ export class ChainMethodRefusedError extends Error {
   }
 }
 
-/** A block tag or block object the node cannot honour, refused rather than forwarded (INV-20). */
+/** A block tag or block object the node cannot honour, refused rather than forwarded. */
 export class ChainBlockTagRefusedError extends Error {
   readonly code = 'TRON_CHAIN_BLOCK_TAG_REFUSED' as const;
 
@@ -177,17 +179,18 @@ export class ChainBlockTagRefusedError extends Error {
 /**
  * The resolved endpoint is structurally unusable.
  *
- * Three conditions reach here, and none of them echoes the URL — INV-42 keeps
- * the raw endpoint out of every message, so the refusal names the **source** that
- * supplied it and the structural fault, which is what the user has to go and fix:
+ * Three conditions reach here, and none of them echoes the URL — the endpoint
+ * is always scrubbed before it reaches a message, so the refusal names the
+ * **source** that supplied it and the structural fault, which is what the
+ * user has to go and fix:
  *
- * - not `http`/`https`, or not an absolute URL at all (INV-31);
+ * - not `http`/`https`, or not an absolute URL at all;
  * - a path of `/tre` — the host's cheatcode namespace, which is the fourth and
- *   last defence against the trap `TronWrap.send` sets (INV-30);
+ *   last defence against the trap `TronWrap.send` sets;
  * - a different-origin override on a runtime with no global `fetch`, where the
  *   only remaining transport would be the handle's own HTTP client — and routing
- *   through it is precisely the credential leak INV-43 exists to prevent, so this
- *   refuses instead of falling back.
+ *   through it is precisely the credential leak the different-origin transport
+ *   rule exists to prevent, so this refuses instead of falling back.
  */
 export class ChainEndpointRefusedError extends Error {
   readonly code = 'TRON_CHAIN_ENDPOINT_REFUSED' as const;
@@ -205,17 +208,18 @@ export class ChainEndpointRefusedError extends Error {
  * A node error that is not a probe outcome. Carries the JSON-RPC code and the
  * node's **verbatim** text.
  *
- * INV-44: the text is unedited and untranslated. Editing it is how INV-22's
- * forbidden translation re-enters through the back door — an appended
+ * The text is unedited and untranslated. Editing it is how a forbidden
+ * translation re-enters through the back door — an appended
  * clarification is a translation with a friendlier name — and it destroys the one
  * artifact a user can search a java-tron issue tracker for.
  *
- * INV-22 also constrains SF-1's *own* framing text around it, which is why the
- * diagnosis is a **field and not part of the message**:
- * `'REVERT opcode executed'.includes('revert')` is `false`, so upstream's four
- * case-sensitive substrings miss both of TRON's probe outcomes — but the string
- * `'reverted'` *does* contain `revert`, so interpolating the diagnosis kind would
- * silently perform exactly the translation INV-22 forbids.
+ * The same no-translation rule also constrains the chain layer's *own* framing
+ * text around it, which is why the diagnosis is a **field and not part of the
+ * message**: `'REVERT opcode executed'.includes('revert')` is `false`, so
+ * upstream's four case-sensitive substrings miss both of TRON's probe
+ * outcomes — but the string `'reverted'` *does* contain `revert`, so
+ * interpolating the diagnosis kind would silently perform exactly the
+ * translation this rule forbids.
  *
  * The diagnosis is derived here rather than passed in, so there is one
  * classification site and two callers cannot disagree about the same payload.
@@ -230,7 +234,7 @@ export class ChainRpcError extends Error {
   constructor(
     readonly method: string,
     payload: JsonRpcErrorPayload,
-    /** Scrubbed (INV-42). Never the raw URL. */
+    /** Scrubbed. Never the raw URL. */
     readonly endpoint: string,
   ) {
     super(
@@ -274,7 +278,7 @@ function renderTransportFailure(cause: TransportFailure): string {
 
 /**
  * A transport failure. **Never** classified as a probe outcome and never
- * swallowed (INV-14).
+ * swallowed.
  *
  * The specimen is the sibling plugin's `slots.ts:getSlot`, which wraps its read
  * in `catch (_)` and reroutes to
@@ -290,7 +294,7 @@ export class ChainTransportError extends Error {
   constructor(
     readonly method: string,
     readonly cause: TransportFailure,
-    /** Scrubbed (INV-42). */
+    /** Scrubbed. */
     readonly endpoint: string,
   ) {
     super(
@@ -303,7 +307,7 @@ export class ChainTransportError extends Error {
 
 /**
  * A method whose result upgrades-core reads unguarded resolved a value of the
- * wrong shape (INV-4).
+ * wrong shape.
  *
  * Without this the failure is a `TypeError` thrown from *inside* the engine,
  * naming nothing — or, for `eth_chainId`, no failure at all and a manifest keyed
@@ -383,13 +387,15 @@ function renderSignalValue(value: string | null): string {
 }
 
 /**
- * The clause that names the **second** file, added additively by SF-3.
+ * The clause that names the **second** file, added additively by the record
+ * layer.
  *
  * Empty when no fingerprint path is supplied, which is what keeps every existing
  * construction of {@link ChainInstanceChangedError} rendering byte-identical text.
  *
- * **Why the message needs it at all, and why it sits *before* the remedy.** SF-3
- * persists the chain fingerprint in a file beside the manifest, so a user reading this
+ * **Why the message needs it at all, and why it sits *before* the remedy.**
+ * The record layer persists the chain fingerprint in a file beside the
+ * manifest, so a user reading this
  * refusal sees two files and — without this clause — is told to delete one. Deleting
  * the *unfamiliar* one is the natural reading, and it is the one that fails silently:
  * manifest present with no fingerprint is "no recorded identity", which must never
@@ -464,9 +470,9 @@ function renderInstanceChange(
  * silent-discard branch destroys the only record of a live production proxy on
  * the basis of an observation with a legitimate false-positive path.
  *
- * "Discards nothing" is **structural, not a promise**: SF-1 has no filesystem
- * access at all (INV-33), so it is incapable of modifying the file this message
- * names.
+ * "Discards nothing" is **structural, not a promise**: the chain layer has no
+ * filesystem access at all, so it is incapable of modifying the file this
+ * message names.
  *
  * Silently *reusing* is the failure that exists today: both of upstream's
  * dev-node accommodations are off on TRON (`isDevelopmentNetwork` false,
@@ -474,9 +480,9 @@ function renderInstanceChange(
  * TRE inherits the previous run's records and the user gets a
  * `checkForAddressClash` error with no named remedy.
  *
- * Follows `ArtifactNameAmbiguousError`'s precedent exactly: **SF-1 owns the text
- * because it holds the comparison, and never throws it.** SF-3 decides that
- * refusal is the policy.
+ * Follows `ArtifactNameAmbiguousError`'s precedent exactly: **the chain layer
+ * owns the text because it holds the comparison, and never throws it.** The
+ * record layer decides that refusal is the policy.
  */
 export class ChainInstanceChangedError extends Error {
   readonly code = 'TRON_CHAIN_INSTANCE_CHANGED' as const;
@@ -487,11 +493,11 @@ export class ChainInstanceChangedError extends Error {
       /** From `manifestPathFor` — a name no user would guess unaided. */
       readonly manifestFile: string;
       readonly recordCount: number;
-      /** Scrubbed (INV-42). */
+      /** Scrubbed. */
       readonly endpoint: string;
       /**
        * The chain fingerprint file that sits beside the manifest, when the caller has
-       * one — **added additively by SF-3.**
+       * one — **added additively by the record layer.**
        *
        * Optional, and that is what makes the addition additive under
        * `exactOptionalPropertyTypes`: every existing construction omits it and renders
@@ -516,17 +522,18 @@ export class ChainInstanceChangedError extends Error {
 // ── Category 1 — the `chain` slot cannot supply chain-state access ───────────
 //
 // The seam's family, reused for the one category it fits. `unsatisfiedSlot` is
-// the only route to an `UnsatisfiedSlot` (SF-0's INV-14), so `providedIn` and
-// `absentIn` are read from `src/environment/slots.ts` and cannot contradict the
-// table. This module is the only one in `src/chain/**` that imports the seam's
-// error family (INV-48).
+// the only route to an `UnsatisfiedSlot` (the environment seam's own rule), so
+// `providedIn` and `absentIn` are read from `src/environment/slots.ts` and
+// cannot contradict the table. This module is the only one in `src/chain/**`
+// that imports the seam's error family.
 
 /**
- * Structural: the handle does not expose what SF-1 needs.
+ * Structural: the handle does not expose what the chain layer needs.
  *
- * `handle-malformed` fits exactly, and SF-0's INV-17 `'missing'`/`'threw'`
- * distinction is preserved rather than collapsed — a raising host getter and an
- * absent property are different states, and the rendered message says which.
+ * `handle-malformed` fits exactly, and the environment seam's
+ * `'missing'`/`'threw'` distinction is preserved rather than collapsed — a
+ * raising host getter and an absent property are different states, and the
+ * rendered message says which.
  */
 export function chainHandleMalformedError(
   expectedPath: string,
@@ -543,7 +550,7 @@ export function chainHandleMalformedError(
 }
 
 /**
- * INV-18: the appended invocation-context text is why every `detail` below is
+ * The appended invocation-context text is why every `detail` below is
  * written as a **non-terminal clause**.
  *
  * `src/environment/errors.ts:renderUnsatisfiedSlot` produces
@@ -558,9 +565,9 @@ export function chainHandleMalformedError(
  * So a `detail` must not assume it terminates the message and must not end in
  * sentence-final punctuation the append would orphan. Each one below instead
  * *names* the parenthetical and disowns it, which is the whole cost of reusing
- * the seam's family and is payable entirely inside this text — asking SF-0 to
- * change the renderer would be a larger change to a closed sub-feature than the
- * one authorized, for a cosmetic gain.
+ * the seam's family and is payable entirely inside this text — asking the
+ * environment seam to change the renderer would be a larger change to a
+ * closed sub-feature than the one authorized, for a cosmetic gain.
  */
 const contextDisclaimer =
   'The chain handle itself was supplied and is well-formed, so the invocation ' +
@@ -579,9 +586,9 @@ const contextDisclaimer =
  * supported configuration, and because the gate is at the service level the
  * symptom is `ECONNREFUSED` rather than `-32601`.
  *
- * @param endpoint scrubbed (INV-42) — never the raw URL.
+ * @param endpoint scrubbed — never the raw URL.
  * @param nativeApiReachable the best-effort native-API probe's answer, or
- *   `undefined` when it was not run or answered nothing. INV-32: it changes only
+ *   `undefined` when it was not run or answered nothing. It changes only
  *   the wording, never the diagnosis, so all three values produce the same
  *   `code` and the same `cause.kind`.
  */
@@ -619,14 +626,16 @@ export function chainJsonRpcUnavailableError(
 }
 
 /**
- * The handle exposes the property path but its value is not the type SF-1 reads.
+ * The handle exposes the property path but its value is not the type the
+ * chain layer reads.
  *
- * A third structural state INV-18's two named cases do not cover:
- * `handle-malformed` renders as *"is absent"* or *"threw when read"*, and
- * neither is true of a `fullNode.host` that is present and numeric. Reporting
- * `'missing'` for it would be the wrong message about the right problem, which is
- * the class of failure SF-1 exists to remove — so it goes through
- * `invariant-violated`, where the detail can say what was actually found.
+ * A third structural state the two named `handle-malformed` cases do not
+ * cover: `handle-malformed` renders as *"is absent"* or *"threw when read"*,
+ * and neither is true of a `fullNode.host` that is present and numeric.
+ * Reporting `'missing'` for it would be the wrong message about the right
+ * problem, which is the class of failure the chain layer exists to remove —
+ * so it goes through `invariant-violated`, where the detail can say what was
+ * actually found.
  */
 export function chainHandleWrongTypeError(
   expectedPath: string,

@@ -30,12 +30,13 @@ import {
 
 /**
  * Option resolution: validate every supplied value against its accepted set, then
- * apply defaults. Pure, synchronous, and total (INV-15, INV-40).
+ * apply defaults. Pure, synchronous, and total.
  *
- * INV-18 / INV-44: reads no ambient state — no `process.env`, no clock, no config
+ * Reads no ambient state — no `process.env`, no clock, no config
  * file, no filesystem, no network — so a replayed operation resolves to the same
- * value by construction. That is why SF-10 declares no replay disposition: it
- * changes no state, and SC-007 stays each operation's obligation.
+ * value by construction. That is why the option/result surface declares no replay
+ * disposition: it changes no state, and the idempotent-replay requirement stays
+ * each operation's obligation.
  */
 
 /**
@@ -55,12 +56,12 @@ function own(supplied: SuppliedOptions, key: string): boolean {
 }
 
 /**
- * INV-4: `undefined` means absent — **but only for a key the operation accepts.**
+ * `undefined` means absent — **but only for a key the operation accepts.**
  *
  * The unknown-key check below operates on own keys regardless of value, and only
  * after a key is known to be accepted does `undefined` read as absent. Getting the
- * order wrong is a one-line mistake that defeats D-2 entirely and produces no
- * output: `Object.keys({ unsafeAllowRename: undefined })` is
+ * order wrong is a one-line mistake that defeats the unknown-key check
+ * entirely and produces no output: `Object.keys({ unsafeAllowRename: undefined })` is
  * `['unsafeAllowRename']`, so a rule that filtered undefined-valued keys first
  * would let the plural/singular typo through silently — and `unsafeAllowRenames`
  * is a storage-check opt-out.
@@ -106,7 +107,7 @@ function readProxyKind(supplied: SuppliedOptions): ProxyKind | undefined {
 }
 
 /**
- * Returns a **fresh** array (INV-16). Upstream's `withValidationDefaults` aliases
+ * Returns a **fresh** array. Upstream's `withValidationDefaults` aliases
  * whatever array it is handed and pushes into it, so every array crossing into
  * upstream must be one the plugin owns.
  */
@@ -166,7 +167,7 @@ function readRedeployMode(
 }
 
 /**
- * INV-9 step 4: finite, integer, at or above the bound. `NaN`, `Infinity`,
+ * Finite, integer, at or above the bound. `NaN`, `Infinity`,
  * negative and fractional values are all refused naming the bound. Upstream
  * validates none of this, in either plugin.
  */
@@ -192,7 +193,7 @@ function readMilliseconds(
 }
 
 /**
- * INV-39: checked as an array and **never** deep-walked, deep-cloned, deep-frozen
+ * Checked as an array and **never** deep-walked, deep-cloned, deep-frozen
  * or serialized. Constructor arguments are arbitrary caller data — a struct with a
  * self-reference is legal Solidity input built from a legal JS object graph — so a
  * deep clone or a validating `JSON.stringify` would hang or throw on it, and the
@@ -246,7 +247,7 @@ interface Contradiction {
 }
 
 /**
- * INV-12: the three enumerated contradiction pairs, as data, checked before
+ * The three enumerated contradiction pairs, as data, checked before
  * defaults. Each is a case where two channels express one allowance and upstream
  * resolves the disagreement silently in favour of one of them.
  */
@@ -298,7 +299,7 @@ const contradictions: readonly Contradiction[] = Object.freeze([
   },
 ]);
 
-/** One ordered validation step. INV-11: the order is data, not control flow. */
+/** One ordered validation step. The order is data, not control flow. */
 interface CheckStep {
   readonly name: string;
   readonly check: (
@@ -308,7 +309,7 @@ interface CheckStep {
 }
 
 /**
- * INV-11: the fixed, enumerated check order. The first failing step throws, and no
+ * The fixed, enumerated check order. The first failing step throws, and no
  * step is skipped because an earlier one passed. Adding a check means adding a list
  * entry, which is what keeps the order a decision rather than a control-flow
  * accident.
@@ -324,7 +325,7 @@ const checkSteps: readonly CheckStep[] = Object.freeze([
   {
     // Both key-level refusals live here, because both are questions about whether
     // a key is admissible at all, and both must be answered before any value is
-    // examined. INV-14's TRON registry is empty in v1; walking it anyway is what
+    // examined. The TRON-refusal registry is empty in v1; walking it anyway is what
     // makes adding the first instance a one-line edit to a named list.
     name: 'unknown-and-refused-keys',
     check: (supplied, accepted) => {
@@ -388,11 +389,11 @@ const checkSteps: readonly CheckStep[] = Object.freeze([
   },
 ]);
 
-/** INV-11 step 6: defaults, with `withValidationDefaults` last on a fresh copy. */
+/** Step 6: defaults, with `withValidationDefaults` last on a fresh copy. */
 function buildResolved(supplied: SuppliedOptions): ResolvedUpgradeOptions {
   /*
    * Built by conditional key insertion, never by spreading a partially-undefined
-   * source (INV-3). Under `exactOptionalPropertyTypes: true` an explicit
+   * source. Under `exactOptionalPropertyTypes: true` an explicit
    * `undefined` assignment would not even compile, but the runtime shape matters
    * independently: upstream reads `opts.kind ?? 'transparent'`, so an own key
    * carrying `undefined` would quietly substitute the default for a caller who
@@ -434,7 +435,7 @@ function buildResolved(supplied: SuppliedOptions): ResolvedUpgradeOptions {
     validationInput.unsafeSkipStorageCheck = unsafeSkipStorageCheck;
   }
 
-  // INV-46: upstream owns these six defaults, so they cannot drift by construction.
+  // Upstream owns these six defaults, so they cannot drift by construction.
   const validation = withValidationDefaults(validationInput);
   Object.freeze(validation.unsafeAllow);
   Object.freeze(validation);
@@ -460,7 +461,7 @@ function buildResolved(supplied: SuppliedOptions): ResolvedUpgradeOptions {
  * `redeployImplementation` per the parity target's own stated equivalence
  * (*"@deprecated Use redeployImplementation = 'never' instead"*), so exactly one
  * field expresses the policy downstream. The two cannot both be set — that is
- * INV-12's third contradiction, already refused by check step 3.
+ * the contradiction table's third entry, already refused by check step 3.
  */
 function resolveRedeployMode(supplied: SuppliedOptions): RedeployMode {
   const explicit = readRedeployMode(supplied);
@@ -478,9 +479,10 @@ function resolveRedeployMode(supplied: SuppliedOptions): RedeployMode {
  * Resolves the portable option surface.
  *
  * @param options the caller's object, or `undefined` for none. Never mutated —
- *   including every array it owns (INV-15).
+ *   including every array it owns.
  * @param accepted the operation's own key list. This is how unknown-key rejection
- *   stays per-operation without SF-10 knowing the operation set: `upgradeProxy`
+ *   stays per-operation without the option/result surface knowing the operation
+ *   set: `upgradeProxy`
  *   accepts `call`, `deployProxy` does not, and each passes its own list, which
  *   lives next to the operation that owns it.
  *
@@ -503,7 +505,7 @@ export function resolveUpgradeOptions(
 /**
  * The **only** sanctioned way to hand resolved options to an `upgrades-core` entry
  * point. Returns a fresh object with a fresh `unsafeAllow`, both owned by the
- * plugin (INV-16).
+ * plugin.
  *
  * **Why this exists, established by execution against
  * `@openzeppelin/upgrades-core@1.46.0`:** upstream re-applies its own defaults to
@@ -518,13 +520,14 @@ export function resolveUpgradeOptions(
  * object with `unsafeAllowCustomTypes: true` throws; the same call on this
  * function's output succeeds and leaves the caller's array untouched.
  *
- * Neither INV-3's freeze nor INV-16's fresh-copy rule is negotiable, and the two
- * are only compatible if the copy has a single home. The freeze is what makes a
- * call site that forgets fail **loudly** at the boundary instead of silently
- * accumulating allowances the author never wrote — which is the same failure
- * INV-15 records in the other direction: two `withValidationDefaults` calls on one
- * caller-owned array leave `['external-library-linking']` as three copies of
- * itself, re-verified at 1.46.0.
+ * Neither the resolved-options freeze nor the fresh-copy rule is negotiable,
+ * and the two are only compatible if the copy has a single home. The freeze is
+ * what makes a call site that forgets fail **loudly** at the boundary instead
+ * of silently accumulating allowances the author never wrote — which is the
+ * same failure the no-mutation rule records in the other direction: two
+ * `withValidationDefaults` calls on one caller-owned array leave
+ * `['external-library-linking']` as three copies of itself, re-verified at
+ * 1.46.0.
  */
 export function engineValidationOptions(
   resolved: ResolvedUpgradeOptions,
@@ -566,8 +569,8 @@ export function resolveInitializer(
  *
  * Separate from {@link resolveUpgradeOptions} because the closed-set check is
  * universal and the narrowing is not: which kinds an operation supports is the
- * operation's knowledge, so it passes its own list rather than SF-10 enumerating
- * the operation set.
+ * operation's knowledge, so it passes its own list rather than the
+ * option/result surface enumerating the operation set.
  */
 export function requireProxyKind(
   kind: ProxyKind,

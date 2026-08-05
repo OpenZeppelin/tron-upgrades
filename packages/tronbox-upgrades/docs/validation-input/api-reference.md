@@ -94,7 +94,8 @@ decides whether carrying a refusal or throwing it is right for its own contract.
 
 **The constructor takes no `string`, and that absence is the enforcement.** A consumer cannot
 word its own refusal sentence — that is a compile error rather than a review finding — so
-eleven causes cannot become thirty-three messages as SF-5, SF-6 and SF-7 are written.
+eleven causes cannot become thirty-three messages as the proxy operations, the standalone
+operations and adoption (forceImport) are written.
 
 The cause is exposed as `refusedCause` rather than `cause` because ES2022's `Error.cause` means
 *the error this one wraps*, and a `Cause` is not an error.

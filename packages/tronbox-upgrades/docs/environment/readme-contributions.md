@@ -1,26 +1,26 @@
-# README contributions from SF-0
+# README contributions from the environment seam
 
-**This is source material, not the README itself.** It is SF-0's share of the package README
-that SF-12 assembles and proves followable — prose fragments held here with each claim's
-evidence attached, so the assembled page inherits claims that were verified where they were
-written.
+**This is source material, not the README itself.** It is the environment seam's share of the
+package README that the consumer end-to-end harness assembles and proves followable — prose
+fragments held here with each claim's evidence attached, so the assembled page inherits claims
+that were verified where they were written.
 
-## Why SF-0 contributes no quickstart
+## Why the environment seam contributes no quickstart
 
 README quickstart / options / divergence content belongs to the sub-features that own
-the operations. SF-0 has **no public consumer API**: it is an internal seam whose
-only entry point, `resolveEnvironment`, is consumed by sibling modules and is not re-exported
-from the package. SF-11 owns the package entry point.
+the operations. The environment seam has **no public consumer API**: it is an internal seam
+whose only entry point, `resolveEnvironment`, is consumed by sibling modules and is not
+re-exported from the package. Packaging owns the package entry point.
 
 Writing a quickstart here would mean inventing the call a user makes, and that call runs
-through the deploy/upgrade operations, whose shape is **SF-4's to settle** — specifically
-how the deployer enters the public API. Two tests assert something narrower and more useful:
-that nothing at this layer presupposes a deployer, so SF-4 stays free to decide. So SF-0
-contributes the **environment, compatibility, divergence and troubleshooting** material a
-README needs, and no usage example.
+through the deploy/upgrade operations, whose shape is **the deploy seam's to settle** —
+specifically how the deployer enters the public API. Two tests assert something narrower and
+more useful: that nothing at this layer presupposes a deployer, so the deploy seam stays free
+to decide. So the environment seam contributes the **environment, compatibility, divergence
+and troubleshooting** material a README needs, and no usage example.
 
-Everything below is user-observable. Nothing below depends on SF-4's or SF-10's undecided
-contracts.
+Everything below is user-observable. Nothing below depends on the deploy seam's or the
+option/result surface's undecided contracts.
 
 ---
 
@@ -33,13 +33,14 @@ contracts.
 > runs, but its compile-time guarantees silently weaken rather than failing loudly.
 
 **Evidence.** `test/real-tronbox.test.ts` runs the full drift canary against
-`node_modules/tronbox-4.9.0` and `node_modules/tronbox-4.8.0`. The TypeScript floor is INV-46
-(`const` type parameters); the package declares `typescript: ^5.7.0`.
+`node_modules/tronbox-4.9.0` and `node_modules/tronbox-4.8.0`. The TypeScript floor is set by
+requiring `const` type parameters; the package declares `typescript: ^5.7.0`.
 
-> ⚠️ **For SF-12 / SF-2:** do **not** publish `peerDependencies.tronbox`'s current value as
-> the supported range. It is `>=4.0.0`, which the evidence contradicts, and setting the real
-> range is SF-2's. The seam quotes whatever it finds in the manifest and never compares
-> against it (INV-19), so the value in an error message is not a tested compatibility claim.
+> ⚠️ **For the consumer end-to-end harness and the validation ladder:** do **not** publish
+> `peerDependencies.tronbox`'s current value as the supported range. It is `>=4.0.0`, which the
+> evidence contradicts, and setting the real range belongs to the validation ladder. The seam
+> quotes whatever it finds in the manifest and never compares against it, so the value in an
+> error message is not a tested compatibility claim.
 
 ---
 
@@ -62,11 +63,12 @@ contracts.
 > `TRONBOX_ENV_ABSENT` rather than failing obscurely.
 
 **Evidence.** `src/environment/slots.ts:slotRequirements`. Render the table from that constant
-rather than copying it; the plugin's own error messages already do (INV-14).
+rather than copying it; the plugin's own error messages already do.
 
-> ⚠️ **For SF-12:** whether `tronbox test` mocha files are in v1 scope is **SF-4's open
-> question** and is not settled here. The column states what the seam can supply there; it
-> does not promise the plugin supports that context. Confirm before publishing the column.
+> ⚠️ **For the consumer end-to-end harness:** whether `tronbox test` mocha files are in v1
+> scope is not yet decided by the deploy seam and is not settled here. The column states what
+> the seam can supply there; it does not promise the plugin supports that context. Confirm
+> before publishing the column.
 
 ---
 
@@ -93,7 +95,7 @@ each is user-visible, and the first is the one users will notice.
 the selected network is *falsy*; an absent name yields
 `_.extend({}, default_tx_values, self.networks[network] || {})`. Defaults from
 `build/components/TronWrap/constants.js:deployParameters`. Verified on 4.9.0 and 4.8.0.
-Enforced by `src/environment/network.ts:assertSelectedNetworkIsConfigured` (INV-16).
+Enforced by `src/environment/network.ts:assertSelectedNetworkIsConfigured`.
 
 ### 3b. `network_id` may be a number, but not a falsy one
 
@@ -110,7 +112,7 @@ Enforced by `src/environment/network.ts:assertSelectedNetworkIsConfigured` (INV-
 **Evidence.** `build/components/Contract/contract.js:setNetwork` does
 `this.network_id = network_id + ""`; `build/lib/environment.js:Environment.detect` gates on
 `if (!network_id)` and runs on `migrate`, `test` and `console` alike. Implemented at exactly
-two call sites through `src/environment/network.ts:normalizeNetworkId` (INV-48).
+two call sites through `src/environment/network.ts:normalizeNetworkId`.
 
 ### 3c. Configure transaction parameters in camelCase
 
@@ -134,7 +136,7 @@ off the config schema, which is the point: from the schema alone the fallback lo
 > `contracts_build_directory` may legally point outside it — that is how `tronbox test` uses a
 > temporary build tree — but the build-info directory may not.
 
-**Evidence.** `src/environment/paths.ts:projectPathValues` (INV-3);
+**Evidence.** `src/environment/paths.ts:projectPathValues`;
 `build/lib/commands/test.js` is the legitimate external-build-tree case.
 
 ---
@@ -162,10 +164,13 @@ off the config schema, which is the point: from the schema alone the fallback lo
 >
 > **Path containment is tested on POSIX only.** Windows behaviour is unverified.
 
-**Evidence, in order.** INV-34 mode 2 and `ArtifactAmbiguityReport`; INV-35 plus
+**Evidence, in order.** The ambiguity report's own `indeterminate` status, reported as a
+routine state rather than a rare fallback, and `ArtifactAmbiguityReport`; the logger's
+single-method guarantee, substituted with a no-op at
 `build/lib/commands/migrate.js:command.run` and `build/lib/test.js`;
-`src/environment/ambiguity.ts:defaultExists` using `fs.existsSync` (INV-31, cost recorded);
-`TronWrap._getAccounts` and `NonAuthoritativeSender` (INV-7); and for the last, the absence of
+`src/environment/ambiguity.ts:defaultExists` using the stat-class `fs.existsSync` probe, a
+deliberate choice whose cost is recorded; `TronWrap._getAccounts` and `NonAuthoritativeSender`,
+wrapped so the caveat cannot be skipped at a call site; and for the last, the absence of
 any Windows case in the path-containment suite — a declared limit of what was tested, not an
 assumption that the behaviour holds.
 
@@ -185,19 +190,20 @@ assumption that the behaviour holds.
 > that raised, and list the commands where the capability exists. They also quote the plugin's
 > declared TronBox range.
 
-**Evidence.** `src/environment/errors.ts`; the three-member family is fixed by INV-10 and
-`UnsatisfiedSlot` carries `providedIn` / `absentIn` from the slot table (INV-14).
+**Evidence.** `src/environment/errors.ts`; the three-member family is fixed and
+`UnsatisfiedSlot` carries `providedIn` / `absentIn` from the slot table.
 
 ---
 
-## What SF-0 does *not* contribute
+## What the environment seam does *not* contribute
 
 - **A quickstart, or any usage example.** No public API exists at this layer, and the shape of
-  the one that will is SF-4's to settle.
+  the one that will is the deploy seam's to settle.
 - **Options documentation.** The plugin's own option surface (`kind`, `unsafeAllow`, and kin)
-  is SF-4's and SF-2's.
-- **Parity divergences from the Hardhat-plugin target.** SF-0 implements no operation, so it
-  has no operation to diverge. SC-005's divergence list is the operation-owning sub-features'.
-- **Result-shape or warning-channel documentation.** SF-10's, and its contract is not yet
-  settled.
-- **Installation and packaging.** SF-11's.
+  is the deploy seam's and the validation ladder's.
+- **Parity divergences from the Hardhat-plugin target.** The environment seam implements no
+  operation, so it has no operation to diverge. The documented per-operation divergence list
+  belongs to the operation-owning sub-features.
+- **Result-shape or warning-channel documentation.** Belongs to the option/result surface, and
+  its contract is not yet settled.
+- **Installation and packaging.** Belongs to packaging.

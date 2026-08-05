@@ -1,25 +1,26 @@
 /**
  * Endpoint resolution, normalization, scrubbing, and the choice of transport.
  *
- * **INV-29: this is the only module in `src/chain/**` that reads a property off
+ * **This is the only module in `src/chain/**` that reads a property off
  * the chain handle, and it reads exactly two paths — `fullNode.host` and
  * `fullNode.request`.** Not `networkConfig`, not `send`, not `request`, not
  * `trx`, not `defaultPrivateKey`, not `utils`. Its typed view
  * {@link TronWrapRpcView} is module-private and **not exported**, so no module
  * outside this file holds a typed view of the handle.
  *
- * That access discipline is the load-bearing half of SF-1's credential story.
- * SF-0 measured that a configured `privateKey` is reachable from the handles it
- * seals — three own-enumerable routes at shallowest depth 4 — and its durable
- * rule is that *all five sealed handles are unsafe to log*. SF-1 inherits the
- * handle **without** the sealing, because its own composite holds no handle in a
- * field (INV-3), so a second module reading `tronWrap.networkConfig` "just for
- * the fee limit" would both cross SF-0's INV-28 boundary and put a
- * credential-reachable object into a second scope in the one sub-feature that
- * was proven not to need `sealSlot`.
+ * That access discipline is the load-bearing half of the chain layer's
+ * credential story. The environment seam measured that a configured
+ * `privateKey` is reachable from the handles it seals — three own-enumerable
+ * routes at shallowest depth 4 — and its durable rule is that *all five sealed
+ * handles are unsafe to log*. The chain layer inherits the handle **without**
+ * the sealing, because its own composite holds no handle in a field, so a
+ * second module reading `tronWrap.networkConfig` "just for the fee limit"
+ * would both cross the environment seam's boundary against importing the host
+ * directly and put a credential-reachable object into a second scope in the
+ * one sub-feature that was proven not to need `sealSlot`.
  *
- * INV-28: the host is imported by no path. Every reach goes through the handle
- * SF-0 hands over.
+ * The host is imported by no path. Every reach goes through the handle
+ * the environment seam hands over.
  */
 
 import type { ChainHandleSlot } from '../environment';
@@ -30,17 +31,18 @@ import {
 } from './errors';
 
 /**
- * SF-1's private view of the chain handle.
+ * The chain layer's private view of the chain handle.
  *
- * SF-0's `TronWrapHandle` is `{ trx: object }` and **stays that way**: widening
- * it to expose `send` would make `Manifest.forNetwork(env.chain.tronWrap)`
+ * The environment seam's `TronWrapHandle` is `{ trx: object }` and **stays
+ * that way**: widening it to expose `send` would make
+ * `Manifest.forNetwork(env.chain.tronWrap)`
  * type-check, and `tronWrap.send` POSTs to `this.networkConfig.fullNode + '/tre'`
  * with `default: return _send()` (verified at `tronbox` `v4.9.0`,
  * `src/components/TronWrap/index.js:475`). On any public network that returns
  * HTTP 405 with an HTML body, which the host rewrites into
  * `TRE RPC 'eth_chainId': Request failed with status code 405` — an error naming
- * the wrong capability, which spec scenario 3 forbids in those terms. So SF-1
- * declares its own view, privately.
+ * the wrong capability, which spec scenario 3 forbids in those terms. So the
+ * chain layer declares its own view, privately.
  *
  * `method` is widened from `'post'` alone to `'get' | 'post'` because the default
  * native-API refinement probe is a **GET** of
@@ -61,15 +63,15 @@ interface TronWrapRpcView {
 
 type HandleRequest = TronWrapRpcView['fullNode']['request'];
 
-/** Which of the three sources supplied the endpoint. Reported, never inferred (INV-9). */
+/** Which of the three sources supplied the endpoint. Reported, never inferred. */
 export type EndpointOrigin = 'argument' | 'environment' | 'derived';
 
 /**
- * The renderable description of where SF-1 talks to. There is deliberately **no
- * `url` field**, no `host` field, and no field from which the raw endpoint can be
- * reconstructed.
+ * The renderable description of where the chain layer talks to. There is
+ * deliberately **no `url` field**, no `host` field, and no field from which
+ * the raw endpoint can be reconstructed.
  *
- * INV-9 / INV-42. The raw URL is credential-bearing, and the chain of custody is
+ * The raw URL is credential-bearing, and the chain of custody is
  * verified rather than assumed: `filterNetworkConfig` is
  * `fullNode: options.fullNode || options.fullHost` with **no normalization**
  * (`v4.9.0`, verbatim), `tronweb`'s `isValidURL('http://u:p@node:8545')` returns
@@ -77,9 +79,9 @@ export type EndpointOrigin = 'argument' | 'environment' | 'derived';
  * Basic userinfo and query-string API keys reach `fullNode.host` untouched, and
  * an override certainly can carry both.
  *
- * INV-40's guarantee is met here by there being **no field to leak**, not by
- * redacting one — which is why `sealSlot` is unnecessary. The raw URL exists only
- * in the transport's closure.
+ * The no-credential-leak guarantee is met here by there being **no field to
+ * leak**, not by redacting one — which is why `sealSlot` is unnecessary. The
+ * raw URL exists only in the transport's closure.
  */
 export interface EndpointDescriptor {
   /** `<scheme>://<host>[:<port>]<path>` — userinfo stripped, query and fragment dropped. */
@@ -94,14 +96,14 @@ export interface ResolvedEndpoint {
   readonly descriptor: EndpointDescriptor;
   readonly post: JsonRpcPost;
   /**
-   * Best-effort native-API reachability check. INV-32: consulted **only** to
+   * Best-effort native-API reachability check, consulted **only** to
    * choose between two wordings of an unavailable-capability message, and its own
    * failure never changes the diagnosis.
    */
   probeNativeApi(): Promise<boolean>;
 }
 
-/** The environment variable that overrides the derived endpoint (INV-27). */
+/** The environment variable that overrides the derived endpoint. */
 export const RPC_URL_ENV_VAR = 'TRONBOX_UPGRADES_RPC_URL';
 
 /** The path appended to `fullNode.host` to derive the endpoint. */
@@ -114,7 +116,7 @@ const NATIVE_API_PROBE_PATH = 'wallet/getnowblock';
  * The host's cheatcode namespace. Refusing an endpoint whose path is this is the
  * **fourth** defence against the `/tre` trap, after type, reach and affordance —
  * and it is the only one that catches an override typo'd or copy-pasted from the
- * host's cheatcode documentation (INV-30).
+ * host's cheatcode documentation.
  */
 const CHEATCODE_PATH_SEGMENT = 'tre';
 
@@ -131,14 +133,15 @@ function isObjectLike(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Reads one property off a host object, preserving SF-0's INV-17
+ * Reads one property off a host object, preserving the environment seam's
  * `'missing'`/`'threw'` distinction.
  *
  * A raising host getter and an absent property are different states, and the
  * seam's rendered message says which — so collapsing them here would throw away
- * a distinction SF-0 built its handle diagnosis around. `undefined` counts as
- * missing: a property present with the value `undefined` is not a property SF-1
- * can read the endpoint from, and the two are indistinguishable to a caller.
+ * a distinction the environment seam built its handle diagnosis around.
+ * `undefined` counts as missing: a property present with the value `undefined`
+ * is not a property the chain layer can read the endpoint from, and the two
+ * are indistinguishable to a caller.
  */
 function readHandlePath(
   owner: unknown,
@@ -165,17 +168,18 @@ function readHandlePath(
 }
 
 /**
- * INV-29's two property paths, read once each and never again.
+ * The two property paths established above, read once each and never again.
  *
  * `resolve.ts` validates only that the handle and its `trx` are object-like, so
- * SF-1 supplies its own shape guard over the two paths it actually uses.
+ * the chain layer supplies its own shape guard over the two paths it actually
+ * uses.
  */
 function readRpcHandle(chain: ChainHandleSlot): {
   readonly host: string;
   readonly request: HandleRequest;
 } {
   // The seam's `TronWrapHandle` deliberately does not declare `fullNode` — that
-  // narrowness is INV-30's first defence — so the widening happens here, once,
+  // narrowness is the first defence against the `/tre` trap — so the widening happens here, once,
   // through `unknown`, and every field is validated before it is used.
   const fullNode = readHandlePath(
     chain.tronWrap as unknown,
@@ -223,7 +227,7 @@ function readRpcHandle(chain: ChainHandleSlot): {
 }
 
 /**
- * INV-42's scrubber: strips **userinfo**, drops the **query** and the
+ * The scrubber that strips **userinfo**, drops the **query** and the
  * **fragment**, keeps scheme, host, port and path.
  *
  * Idempotent — scrubbing its own output re-parses to the same value — and total:
@@ -246,7 +250,7 @@ function parseEndpoint(raw: string, source: string): URL {
   } catch (cause) {
     // `new URL` throws `TypeError` per spec and nothing else can throw here, so
     // the predicate is exact: anything other than a parse failure propagates
-    // rather than being reported as a bad endpoint (INV-14).
+    // rather than being reported as a bad endpoint.
     if (cause instanceof TypeError) {
       throw new ChainEndpointRefusedError(
         source,
@@ -259,7 +263,7 @@ function parseEndpoint(raw: string, source: string): URL {
 }
 
 /**
- * INV-31 and INV-30, in that order.
+ * The scheme check, then the cheatcode-path check, in that order.
  *
  * The scheme check is cheap and catches a class of typo that otherwise surfaces
  * four layers down: `HttpProvider` is an axios instance and cannot speak any
@@ -300,7 +304,7 @@ interface EndpointChoice {
 }
 
 /**
- * INV-27: the endpoint is chosen **once**, by a fixed precedence, with **no
+ * The endpoint is chosen **once**, by a fixed precedence, with **no
  * fallback** between sources.
  *
  * A value that is present but unusable is refused rather than skipped — a user
@@ -331,11 +335,12 @@ function chooseEndpoint(
 }
 
 /**
- * The origin comparison INV-43 keys to.
+ * The origin comparison that decides whether the different-origin transport
+ * rule applies.
  *
  * A handle host that does not parse is treated as a **different** origin, which
  * is the safe direction: the rule's whole purpose is to keep the handle's
- * credentials off a host SF-1 cannot prove is the handle's own.
+ * credentials off a host the chain layer cannot prove is the handle's own.
  */
 function isSameOriginAsHandle(target: URL, host: string): boolean {
   try {
@@ -348,7 +353,7 @@ function isSameOriginAsHandle(target: URL, host: string): boolean {
   }
 }
 
-/** The minimal structural shape of a `fetch` implementation SF-1 uses. */
+/** The minimal structural shape of a `fetch` implementation the chain layer uses. */
 type FetchResponse = {
   readonly ok: boolean;
   readonly status: number;
@@ -364,13 +369,14 @@ type FetchLike = (
 ) => Promise<FetchResponse>;
 
 /**
- * Read at **factory time, never at module load** (INV-24), so a process that
+ * Read at **factory time, never at module load**, so a process that
  * polyfills or replaces `fetch` between requires is not baked in.
  *
  * Reading a platform global is permitted here under the operative reading of
- * INV-46: it bars ambient *configuration* and singletons, not platform builtins —
- * a literal reading is unsatisfiable, because INV-31 mandates `new URL(...)` and
- * `URL` is a platform global too.
+ * the rule against ambient state: it bars ambient *configuration* and
+ * singletons, not platform builtins — a literal reading is unsatisfiable,
+ * because URL validation mandates `new URL(...)` and `URL` is a platform
+ * global too.
  */
 function globalFetch(): FetchLike | undefined {
   const candidate = (globalThis as Record<string, unknown>)['fetch'];
@@ -384,7 +390,7 @@ function parseBody(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch (cause) {
-    // INV-1 / finding 7: a non-JSON 2xx body must **resolve as a string** rather
+    // Finding 7: a non-JSON 2xx body must **resolve as a string** rather
     // than reject, because that is what axios does — `'<html>oops</html>'` in,
     // the same string out, executed at `axios@1.18.0`. `transport.ts` detects
     // `non-json-body` on the resolved value's *type*, so this poster has to
@@ -399,12 +405,12 @@ function parseBody(text: string): unknown {
 
 /**
  * The different-origin transport: carries **only** the payload and the one header
- * SF-1 constructs (INV-43).
+ * the chain layer constructs.
  *
- * No timeout is set, because SF-1 never sets one (INV-41). The handle's
+ * No timeout is set, because the chain layer never sets one. The handle's
  * configured timeout genuinely does not apply across origins, and that is the
- * trade INV-43 accepts — a credential reaching a host the user named in an
- * environment variable is the worse outcome.
+ * trade the different-origin transport rule accepts — a credential reaching a
+ * host the user named in an environment variable is the worse outcome.
  */
 function fetchPoster(target: string, fetchImpl: FetchLike): JsonRpcPost {
   return async (payload: unknown): Promise<unknown> => {
@@ -433,8 +439,8 @@ function fetchPoster(target: string, fetchImpl: FetchLike): JsonRpcPost {
  *   `fullNode.host` / `fullNode.request`, or exposes them with the wrong type.
  * @throws {ChainEndpointRefusedError} the resolved endpoint is not an absolute
  *   http(s) URL, points at the host's `/tre` cheatcode path, or is a
- *   different-origin override on a runtime with no transport SF-1 can use
- *   without lending it the handle's credentials.
+ *   different-origin override on a runtime with no transport the chain layer
+ *   can use without lending it the handle's credentials.
  */
 export function resolveEndpoint(
   chain: ChainHandleSlot,
@@ -465,16 +471,19 @@ export function resolveEndpoint(
 }
 
 /**
- * INV-43, and INV-41's other half.
+ * The origin-based transport choice, and the other half of the timeout rule:
+ * reuse the handle's own client exactly when doing so cannot leak its
+ * credentials.
  *
  * When the resolved endpoint's origin **is** the handle's own, inheriting the
  * handle's HTTP client is permitted and preferred, because that client carries
- * the timeout the user configured and SF-1 must neither lengthen nor shorten it.
- * When the origin differs, the request goes through a transport carrying nothing
- * SF-1 did not construct.
+ * the timeout the user configured and the chain layer must neither lengthen
+ * nor shorten it. When the origin differs, the request goes through a
+ * transport carrying nothing the chain layer did not construct.
  *
- * The rule is keyed to SF-1's own origin check rather than to a measurement,
- * and the reason is that the measurement expires. `HttpProvider`'s constructor is
+ * The rule is keyed to the chain layer's own origin check rather than to a
+ * measurement, and the reason is that the measurement expires.
+ * `HttpProvider`'s constructor is
  * `axios.create({ baseURL, timeout, headers, auth: user ? {username: user,
  * password} : undefined })`, and axios applies an instance's headers and auth to
  * an **absolute** request URL while ignoring `baseURL` — so handing the absolute
@@ -485,7 +494,8 @@ export function resolveEndpoint(
  * privateKey)` and passes no `headers`, no `user` and no `password` (verified at
  * `v4.9.0`). But `headers` is precisely the parameter a TronGrid API key is
  * configured through, so a rule keyed to that fact expires silently at the next
- * minor. This is the framing SF-0 adopted for its all-five sealing rule.
+ * minor. This is the framing the environment seam adopted for its all-five
+ * sealing rule.
  */
 function selectPost(
   choice: EndpointChoice,
@@ -500,7 +510,7 @@ function selectPost(
   // `deps.post` could not resolve a refusal raised before it was ever consulted.
   // An error that states a fix the code forbids is worse than one that states
   // none. Precedence is therefore `deps.post` → `globalThis.fetch` (read at
-  // factory time, never module load — INV-24) → refuse, and the refusal still
+  // factory time, never module load) → refuse, and the refusal still
   // fires when there is neither. This also matches `createChainAccess`'s own
   // `deps.post ?? resolved.post`, which already gave the injected seam
   // precedence on the same-origin path.
@@ -513,11 +523,12 @@ function selectPost(
 
   if (sameOrigin) {
     // A *relative* url for the derived endpoint, so axios resolves it against
-    // the handle's `baseURL` — and so INV-36 can assert the request url is
+    // the handle's `baseURL` — and so a test can assert the request url is
     // exactly `jsonrpc`, which is not in `_getConsoleLog`'s three-path
     // allow-list (`wallet/triggerconstantcontract`,
     // `walletsolidity/triggerconstantcontract`, `wallet/broadcasttransaction`),
-    // so no host-side console-log extraction occurs on any read SF-1 performs.
+    // so no host-side console-log extraction occurs on any read the chain
+    // layer performs.
     const target = choice.origin === 'derived' ? DERIVED_RPC_PATH : choice.raw;
     return (payload: unknown): Promise<unknown> =>
       handle.request(target, payload, 'post');

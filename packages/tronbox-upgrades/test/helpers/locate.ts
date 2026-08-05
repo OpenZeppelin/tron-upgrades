@@ -5,9 +5,9 @@ import path from 'node:path';
 /**
  * Filesystem locators for the suite.
  *
- * Derived from `__dirname` rather than `process.cwd()` on purpose: INV-44's test
- * calls `process.chdir` mid-run, so any cwd-derived locator would break exactly
- * the test that exists to prove the seam is cwd-independent.
+ * Derived from `__dirname` rather than `process.cwd()` on purpose: the test that
+ * exists to prove the seam is cwd-independent calls `process.chdir` mid-run, so
+ * any cwd-derived locator would break exactly that test.
  */
 export const testDir: string = __dirname.endsWith(`${path.sep}helpers`)
   ? path.dirname(__dirname)
@@ -36,7 +36,7 @@ export function tronBoxIsInstalled(installName: string): boolean {
   return fs.existsSync(path.join(tronBoxRoot(installName), 'build'));
 }
 
-/** Absolute paths only — the seam refuses anything else (INV-2). */
+/** Absolute paths only — the seam refuses anything else. */
 export function makeTempDir(tag: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `sf0-${tag}-`));
 }

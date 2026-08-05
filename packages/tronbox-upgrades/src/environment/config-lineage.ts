@@ -14,10 +14,11 @@ import type {
 } from './types';
 
 /**
- * INV-13 / INV-41: the compared field set as three explicit groups, iterated
+ * The compared field set as three explicit groups, iterated
  * rather than derived from `Object.keys`. A resolution compares exactly the
- * groups whose slots it exposes, which is what makes INV-45's "cost is linear
- * in the number of declared slots and the fixed cross-check field list" true.
+ * groups whose slots it exposes, which is what makes the claim "cost is
+ * linear in the number of declared slots and the fixed cross-check field
+ * list" true.
  */
 export const pathConfigLineageFields = Object.freeze([
   'working_directory',
@@ -42,8 +43,8 @@ export const networkConfigLineageFields = Object.freeze([
 
 /**
  * The compiler group: the resolved compiler configuration's scalars. `settings`
- * is absent by construction — it is an object, and INV-41 renders every member of
- * a compared group verbatim. `compiler.ts:compareCompilerSettings` cross-checks it
+ * is absent by construction — it is an object, and every member of
+ * a compared group is rendered verbatim. `compiler.ts:compareCompilerSettings` cross-checks it
  * by identity instead, so it is not uncompared.
  */
 export const compilerConfigLineageFields = Object.freeze([
@@ -66,7 +67,7 @@ export type CompilerScalarField =
   (typeof compilerConfigLineageFields)[number];
 
 /**
- * INV-13's coverage claim, as a compile error rather than prose: the union of
+ * The coverage claim, as a compile error rather than prose: the union of
  * the compared groups must equal `ConfigScalarField` exactly. Adding an exposed
  * scalar to the type without adding it to a group — or the reverse — fails to
  * compile. Type-only, so nothing reaches the emitted JavaScript.
@@ -103,7 +104,7 @@ export type ConfigReadFailure =
 /**
  * Internal carrier so a projection can read a dozen fields in straight-line
  * code and still surface the first failure as data. Never escapes the seam
- * (INV-15) — every catch site converts it to a `ConfigReadFailure`.
+ * — every catch site converts it to a `ConfigReadFailure`.
  */
 export class ConfigReadFailureError extends Error {
   constructor(readonly failure: ConfigReadFailure) {
@@ -205,7 +206,7 @@ function inspectLineage(
       return malformed(handle, path, 'missing');
     }
     // The artifacts lineage passes through the resolver the intercept wraps;
-    // INV-26 compares that object against the deployer Config's own resolver.
+    // the resolver-pairing check compares that object against the deployer Config's own resolver.
     if (handle === 'artifacts' && hop === 'resolver') {
       resolver = next.value;
     }
@@ -232,8 +233,8 @@ function inspectLineage(
 }
 
 /**
- * The two — and only two — private property hops in the whole package
- * (INV-28): `deployer.options.options` and `artifacts.resolver.options`.
+ * The two — and only two — private property hops in the whole package:
+ * `deployer.options.options` and `artifacts.resolver.options`.
  */
 export function inspectConfigLineages(
   handles: RawMigrationHandles,
@@ -336,7 +337,7 @@ export function requireNonEmptyString(
   return stringValue;
 }
 
-/** INV-4: an upstream `undefined` becomes `null`, never the other way round. */
+/** An upstream `undefined` becomes `null`, never the other way round. */
 export function nullableString(
   value: unknown,
   field: string,
@@ -353,7 +354,7 @@ export function nullableString(
   return value;
 }
 
-/** INV-4: an upstream `undefined` becomes `null`, never the other way round. */
+/** An upstream `undefined` becomes `null`, never the other way round. */
 export function nullableNumber(
   value: unknown,
   field: string,
@@ -396,8 +397,9 @@ export function requireObjectLike(
 
 /**
  * Names the *type* of an offending value, never the value. A Config field can
- * hold a credential-adjacent value, and INV-40 applies to every message the
- * seam renders, not only to the cross-check payload.
+ * hold a credential-adjacent value, and the no-credential-leak guarantee
+ * applies to every message the seam renders, not only to the cross-check
+ * payload.
  */
 function describe(value: unknown): string {
   if (value === null) {
@@ -410,7 +412,7 @@ function describe(value: unknown): string {
 }
 
 /**
- * INV-12: returns either an empty list (the lineages agree on every compared
+ * Returns either an empty list (the lineages agree on every compared
  * field) or the disagreements. There is no third return, so no caller can
  * obtain a value from a disagreeing pair — the type is what forbids the
  * preference path, not a convention.
@@ -440,7 +442,7 @@ export function compareConfigValues<F extends ConfigScalarField>(
 }
 
 /**
- * INV-26: when both handles are supplied, the intercept must wrap the resolver
+ * When both handles are supplied, the intercept must wrap the resolver
  * belonging to the deployer's Config. TronBox's own flow never mispairs them —
  * `build/components/Migrate/index.js:Migration` creates both together — but a
  * hand-built harness or a memoization keyed on only one handle can, and the
@@ -448,7 +450,7 @@ export function compareConfigValues<F extends ConfigScalarField>(
  * write-back to another's cache.
  *
  * This is the one place `config.resolver` is read, and it is read *only* for
- * this identity comparison. INV-24's rule is that no abstraction is ever
+ * this identity comparison. The rule is that no abstraction is ever
  * obtained through it, which this does not do.
  */
 export function checkResolverPairing(
@@ -493,8 +495,9 @@ export function checkResolverPairing(
 }
 
 /**
- * INV-34 mode 1: `crossChecked` is `false` exactly when fewer than two lineages
- * were reachable, and `crossCheckSkippedBecause` names which one was available.
+ * One of the indeterminate-report modes: `crossChecked` is `false` exactly
+ * when fewer than two lineages were reachable, and
+ * `crossCheckSkippedBecause` names which one was available.
  * Neither is inferable from the other fields, which is why both are reported.
  */
 export function configLineageProvenance(

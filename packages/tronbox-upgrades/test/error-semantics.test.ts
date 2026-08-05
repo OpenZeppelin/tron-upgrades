@@ -45,7 +45,8 @@ import {
 } from './helpers/readers';
 
 /**
- * Error Semantics — INV-10 … INV-19.
+ * Error Semantics — the diagnosis classes, the partition between them, and
+ * the messages the seam renders when resolution fails.
  *
  * Technique: fault injection. Every guard at the seam boundary gets a fault that
  * exercises it, and every assertion names the typed error class rather than
@@ -82,7 +83,7 @@ function inconsistentFrom(act: () => unknown): EnvironmentInconsistentError {
   return error;
 }
 
-describe('INV-10: exactly three diagnoses, with code derived from diagnosis', () => {
+describe('exactly three diagnoses, with code derived from diagnosis', () => {
   it('exports exactly three TronBoxEnvironmentError subclasses', () => {
     // Enumerated from the module rather than listed by hand, so a fourth
     // "config problem" class added later fails a test instead of passing review.
@@ -131,8 +132,9 @@ describe('INV-10: exactly three diagnoses, with code derived from diagnosis', ()
   });
 
   it('keeps ArtifactNameAmbiguousError outside the family', () => {
-    // SF-5 throws it if refusal is the policy it chooses; SF-0 never does. It is
-    // deliberately not a fourth member of a three-member taxonomy.
+    // The proxy operations throw it if refusal is the policy they choose; the
+    // environment seam never does. It is deliberately not a fourth member of a
+    // three-member taxonomy.
     const error = new ArtifactNameAmbiguousError('Box', [
       {
         sourcePath: 'contracts/Box.sol',
@@ -148,7 +150,7 @@ describe('INV-10: exactly three diagnoses, with code derived from diagnosis', ()
   });
 });
 
-describe('INV-11: the diagnosis partition is total and mutually exclusive', () => {
+describe('the diagnosis partition is total and mutually exclusive', () => {
   it('absent: no handle bearing on any requested slot was supplied', () => {
     const error = caught(() =>
       resolveEnvironment(handles({}), { require: ['paths'] }),
@@ -282,7 +284,7 @@ describe('INV-11: the diagnosis partition is total and mutually exclusive', () =
   });
 });
 
-describe('INV-12: no preference path exists between the two Config lineages', () => {
+describe('no preference path exists between the two Config lineages', () => {
   it('carries both disagreeing values verbatim', () => {
     const shape = testShapedHandles({}, { feeLimit: 42 });
     const error = inconsistentFrom(() =>
@@ -315,8 +317,8 @@ describe('INV-12: no preference path exists between the two Config lineages', ()
 
   it('refuses to use the lineage that worked when the other one cannot construct', () => {
     // Preferring the working lineage would be exactly the silent preference
-    // INV-12 forbids, and it would be a third reduced-verification mode, which
-    // INV-34 caps at two. Both lineages reachable means both must construct.
+    // forbidden above, and it would be a third reduced-verification mode, when
+    // only two are allowed. Both lineages reachable means both must construct.
     const shape = testShapedHandles({}, { omit: ['contracts_directory'] });
     const error = incompleteFrom(() =>
       resolveEnvironment(shape.handles, { require: ['paths'] }),
@@ -347,11 +349,12 @@ describe('INV-12: no preference path exists between the two Config lineages', ()
 /**
  * One disagreement per allow-listed field.
  *
- * This is simultaneously INV-12's "no preference at any nesting depth", INV-13's
- * "the list covers every exposed scalar" and INV-41's "the payload is
- * allow-listed" — a field that is exposed but *not* compared silently
- * reinstates the preference hole for that one field, and this table is what
- * makes the coverage mechanical rather than asserted in prose.
+ * This is simultaneously the no-preference rule's "no preference at any
+ * nesting depth", the cross-check coverage rule's "the list covers every
+ * exposed scalar" and the allow-list rule's "the payload is allow-listed" —
+ * a field that is exposed but *not* compared silently reinstates the
+ * preference hole for that one field, and this table is what makes the
+ * coverage mechanical rather than asserted in prose.
  */
 interface FieldDisagreement {
   readonly field: ConfigScalarField;
@@ -544,7 +547,7 @@ const fieldDisagreements: readonly FieldDisagreement[] = [
   },
 ];
 
-describe('INV-13 / INV-41: the cross-check allow-list covers every exposed scalar', () => {
+describe('the cross-check allow-list covers every exposed scalar', () => {
   it.each(fieldDisagreements.map(entry => [entry.field, entry] as const))(
     'reports a disagreement on %s and on nothing else',
     (_field, entry) => {
@@ -587,11 +590,12 @@ describe('INV-13 / INV-41: the cross-check allow-list covers every exposed scala
       'network.sender.kind',
     ];
     // `CompilerConfiguration.settings` is the one lineage-derived member that is
-    // not a scalar, so it is deliberately outside the compared groups — INV-41
-    // renders every compared field verbatim, and a user-supplied object must never
-    // be subjected to that. It is cross-checked by identity instead, and a
-    // disagreement is the payload-free `compiler-settings-conflict`. Listed here so
-    // the exclusion is a named fact rather than a gap in this assertion.
+    // not a scalar, so it is deliberately outside the compared groups — the
+    // allow-list renders every compared field verbatim, and a user-supplied
+    // object must never be subjected to that. It is cross-checked by identity
+    // instead, and a disagreement is the payload-free `compiler-settings-conflict`.
+    // Listed here so the exclusion is a named fact rather than a gap in this
+    // assertion.
     const comparedByIdentityInstead: readonly string[] = [
       'compiler.settings.evmVersion',
     ];
@@ -675,7 +679,7 @@ describe('INV-13 / INV-41: the cross-check allow-list covers every exposed scala
   });
 });
 
-describe('INV-14: incomplete names the property path and the providing contexts', () => {
+describe('incomplete names the property path and the providing contexts', () => {
   it('exports a slot table that partitions the five invocation contexts', () => {
     expect([...Object.keys(slotRequirements)].sort()).toEqual(
       [...slotNames].sort(),
@@ -754,8 +758,9 @@ describe('INV-14: incomplete names the property path and the providing contexts'
         // `output.handles` has always named it, so listing that context as absent
         // described a capability the seam does have as one it does not. Widening
         // `providedIn` was chosen over narrowing `handles`
-        // precisely because narrowing would have decided SF-4's mocha-scope
-        // question by omission — which was still open when the choice was made.
+        // precisely because narrowing would have decided the deploy seam's
+        // mocha-scope question by omission — which was still open when the
+        // choice was made.
         'tronbox test mocha files',
       ],
       // Added with the compiler slot. Purely lineage-derived, so it
@@ -948,7 +953,7 @@ describe('INV-14: incomplete names the property path and the providing contexts'
   });
 
   /**
-   * D-1, fixed at its root and now a regression test.
+   * A recorded defect, fixed at its root and now a regression test.
    *
    * The defect: for the `output` slot only, an `artifacts` handle that was never
    * supplied was diagnosed `handle-malformed` naming `artifacts.resolver.options`
@@ -962,10 +967,10 @@ describe('INV-14: incomplete names the property path and the providing contexts'
    * Reachable whenever another requested slot has a bearing handle — e.g.
    * `require: ['chain', 'output']` under `tronbox console`, which the slot table
    * itself lists as providing `chain` and not `output`. Kept as a named test
-   * rather than folded into INV-11's coverage, so a re-regression is reported as
-   * D-1 rather than as a generic partition failure.
+   * rather than folded into the partition coverage above, so a re-regression is
+   * reported by name rather than as a generic partition failure.
    */
-  it('D-1: an unsupplied artifacts handle is handle-missing for the output slot', () => {
+  it('an unsupplied artifacts handle is handle-missing for the output slot', () => {
     const error = incompleteFrom(() =>
       resolveEnvironment(handles({ tronWrap: tronWrapHandle() }), {
         require: ['chain', 'output'],
@@ -985,7 +990,7 @@ describe('INV-14: incomplete names the property path and the providing contexts'
     ).toEqual(['deployer', 'artifacts']);
   });
 
-  it('D-1: names no property path on a handle nobody supplied', () => {
+  it('names no property path on a handle nobody supplied', () => {
     // The user-visible half. The old message sent someone hunting for a broken
     // `artifacts.resolver.options`; there is no such object to inspect when no
     // `artifacts` was passed, so naming it is worse than saying nothing.
@@ -1003,7 +1008,7 @@ describe('INV-14: incomplete names the property path and the providing contexts'
     }
   });
 
-  it('D-1: still reports handle-malformed when the handle was supplied and its lineage is broken', () => {
+  it('still reports handle-malformed when the handle was supplied and its lineage is broken', () => {
     // The fix narrowed the diagnosis rather than weakening it. A *supplied*
     // deployer whose Config hop is truncated is a genuinely malformed handle with
     // a genuine property path to name, and it must keep naming it — otherwise
@@ -1028,8 +1033,8 @@ describe('INV-14: incomplete names the property path and the providing contexts'
   });
 });
 
-describe('INV-15: no host failure escapes the seam untranslated', () => {
-  it('translates a throwing resolver into an SF-0 error naming the input', () => {
+describe('no host failure escapes the seam untranslated', () => {
+  it('translates a throwing resolver into an environment-seam error naming the input', () => {
     const shape = migrateShapedHandles({}, {
       mode: 'throw',
       throwMessage: 'Could not find artifacts for Box from any sources',
@@ -1112,7 +1117,7 @@ describe('INV-15: no host failure escapes the seam untranslated', () => {
   });
 });
 
-describe('INV-16: the network slot is validated at the source of truth', () => {
+describe('the network slot is validated at the source of truth', () => {
   it('refuses an empty networks map, which is the Config constructor default', () => {
     const shape = migrateShapedHandles({ networks: {} });
     const error = incompleteFrom(() =>
@@ -1231,7 +1236,7 @@ describe('INV-16: the network slot is validated at the source of truth', () => {
   });
 });
 
-describe('INV-17: lineage reads test own-property presence, not truthiness', () => {
+describe('lineage reads test own-property presence, not truthiness', () => {
   it('distinguishes an omitted key from an empty-string value', () => {
     const omitted = incompleteFrom(() =>
       resolveEnvironment(
@@ -1303,7 +1308,7 @@ describe('INV-17: lineage reads test own-property presence, not truthiness', () 
   });
 });
 
-describe('INV-18: resolvePackaged never returns nullish and its failures are diagnosed', () => {
+describe('resolvePackaged never returns nullish and its failures are diagnosed', () => {
   const packagedPath =
     '@openzeppelin/upgrades-core/artifacts/proxy/ERC1967Proxy.json';
 
@@ -1367,17 +1372,18 @@ describe('INV-18: resolvePackaged never returns nullish and its failures are dia
   });
 
   /**
-   * INV-18's three messages, one test each, all driven from `exists` fixtures.
+   * The three messages this diagnosis can produce, one test each, all driven
+   * from `exists` fixtures.
    *
    * This is what the injected existence probe bought. An earlier pass delivered
    * two messages and recorded the third as a skipped deferral, because splitting
    * *missing* from
-   * *malformed* looked like it needed a content read INV-31 confines to
+   * *malformed* looked like it needed a content read confined to
    * `ambiguity.ts`. It does not: it needs a `boolean`. The existence probe is a
    * strictly weaker capability on the dependency that was already injected, so all
    * three causes are now reachable from a unit test with no broken file on disk —
-   * which is also what SF-5's acceptance scenario 6 needs, since the remedy
-   * differs per cause.
+   * which is also what the proxy operations' acceptance scenario 6 needs, since
+   * the remedy differs per cause.
    */
   function packagedFailure(
     exists: boolean,
@@ -1410,8 +1416,8 @@ describe('INV-18: resolvePackaged never returns nullish and its failures are dia
   });
 
   it('reports a present-but-unloadable artifact as malformed, never as missing', () => {
-    // INV-18's normative sentence, now assertable directly rather than by the
-    // absence of a claim: "malformed" is concluded from the *conjunction* of
+    // This diagnosis's normative sentence, now assertable directly rather than
+    // by the absence of a claim: "malformed" is concluded from the *conjunction* of
     // existence and the host's `null`, so it cannot be reported for an absent file
     // and "missing" cannot be reported for a corrupt one.
     const message = packagedFailure(true);
@@ -1448,8 +1454,8 @@ describe('INV-18: resolvePackaged never returns nullish and its failures are dia
   it('refuses rather than guesses when the injected probe throws', () => {
     // A probe that answers neither yes nor no gets its own refusal. Folding it into
     // "missing" would report a file absent on the strength of a question that
-    // failed — the exact false-confidence INV-18 exists to remove. Unreachable
-    // through `fileSystemBuildInfoReader`, whose probe cannot throw.
+    // failed — the exact false-confidence this diagnosis exists to remove.
+    // Unreachable through `fileSystemBuildInfoReader`, whose probe cannot throw.
     const shape = migrateShapedHandles({}, { mode: 'null' });
     const env = resolveEnvironment(
       shape.handles,
@@ -1468,7 +1474,7 @@ describe('INV-18: resolvePackaged never returns nullish and its failures are dia
       'cannot say whether the file is missing or malformed',
     );
     expect(error.message).not.toMatch(/does not exist/);
-    // INV-42: the injected error's own message is not forwarded.
+    // The injected error's own message is not forwarded.
     expect(error.message).not.toContain('secret-plans');
     expect(error.message).not.toContain('EIO');
   });
@@ -1496,7 +1502,7 @@ describe('INV-18: resolvePackaged never returns nullish and its failures are dia
   });
 });
 
-describe('INV-19: the version guard is structural and the range has one home', () => {
+describe('the version guard is structural and the range has one home', () => {
   it('reads the declared range from the plugin manifest', () => {
     const manifest = readJsonFile(path.join(packageRoot, 'package.json'));
     const declared =
@@ -1527,10 +1533,11 @@ describe('INV-19: the version guard is structural and the range has one home', (
     // comparison against the range would refuse a working 4.10 before anyone had
     // tested whether it works.
     // The three **solc** versions the compiler slot must restate, allow-listed by
-    // exact value and exact file. INV-19 is about a *TronBox* version: a version
-    // this seam might compare against `peerDependencies.tronbox` to decide whether
-    // the host is supported. These are neither — they are the compiler versions
-    // TronBox itself would select, restated because INV-49 forbids importing the
+    // exact value and exact file. This describe block is about a *TronBox*
+    // version: a version this seam might compare against
+    // `peerDependencies.tronbox` to decide whether the host is supported. These
+    // are neither — they are the compiler versions TronBox itself would select,
+    // restated because the host-import boundary forbids importing the
     // host and `TronSolc.js` keeps them module-private. Nothing compares them; the
     // seam reports the resolved string and leaves every range judgement to its
     // consumer. Allow-listed this narrowly so a *fourth* literal, or the same three

@@ -27,8 +27,8 @@ import type {
  * package ships only `build/`, transpiled to one physical line per file, so
  * `src/` has no line numbers a consumer can check from a package root. What a
  * consumer *can* check is `build/`, and every claim here is additionally pinned
- * against it — `evidence/probes.js:compilerConfiguration` asserts eleven exact
- * expressions in `build/components/TronSolc.js` and
+ * against it — a captured live probe of `compilerConfiguration` asserts eleven
+ * exact expressions in `build/components/TronSolc.js` and
  * `build/components/Compile/index.js`, and passes on both minors. The clone paths
  * are for reading; the probe is the verification.
  */
@@ -36,8 +36,8 @@ import type {
 /**
  * TronBox's own built-in compiler version, taken when a project selects none.
  *
- * Restated here rather than read, because INV-49 forbids importing the host by
- * any path — `src/components/TronSolc.js:9` is `const maxVersion = '0.8.26'`,
+ * Restated here rather than read, because importing the host by
+ * any path is forbidden — `src/components/TronSolc.js:9` is `const maxVersion = '0.8.26'`,
  * module-private, and the module exports it only alongside a function that
  * downloads compilers and calls `process.exit`. Verified present and identical at
  * `v4.9.0` and `v4.8.0`.
@@ -81,8 +81,8 @@ export interface CompilerScalarValues {
  * reason: `resolveGroup` returns one lineage's record as the *agreed* record on
  * the strength of having compared every key in the group, which holds only while
  * this record's keys are exactly that group. A key outside it would be taken from
- * the deployer lineage uncompared — INV-12's silent preference, reintroduced one
- * field at a time.
+ * the deployer lineage uncompared — exactly the silent lineage-preference
+ * this seam refuses, reintroduced one field at a time.
  */
 type AssertTrue<T extends true> = T;
 export type CompilerScalarValuesCoverage = AssertTrue<
@@ -107,14 +107,14 @@ const NO_SETTINGS: Readonly<Record<string, unknown>> = Object.freeze({});
  * which is what this returns.
  *
  * Two departures from a literal `?.`, both deliberate:
- * - Own-property reads (INV-17), so a key inherited from a prototype is not
+ * - Own-property reads, so a key inherited from a prototype is not
  *   mistaken for one the project configured.
  * - A hop whose getter *throws* is `handle-malformed` rather than `undefined`,
- *   because INV-15 requires the seam to name a raising host accessor instead of
+ *   because a raising host accessor must be named by the seam instead of
  *   silently reporting the absence it is not.
  *
  * Nothing beyond the hop that ended the chain is recorded, so `internalPathsRead`
- * stays exactly what was read (INV-33).
+ * stays exactly what was read.
  */
 function ownChainFrom(
   lineage: ConfigLineage,
@@ -158,7 +158,7 @@ function ownChain(
 }
 
 /**
- * `Object.keys` behind INV-15: the argument is object-like by construction here,
+ * `Object.keys` guarded: the argument is object-like by construction here,
  * but a host object may still be exotic enough to raise from its own trap, and no
  * host throw leaves the seam.
  */
@@ -328,7 +328,7 @@ export type CompilerSettingsOutcome =
   | { readonly status: 'conflict' };
 
 /**
- * INV-9: a deep copy, so no slot field aliases a host-owned mutable object.
+ * A deep copy, so no slot field aliases a host-owned mutable object.
  *
  * A shallow copy would not do it. A consumer spreads these settings into a solc
  * standard-JSON input, and a shallow copy's `optimizer` is still the user's own
@@ -336,15 +336,15 @@ export type CompilerSettingsOutcome =
  *
  * `structuredClone` rather than a hand-rolled walk or a JSON round-trip: it is
  * cycle-safe, and it preserves every value it copies unchanged, so it is a copy
- * and not a normalization (INV-48 keeps that list closed at two `network_id`
- * entries). It drops the prototype of a class instance, which is the one
+ * and not a normalization (the seam's only normalization list is closed at two
+ * `network_id` entries). It drops the prototype of a class instance, which is the one
  * difference, and is no loss here — the host's own `Compile/index.js:107`
  * serializes these settings with `JSON.stringify`, which keeps no prototype
  * either.
  *
  * The refusal deliberately does not quote the underlying error. Node's
  * `DataCloneError` message embeds the offending value — for a function, its
- * source text — and INV-42 forbids source content in any error the seam renders.
+ * source text — and source content is forbidden in any error the seam renders.
  */
 function copyOutSettings(
   value: Record<PropertyKey, unknown>,
@@ -370,7 +370,7 @@ function copyOutSettings(
  *
  * Separate from {@link projectCompilerValues} because the settings are an object
  * and every member of a compared field group is rendered verbatim into an
- * `inconsistent` message (INV-41). Comparing them here by identity and reporting a
+ * `inconsistent` message. Comparing them here by identity and reporting a
  * disagreement as the payload-free `compiler-settings-conflict` keeps them
  * cross-checked without putting a user-supplied object anywhere near a message —
  * the instrument `chain-handle-conflict` already uses for exactly this.

@@ -27,33 +27,21 @@ import { packageRoot } from './helpers/locate';
  * `src/validation-input/causes.ts`, so a reader can look it up) and rejects
  * `Decision 13` (a numbered entry in a document that does not ship).
  *
- * ## What this file deliberately does NOT check
+ * ## Identifier schemes are banned outright
  *
- * The repository carries private **identifier schemes** in its comments, and by
- * the rule above every one of them is leakage: `INV-4` resolves only in a
- * document that is not published. They are reported rather than banned because
- * removing them is a repository-wide rename — a structural decision, not a
- * hygiene fix — and mechanizing a ban here would pre-empt it. Measured across
- * `src/`, `test/` and `docs/`:
+ * The repository once carried eight private identifier schemes in its comments
+ * (about 2,700 tag references at their peak), every one of them leakage by the
+ * rule above: such a tag resolves only in a document that is not published.
+ * They were reported-and-pinned while removing them was still an open
+ * structural decision; that decision landed, the tree was swept — each tag
+ * reworded so the constraint it named survives in plain English — and the scan
+ * below now asserts **zero** dashed-uppercase identifiers outside the public
+ * standards list (`ERC-1967`, `EIP-55`, `UTF-8`, …). A reintroduced tag is a
+ * test failure naming its line, not a review catch.
  *
- * | scheme  | references | files |
- * |---------|-----------:|------:|
- * | `INV-n` |      1,712 |   102 |
- * | `SF-n`  |        709 |    99 |
- * | `SC-n`  |         32 |    16 |
- * | `D-n`   |         27 |    14 |
- * | `F-n`   |         25 |     9 |
- * | `CD-n`  |         10 |     6 |
- * | `FX-n`  |          9 |     1 |
- * | `DEV-n` |          5 |     4 |
- *
- * plus nine bare labels of the form `C3`, `G4`, `P4`, and `T1` — of which the
- * `P<n>` group names probe profiles that the citing file defines inline, and `T1`
- * is an address fixture.
- *
- * What IS checked is that the set of schemes does not **grow**: a ninth prefix
- * would be a new private vocabulary entering the published tree, and that is a
- * decision rather than an accident.
+ * Two bare-label families remain, both in-repo-resolvable and therefore fine
+ * by the rule: `P<n>` names probe profiles the citing file defines inline, and
+ * `T1` is an address fixture.
  */
 
 /** Case-insensitive bans: the wording carries the leak whatever its capitalization. */
@@ -80,6 +68,16 @@ const INSENSITIVE: ReadonlyArray<readonly [string, RegExp]> = [
   ['an open entry in a private question register', /\bopen questions?\b|\bOQ[0-9]/i],
   ["a private document's stakes section", /\bstakes line\b/i],
   ['the initiative as a subject', /\bthis initiative\b/i],
+  /*
+   * Added with the scheme ban: a path into the private planning repository is
+   * the same leak as a tag — the reader cannot follow it. Facts once cited by
+   * pointer now travel inline ("measured: …"), so nothing needs the path.
+   * "artifacts" alone stays legal — TronBox's build output is called that —
+   * but the private tree's numbered-initiative segment and its evidence/
+   * directory have no public meaning.
+   */
+  ['a path into the private evidence tree', /\bevidence\//i],
+  ['a path into the private planning repository', /\bartifacts\/[0-9]{3}-/i],
 ];
 
 /**
@@ -104,18 +102,6 @@ const SENSITIVE: ReadonlyArray<readonly [string, RegExp]> = [
 /** Prefixes that are public standards, not this project's private vocabulary. */
 const PUBLIC_PREFIXES: readonly string[] = ['ERC', 'EIP', 'UTF'];
 
-/** Every private scheme in the tree today. A ninth is a decision, not a slip. */
-const PRIVATE_PREFIXES: readonly string[] = [
-  'CD',
-  'D',
-  'DEV',
-  'F',
-  'FX',
-  'INV',
-  'SC',
-  'SF',
-];
-
 const SELF = 'publication-hygiene.test.ts';
 
 interface Publishable {
@@ -132,7 +118,7 @@ function collect(): readonly Publishable[] {
         if (entry.name !== 'node_modules' && entry.name !== 'dist') walk(full);
         continue;
       }
-      if (!/\.(ts|js|mjs|md)$/.test(entry.name)) continue;
+      if (!/\.(ts|js|mjs|md|json)$/.test(entry.name)) continue;
       found.push({
         relative: path.relative(packageRoot, full),
         text: fs.readFileSync(full, 'utf8'),
@@ -265,16 +251,27 @@ describe('publication hygiene: every reference resolves inside the published rep
     expect(fs.existsSync(path.join(packageRoot, 'README.md'))).toBe(true);
   });
 
-  it('introduces no ninth private identifier scheme', () => {
-    const prefixes = new Set<string>();
+  it('carries zero private identifier tags — the schemes were swept, and stay swept', () => {
+    const offenders: string[] = [];
     for (const file of scanned) {
-      for (const match of file.text.matchAll(/\b([A-Z]{1,3})-[0-9]+\b/g)) {
-        const prefix = match[1] as string;
-        if (!PUBLIC_PREFIXES.includes(prefix)) prefixes.add(prefix);
-      }
+      file.text.split('\n').forEach((line, index) => {
+        for (const match of line.matchAll(/\b([A-Z]{1,3})-[0-9]+\b/g)) {
+          const prefix = match[1] as string;
+          if (!PUBLIC_PREFIXES.includes(prefix)) {
+            offenders.push(`${file.relative}:${index + 1}: ${match[0]}`);
+          }
+        }
+      });
     }
-    // Sorted set equality, not a size check: a scheme swapped for a new one keeps
-    // the count and changes the vocabulary, which is the case worth catching.
-    expect([...prefixes].sort()).toEqual([...PRIVATE_PREFIXES]);
+    expect(offenders).toEqual([]);
+  });
+
+  it('names no file after the private vocabulary either', () => {
+    // A tag in a file NAME is the most visible reference of all — it shows in
+    // every directory listing and import line. Same ban, applied to paths.
+    const offenders = scanned
+      .map(file => file.relative)
+      .filter(relative => /(^|\/|\\)(sf|inv|sc|cd|fx|dev)-[0-9]/i.test(relative));
+    expect(offenders).toEqual([]);
   });
 });

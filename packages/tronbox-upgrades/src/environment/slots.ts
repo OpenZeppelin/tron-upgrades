@@ -87,7 +87,7 @@ export const slotRequirements: Readonly<Record<SlotName, SlotRequirement>> =
     // The inconsistency is a *reporting* error, not a capability error — the
     // seam does construct the slot from either handle, and the table exists to
     // describe what the seam does. Narrowing `handles` to `['deployer']` was
-    // rejected because it would have decided SF-4's open mocha-scope question by
+    // rejected because it would have decided the deploy seam's open mocha-scope question by
     // omission: an operation wanting a channel there would have had no slot to
     // declare. `handles` is therefore unchanged.
     output: requirement(['deployer', 'artifacts'], configContexts),

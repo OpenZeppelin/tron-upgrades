@@ -20,21 +20,22 @@ import type { AbsolutePath, CompilerConfiguration } from './types';
  *
  * **Why the home directory is a parameter and not a `homedir()` call.** This module
  * cannot read it, and that is enforced rather than chosen. `src/environment/**` is
- * asserted to import no ambient module: `node:os` is named in INV-43's forbidden
- * list (`test/performance-and-reuse.test.ts:129-130`) and falls outside INV-47's
- * permitted set (`:684-687`), and INV-44 makes the seam a function of its arguments
- * and its one injected reader alone (`:441`). So the *convention* moves in and the
- * *machine reading* stays out — the only split that leaves those three invariants
- * untouched. SF-2 supplies the value from its own injectable dependency surface.
+ * asserted to import no ambient module: `node:os` is named in a forbidden-imports
+ * list (`test/performance-and-reuse.test.ts:129-130`) and falls outside the
+ * permitted-imports set (`:684-687`), and the seam is a function of its
+ * arguments and its one injected reader alone (`:441`). So the *convention*
+ * moves in and the *machine reading* stays out — the only split that leaves
+ * those three constraints untouched. The validation ladder supplies the value
+ * from its own injectable dependency surface.
  *
  * **What a consumer gets that it could not build itself.** An {@link AbsolutePath}.
- * INV-2 makes the brand mintable only by `assertAbsolutePath`, which lives in this
+ * The brand is mintable only by `assertAbsolutePath`, which lives in this
  * directory and refuses rather than resolves, so a branded path is evidence that the
  * seam composed it. That is load-bearing rather than decorative: the value's only
  * consumer hands it to a `createRequire`-constructed resolver
  * (`src/validation-input/compiler.ts:loadCompiler`), and a *relative* specifier
  * there would resolve against the plugin's own directory instead of the user's
- * compiler cache. `test/inv-49-host-import-boundary.test.ts` reads the brand as the
+ * compiler cache. `test/host-import-boundary.test.ts` reads the brand as the
  * mechanism that keeps that require pointed where the seam put it.
  */
 
@@ -119,7 +120,7 @@ export type SoljsonPathInput = Pick<CompilerConfiguration, LocationField>;
  *
  * A report rather than a throw, for the reason the seam reports everywhere else
  * (`BuildInfoReadResult`, `ArtifactRecordReport`, `CompilerSettingsOutcome`):
- * INV-10 fixes the seam's error family at three subclasses, and a machine whose
+ * The seam's error family is fixed at three subclasses, and a machine whose
  * home directory is not an absolute path is none of those three diagnoses. The
  * refusal arm carries no payload because it needs none — the caller supplied the
  * home directory, so it already holds the only value a message would name.
@@ -132,8 +133,8 @@ export type SoljsonPathResolution =
  * `homeDirectory` is the machine's home directory — `os.homedir()` at the
  * consumer's own injection point.
  *
- * It is **refused rather than resolved** when it is not absolute (INV-2's rule,
- * applied to a machine fact instead of a Config one): `path.resolve` would anchor it
+ * It is **refused rather than resolved** when it is not absolute (the same
+ * refusal rule, applied to a machine fact instead of a Config one): `path.resolve` would anchor it
  * on a cwd `build/components/Require.js:Require.file` moves mid-migration, and the
  * value's consumer is a module loader, so a relative result would load whatever sits
  * beside the plugin. The check is local rather than delegated to
@@ -142,7 +143,7 @@ export type SoljsonPathResolution =
  *
  * The `assertAbsolutePath` below cannot refuse: `path.join` on an absolute first
  * segment is absolute for every remaining segment, `..` included. It is here for the
- * *type* — INV-2's brand comes from the minter or it is worth nothing, and a cast
+ * *type* — the brand comes from the minter or it is worth nothing, and a cast
  * would make it evidence of itself.
  */
 export function soljsonPathFor(

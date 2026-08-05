@@ -6,14 +6,15 @@
 > at all.
 
 **This is not the package README.** It is internal documentation for the sub-features built
-on top of this seam. `@openzeppelin/tronbox-upgrades` exposes no part of SF-0 to end users;
-the package's public entry point is SF-11's, and the user-facing README is assembled and
-proved followable by SF-12. See [`readme-contributions.md`](./readme-contributions.md) for
-the facts SF-0 contributes to that README.
+on top of this seam. `@openzeppelin/tronbox-upgrades` exposes no part of the environment seam
+to end users; the package's public entry point belongs to packaging, and the user-facing
+README is assembled and proved followable by the consumer end-to-end harness. See
+[`readme-contributions.md`](./readme-contributions.md) for the facts the environment seam
+contributes to that README.
 
 **Audience:** the sibling modules that consume the composite — validation and storage
-layout (SF-2), the deploy/upgrade operations (SF-4), artifact resolution policy (SF-5), the
-result and output contract (SF-10), packaging (SF-11).
+layout, the deploy/upgrade operations, artifact resolution policy, the result and output
+contract, packaging.
 
 ---
 
@@ -22,9 +23,8 @@ result and output contract (SF-10), packaging (SF-11).
 A TronBox migration is evaluated inside a `vm` context. The migration file receives
 `deployer`, `artifacts`, `tronWrap`, `tronWeb` and `waitForTransactionReceipt` as
 context properties — and a plugin module `require`d from that migration runs in the *outer*
-context, where none of them are visible
-(`artifacts/…/sf-0-tronbox-environment/evidence/probes.js:sandboxVisibility`). So every
-capability the plugin needs has to be handed to it explicitly, by the migration, as
+context, where none of them are visible (measured with a live sandbox-visibility probe). So
+every capability the plugin needs has to be handed to it explicitly, by the migration, as
 arguments.
 
 Those arguments are host objects with no contract. TronBox reads its own configuration
@@ -37,10 +37,10 @@ receives nothing.
 Two structural rules hold the boundary:
 
 - **`src/environment/**` is the only directory that may read a TronBox-internal property
-  path** (INV-28). There are exactly two private hops in the whole package:
+  path**. There are exactly two private hops in the whole package:
   `deployer.options.options` and `artifacts.resolver.options`
   (`src/environment/config-lineage.ts:inspectConfigLineages`).
-- **The seam imports no other sub-feature's module** (INV-47), so the dependency direction
+- **The seam imports no other sub-feature's module**, so the dependency direction
   is one-way and a sibling can never create a cycle through it.
 
 ---
@@ -65,10 +65,10 @@ Three things to notice, because each is load-bearing:
 
 1. **You ask for slots by name.** Required slots are non-optional in the returned type;
    optional slots are optional; every slot you did not name is structurally absent from the
-   type, so it cannot be read at all (INV-1). The literal arrays are captured by `const`
+   type, so it cannot be read at all. The literal arrays are captured by `const`
    type parameters, so `['paths', 'network']` narrows rather than widening to `SlotName[]`.
-2. **It is fully synchronous** (INV-38). No promise, no callback, no timer. It is a pure
-   projection of the handles it is given, with no module-scope state (INV-20) — so a stale
+2. **It is fully synchronous.** No promise, no callback, no timer. It is a pure
+   projection of the handles it is given, with no module-scope state — so a stale
    composite carried across migrations is not a rule to remember but a state that cannot be
    represented.
 3. **Failure is a typed throw, never a partial composite.** If it returns, every slot you
@@ -82,7 +82,7 @@ Three things to notice, because each is load-bearing:
 
 Seven slots. Which handles back each, and which of the five invocation contexts supply
 them, is a table — `src/environment/slots.ts:slotRequirements` — not prose, and error
-messages render from that same table (INV-14), so a table edit cannot leave a message
+messages render from that same table, so a table edit cannot leave a message
 describing a different matrix.
 
 | Slot | Backed by | Provided in |
@@ -114,7 +114,7 @@ returns a materialized snapshot.
 
 When both are reachable, both must project successfully and agree on every field in the
 group; agreement yields the value set, disagreement is an `EnvironmentInconsistentError`
-naming the field and both values. There is no code path that picks a winner (INV-12) —
+naming the field and both values. There is no code path that picks a winner —
 `src/environment/config-lineage.ts:compareConfigValues` returns either an empty list or the
 disagreements, and no third thing, so the preference path is forbidden by the type rather
 than by convention.
@@ -136,7 +136,7 @@ The order is enforced structurally, not by a rule repeated at each throw site: e
 reachable lineage must construct before any comparison runs
 (`src/environment/resolve.ts:resolveGroup`), so `inconsistent` is unreachable while
 anything is still unconstructible. The family is fixed at three by
-`EnvironmentDiagnosis` (INV-10) — a fourth failure class cannot be added without
+`EnvironmentDiagnosis` — a fourth failure class cannot be added without
 deliberately widening that union.
 
 ### Provenance
@@ -150,7 +150,7 @@ env.provenance.configLineages;      // which lineages were reachable, and whethe
 env.provenance.internalPathsRead;   // every TronBox-internal property path this call read
 ```
 
-`internalPathsRead` is recorded at each read site, never declared centrally (INV-33), so it
+`internalPathsRead` is recorded at each read site, never declared centrally, so it
 is neither a static list nor a superset. It covers `resolveEnvironment` only — reads
 performed later by `artifacts.resolve()` or `artifacts.ambiguities()` are outside the
 snapshot.
@@ -178,5 +178,5 @@ consequences you must know before you log or serialize anything:
 | [`api-reference.md`](./api-reference.md) | Every export, with full TypeScript signatures |
 | [`integration-guide.md`](./integration-guide.md) | Three end-to-end consumption patterns, and the mistakes to avoid |
 | [`safety.md`](./safety.md) | Secrets, logging, degraded modes, and what the seam does *not* promise |
-| [`readme-contributions.md`](./readme-contributions.md) | User-observable facts SF-0 contributes to the package README (SF-12 assembles) |
+| [`readme-contributions.md`](./readme-contributions.md) | User-observable facts the environment seam contributes to the package README (the consumer end-to-end harness assembles) |
 | [`examples/`](./examples) | Type-checked example modules |

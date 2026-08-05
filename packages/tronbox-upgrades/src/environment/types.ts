@@ -3,7 +3,7 @@ declare const AbsolutePathBrand: unique symbol;
 /**
  * A path asserted absolute at the TronBox environment boundary.
  *
- * INV-2: the brand is mintable only by `assertAbsolutePath`, which refuses a
+ * The brand is mintable only by `assertAbsolutePath`, which refuses a
  * non-absolute input rather than resolving it. Resolving would anchor on a cwd
  * that `build/components/Require.js:Require.file` changes for the migration
  * file's top-level evaluation and restores before the exported function runs.
@@ -32,7 +32,7 @@ export type HandleName =
 /**
  * The five invocation contexts, measured against a real TronBox tree. `plain
  * node` is a named context because `EnvironmentAbsentError` is the diagnosis for
- * it and INV-14 renders `absentIn` from the slot table — an unnamed context
+ * it and the slot table renders `absentIn` from it — an unnamed context
  * renders as an omission.
  */
 export type InvocationContextName =
@@ -43,7 +43,8 @@ export type InvocationContextName =
   | 'plain node';
 
 /**
- * TronBox contract abstractions are callable host objects. SF-0 preserves their
+ * TronBox contract abstractions are callable host objects. The environment
+ * seam preserves their
  * identity and never models the operation-specific methods on them.
  */
 export type ContractAbstraction = object & {
@@ -69,7 +70,7 @@ export interface ResolverInterceptHandle {
 export type WaitForTransactionReceipt = (...args: unknown[]) => unknown;
 
 /**
- * INV-35: exactly one method. Four of TronBox's five logger-injection paths
+ * Exactly one method. Four of TronBox's five logger-injection paths
  * supply a single-method object, so `logger.warn` must not be writable
  * anywhere in the package — a `warn` call is a `TypeError` under `--quiet`,
  * under `tronbox test`, and through the deployer's own wrapper.
@@ -83,15 +84,15 @@ export interface ProjectPaths {
   readonly contractsDirectory: AbsolutePath;
   readonly contractsBuildDirectory: AbsolutePath;
   readonly buildInfoDirectory: AbsolutePath;
-  /** INV-3: observed by containment, never inferred from an upstream flag. */
+  /** Observed by containment, never inferred from an upstream flag. */
   readonly contractsBuildDirectoryIsExternal: boolean;
 }
 
 export interface NonAuthoritativeSender {
   readonly kind: 'configured-not-authoritative';
   /**
-   * `networks[network].from` as TronBox holds it — not canonicalized (INV-7).
-   * INV-4: an upstream `undefined` is normalized to `null` here, because
+   * `networks[network].from` as TronBox holds it — not canonicalized.
+   * An upstream `undefined` is normalized to `null` here, because
    * `build/components/TronWrap/constants.js:deployParameters` declares `from`
    * as `undefined` rather than `null`.
    */
@@ -111,14 +112,14 @@ export interface NetworkEnvironment {
   readonly name: string;
   /** Compatibility metadata about the tool — never evidence about the chain. */
   readonly artifactNetworkId: string;
-  /** INV-6: `'*'` is legal and TronBox never resolves it. */
+  /** `'*'` is legal and TronBox never resolves it. */
   readonly configuredId: {
     readonly value: string;
     readonly syntax: 'exact' | 'wildcard';
   };
   readonly txDefaults: NetworkTxDefaults;
   readonly sender: NonAuthoritativeSender;
-  /** INV-40: derived from presence alone. Never the key. */
+  /** Derived from presence alone. Never the key. */
   readonly signingKeyConfigured: boolean;
 }
 
@@ -134,7 +135,7 @@ export interface ArtifactNameCollision {
 }
 
 /**
- * INV-34: a closed union of three mechanisms. INV-42: paths and a cause
+ * A closed union of three mechanisms. Paths and a cause
  * string only — never file bytes and never a parsed fragment.
  */
 export type IndeterminateReason =
@@ -165,7 +166,7 @@ export type ArtifactAmbiguityReport =
     };
 
 /**
- * INV-5: only the verified branch names the abstraction `contract`. The
+ * Only the verified branch names the abstraction `contract`. The
  * asymmetric field name is the enforcement — storing an unverified abstraction
  * into a `contract`-typed position is impossible without renaming it.
  */
@@ -214,13 +215,13 @@ export type ArtifactRecordField =
  * What a compiled contract's artifact says about itself — as plain frozen data,
  * never a view onto the host handle.
  *
- * INV-28 is why this exists at all: every value here lives behind
+ * This exists at all because every value here lives behind
  * `contract._json`, a TronBox-internal property path, so only
  * `src/environment/**` may read it. A consumer receiving the handle instead and
  * reading `.bytecode` off it would be reading a host shape outside the seam — the
  * boundary this type moves inside it.
  *
- * Every member is a `string`, so INV-9's aliasing hazard does not arise: there is
+ * Every member is a `string`, so the aliasing hazard does not arise: there is
  * no host-owned mutable object to copy out, unlike
  * {@link CompilerConfiguration.settings}.
  *
@@ -240,7 +241,7 @@ export interface ArtifactRecord {
   /**
    * The artifact's own record of where it was compiled from. Tool-verbatim and
    * deliberately not resolved against {@link ProjectPaths} — it may be relative,
-   * and INV-2 forbids resolving a path against a cwd TronBox moves.
+   * and resolving a path against a cwd TronBox moves is forbidden.
    */
   readonly sourcePath: string;
 }
@@ -251,15 +252,15 @@ export interface ArtifactRecord {
  * A report rather than a throw because "this artifact lacks `deployedBytecode`"
  * is a *diagnosis a consumer renders*, with a remedy naming the host version —
  * not a broken invariant. A host accessor that **raises** is the other thing
- * entirely and does not come back through here: INV-15 turns it into
- * `EnvironmentIncompleteError` at the read site, so a consumer never has to tell
+ * entirely and does not come back through here: a raising host accessor
+ * becomes `EnvironmentIncompleteError` at the read site, so a consumer never has to tell
  * "absent" and "malfunctioning" apart from one value.
  *
  * `observedKeys` is on **both** variants, not just the failing one. A consumer
  * reporting a missing field wants to say what the artifact did have, and a
  * consumer that got everything still wants it to detect an artifact from a
- * *newer* host than the plugin knows about. Keys only, never values: INV-42
- * forbids file content in anything the seam renders, and `source` is file content.
+ * *newer* host than the plugin knows about. Keys only, never values: file
+ * content is forbidden in anything the seam renders, and `source` is file content.
  */
 export type ArtifactRecordReport =
   | {
@@ -287,17 +288,17 @@ export interface ArtifactAccess {
    * on purpose. Attaching it there would read `_json` on every `resolve()`,
    * including the callers that want only the name — and, the substantive reason,
    * an incomplete artifact would then need a fourth `ArtifactResolution` status,
-   * which is a *relaxation* of INV-5's closed three-variant union rather than an
+   * which is a *relaxation* of the closed three-variant union rather than an
    * addition to it. Here, absence is a value of this method's own return type and
-   * INV-5 is untouched.
+   * the closed three-variant union is untouched.
    */
   record(contract: ContractAbstraction): ArtifactRecordReport;
-  /** INV-24: the write-back path. Never substitute `config.resolver`. */
+  /** The write-back path. Never substitute `config.resolver`. */
   readonly intercept: ResolverInterceptHandle;
 }
 
 export interface ChainHandleSlot {
-  /** INV-27: one name. `tronWeb` is normalized away and never re-exported. */
+  /** One name. `tronWeb` is normalized away and never re-exported. */
   readonly tronWrap: TronWrapHandle;
 }
 
@@ -306,7 +307,7 @@ export interface ReceiptSlot {
 }
 
 export interface SchedulingSlot {
-  /** INV-29's one deliberate exception: the whole deployer, named as such. */
+  /** The sealed-handle rule's one deliberate exception: the whole deployer, named as such. */
   readonly deployer: DeployerHandle;
 }
 
@@ -316,7 +317,7 @@ export interface OutputChannelSlot {
    * Which mechanism supplied the logger. `'config-lineage'` may be TronBox's
    * own default noop — `build/components/Config.js:Config` defaults
    * `logger` to `{ log(){} }`, so a lineage-sourced channel can discard
-   * output silently. SF-10 needs this discriminant to say so.
+   * output silently. The option/result surface needs this discriminant to say so.
    */
   readonly origin: 'deployer' | 'config-lineage';
   /**
@@ -361,7 +362,7 @@ export type CompilerSettingsSource =
  * `src/components/Compile/index.js:69`, verified byte-identical at `v4.9.0` and
  * `v4.8.0`.
  *
- * INV-28 is why this slot exists at all: `compilers.solc.version` and `solc` are
+ * This slot exists at all because `compilers.solc.version` and `solc` are
  * TronBox-internal property paths, so only `src/environment/**` may read them.
  */
 export interface CompilerConfiguration {
@@ -374,7 +375,7 @@ export interface CompilerConfiguration {
    */
   readonly resolvedVersion: string;
   /**
-   * The solc `settings` object, copied out of the host config (INV-9) and
+   * The solc `settings` object, copied out of the host config and
    * frozen. Never the host's own object: a consumer spreads this into a solc
    * standard-JSON input, and a spread of a live host object would let a
    * consumer's edit reach the user's next `tronbox compile`.
@@ -421,7 +422,7 @@ export type ConfigLineageBinding =
 export interface ConfigLineageProvenance {
   readonly viaDeployer: ConfigLineageBinding;
   readonly viaArtifacts: ConfigLineageBinding;
-  /** INV-34 mode 1: `false` iff fewer than two lineages were reachable. */
+  /** One of the indeterminate-report modes: `false` iff fewer than two lineages were reachable. */
   readonly crossChecked: boolean;
   readonly crossCheckSkippedBecause?:
     | 'only-deployer-lineage-available'
@@ -434,7 +435,7 @@ export interface EnvironmentProvenance {
   readonly slots: Readonly<Record<SlotName, 'present' | 'absent'>>;
   readonly configLineages: ConfigLineageProvenance;
   /**
-   * INV-33: every TronBox-internal property path this resolution read, and
+   * Every TronBox-internal property path this resolution read, and
    * nothing it did not. Recorded at the read site, never declared centrally.
    * Covers `resolveEnvironment` only — reads performed by a later
    * `resolve()` / `ambiguities()` call are outside this snapshot.
@@ -443,9 +444,9 @@ export interface EnvironmentProvenance {
 }
 
 /**
- * INV-1: required slots non-optional, optional slots optional, everything
+ * Required slots non-optional, optional slots optional, everything
  * else structurally absent. Requires TypeScript >= 5.0 for the `const` type
- * parameters on `resolveEnvironment` (INV-46).
+ * parameters on `resolveEnvironment`.
  */
 export type TronBoxEnvironment<
   R extends SlotName = SlotName,
@@ -459,7 +460,7 @@ export type TronBoxEnvironment<
 };
 
 /**
- * INV-25: `unknown` because these cross a trust boundary out of a `vm`
+ * `unknown` because these cross a trust boundary out of a `vm`
  * sandbox. Typing them as their expected shapes would assert exactly what the
  * shape guards exist to check.
  *
@@ -496,8 +497,8 @@ export type TronBoxEnvironment<
  * `absent`/`incomplete` naming the slot, the handle and the providing contexts,
  * where the subpath alternative throws
  * `TypeError: Cannot read properties of undefined (reading 'fullNode')` from
- * inside the host, naming nothing the user can act on. INV-49 now forbids the
- * alternative outright, which is why the argument is recorded rather than
+ * inside the host, naming nothing the user can act on. Importing the host by
+ * any path is now forbidden outright, which is why the argument is recorded rather than
  * left to be re-derived by whoever next wonders about it.
  */
 export interface RawMigrationHandles {
@@ -523,8 +524,8 @@ export interface UnsatisfiedSlot {
         readonly expectedPath: string;
         /**
          * Why the path did not yield a value. `'threw'` is a host getter that
-         * raised; `'missing'` is an absent own property. INV-17 turns on these
-         * being different states, so the message names which one.
+         * raised; `'missing'` is an absent own property. These being different
+         * states is why the message names which one.
          */
         readonly because: 'missing' | 'threw';
       }
@@ -532,16 +533,17 @@ export interface UnsatisfiedSlot {
         readonly kind: 'invariant-violated';
         readonly detail: string;
       };
-  /** INV-14: both read from the `slots.ts` table, never authored at a throw site. */
+  /** Both read from the `slots.ts` table, never authored at a throw site. */
   readonly providedIn: readonly InvocationContextName[];
   readonly absentIn: readonly InvocationContextName[];
 }
 
 /**
- * INV-13 / INV-41: the closed allow-list of fields that may be compared
+ * The closed allow-list of fields that may be compared
  * between Config lineages and rendered verbatim in a disagreement. An
  * allow-list rather than a deny-list because `config.networks[name]` carries
- * `privateKey` one property away from the values SF-0 legitimately projects,
+ * `privateKey` one property away from the values the environment seam
+ * legitimately projects,
  * and the `inconsistent` message prints both values.
  *
  * Every scalar the seam exposes from a lineage appears here:
@@ -555,7 +557,7 @@ export interface UnsatisfiedSlot {
  *     presence of `networks[network].privateKey`, so it cannot carry the key
  *     into a rendered message. Included because leaving an exposed scalar out
  *     of the list would reinstate, for that one field, exactly the silent
- *     preference INV-12 closes.
+ *     preference the no-silent-preference rule closes.
  *
  * `OutputChannelSlot.hostQuietRequested` is the one exposed lineage-derived
  * scalar deliberately excluded — see its doc comment for why comparing it would
@@ -567,8 +569,9 @@ export interface UnsatisfiedSlot {
  * `signingKeyConfigured` already makes; comparing the five raw keys the host's
  * precedence chain reads would report a disagreement the resolution collapses.
  * `settings` is an object, so it cannot be a member of a type named
- * `ConfigScalarField` and — the substantive reason — INV-41 renders every member
- * of this list **verbatim** into an `inconsistent` message, which is exactly what
+ * `ConfigScalarField` and — the substantive reason — every member of this
+ * list is rendered **verbatim** into an `inconsistent` message, which is
+ * exactly what
  * an arbitrary user-supplied object must not be subjected to. It is cross-checked
  * all the same, by object identity, and a disagreement is reported as the
  * payload-free `compiler-settings-conflict` — the same instrument
@@ -613,8 +616,9 @@ export type Inconsistency =
       /**
        * The two lineages resolved solc settings to different objects. Carries no
        * payload for the same reason `chain-handle-conflict` does not: the
-       * disagreeing values are host objects, and INV-41's discipline is that
-       * nothing rendered verbatim may be anything but an allow-listed scalar.
+       * disagreeing values are host objects, and the rendering discipline is
+       * that nothing rendered verbatim may be anything but an allow-listed
+       * scalar.
        * `compiler.settingsSource` is the scalar that names *where* the settings
        * came from, so the legible half of the disagreement is already reported.
        */

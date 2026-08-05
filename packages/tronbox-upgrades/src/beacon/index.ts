@@ -154,7 +154,7 @@ export async function runDeployBeaconProxy(
   const { toolkit, resolved } = context;
   const beacon = canonicalizeAddress(beaconAddress);
 
-  // INV-3 — the beacon must answer before anything else happens.
+  // The beacon must answer before anything else happens.
   await requireBeacon(context, beacon);
 
   const abi = (contract as { abi?: readonly unknown[] }).abi ?? [];
@@ -165,7 +165,7 @@ export async function runDeployBeaconProxy(
   const writeBack = await toolkit.queue(deployer, async () => {
     const deployed = await toolkit.hostDeploy(proxyAbstraction, [beacon, initData]);
     await confirmOrRefuse(context, deployed.transactionHash);
-    // INV-4 — recorded under the beacon kind, never transparent/uups.
+    // Recorded under the beacon kind, never transparent/uups.
     await toolkit.recordProxy(canonicalizeAddress(deployed.address), 'beacon');
     return deployed;
   });
@@ -201,15 +201,15 @@ export async function runUpgradeBeacon(
   const { toolkit, resolved } = context;
   const beacon = canonicalizeAddress(beaconAddress);
 
-  // INV-3 first; then chain-first current state (INV-6): the layout baseline
-  // is keyed by the beacon's own answer, never a contract name.
+  // The beacon must answer first; then chain-first current state: the layout
+  // baseline is keyed by the beacon's own answer, never a contract name.
   const currentImplementation = await requireBeacon(context, beacon);
   const validated = await toolkit.validateImplementation(
     nameOf(contract, 'upgradeBeacon'),
     { ...resolved, kind: 'beacon' },
   );
   const currentLayout = await toolkit.storedLayoutFor(currentImplementation);
-  // INV-1 — rejected before any transaction is sent (scenario 2).
+  // Rejected before any transaction is sent (scenario 2).
   await toolkit.assertStorageCompatible(currentLayout, validated, resolved);
 
   const deployer = toolkit.requireDeployer();
@@ -228,7 +228,7 @@ export async function runUpgradeBeacon(
     });
     await confirmOrRefuse(context, writeBack.transactionHash);
 
-    // INV-2 — the beacon itself must now answer the new implementation.
+    // The beacon itself must now answer the new implementation.
     const observed = await requireBeacon(context, beacon);
     if (!isAlreadyCurrent(observed, implementationAddress)) {
       throw new UpgradeVerificationFailedError(

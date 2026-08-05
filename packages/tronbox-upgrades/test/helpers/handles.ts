@@ -9,7 +9,7 @@ import { configFixture, type ConfigFixtureSpec } from './config-fixtures';
  * Migration-handle stand-ins.
  *
  * Property *ownership* is reproduced deliberately, because the seam reads own
- * properties and prototype members through different primitives (INV-17):
+ * properties and prototype members through different primitives:
  * `ResolverIntercept.prototype.require` / `.contracts` and `Deployer.prototype
  * .then` live on prototypes and are probed with `in`, while `Config` props,
  * `deployer.logger` and `artifacts.resolver` are own properties probed with
@@ -21,7 +21,7 @@ import { configFixture, type ConfigFixtureSpec } from './config-fixtures';
  * nullish value from a function whose contract says otherwise
  * (`build/components/Resolver/fs.js:FS.prototype.requireJson`). Typing it
  * honestly means the fixture needs no cast to reproduce that channel, and the
- * handle enters the seam through `unknown` anyway (INV-25).
+ * handle enters the seam through `unknown` anyway.
  */
 
 export interface InterceptFixture {
@@ -121,8 +121,8 @@ export function interceptFixture(
 
 /**
  * A structurally typed `ResolverInterceptHandle`, for the portability test that
- * drives `createArtifactAccess` directly with no `resolveEnvironment` around it
- * (INV-43). No cast: the object satisfies the published interface as written.
+ * drives `createArtifactAccess` directly with no `resolveEnvironment` around
+ * it. No cast: the object satisfies the published interface as written.
  */
 export function typedInterceptFixture(): ResolverInterceptHandle {
   const cache = new Map<string, ContractAbstraction>();
@@ -219,7 +219,10 @@ export function deployerHandle(
   return handle;
 }
 
-/** A deployer whose Config hop is truncated, for INV-14's `expectedPath` tests. */
+/**
+ * A deployer whose Config hop is truncated, for the property-path
+ * diagnosis's `expectedPath` tests.
+ */
 export function shallowDeployerHandle(depth: 0 | 1): unknown {
   return depth === 0
     ? { logger: { log(): void {} }, then: (): void => {} }
@@ -228,7 +231,7 @@ export function shallowDeployerHandle(depth: 0 | 1): unknown {
 
 function hostile(what: string): never {
   throw new Error(
-    `SF-0 must never call the chain: ${what} was invoked during resolution`,
+    `the environment seam must never call the chain: ${what} was invoked during resolution`,
   );
 }
 
@@ -240,7 +243,10 @@ export function tronWrapHandle(): Record<string, unknown> {
   };
 }
 
-/** Every method throws, so a resolution that succeeds proves INV-30. */
+/**
+ * Every method throws, so a resolution that succeeds proves the raw handle
+ * is never invoked.
+ */
 export function hostileTronWrapHandle(): Record<string, unknown> {
   const trx = new Proxy(
     {},
@@ -326,8 +332,8 @@ export interface HandleShape {
 /**
  * The `tronbox migrate` shape: both lineages are the **identical** live Config,
  * so `provenance.sameObject` is `true` and no cross-lineage disagreement is
- * possible. This is the shape every developer run takes, which is why INV-12's
- * preference path is untested by ordinary use.
+ * possible. This is the shape every developer run takes, which is why the
+ * no-lineage-preference path is untested by ordinary use.
  */
 export function migrateShapedHandles(
   spec: ConfigFixtureSpec = {},

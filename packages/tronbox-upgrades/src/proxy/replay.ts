@@ -1,5 +1,5 @@
 /**
- * Replay recognition for the two operations (INV-9, INV-10) — pure decisions
+ * Replay recognition for the two operations — pure decisions
  * over facts the caller already holds, so every disposition is testable
  * without a chain or a record on disk.
  *
@@ -40,9 +40,10 @@ export type DeployReplayDecision =
     };
 
 /**
- * INV-9's decision. `priorAddress` is the artifact's per-network address (any
- * encoding, canonicalized here) or `null` on a first run; `verdicts` is the
- * record session's per-entry reconciliation report.
+ * Decides the deploy replay disposition. `priorAddress` is the artifact's
+ * per-network address (any encoding, canonicalized here) or `null` on a
+ * first run; `verdicts` is the record session's per-entry reconciliation
+ * report.
  */
 export function decideDeployReplay(
   priorAddress: string | null,
@@ -66,9 +67,10 @@ export function decideDeployReplay(
 }
 
 /**
- * INV-10's recognition: the upgrade target is already the live implementation.
- * Canonical on both sides — a spelling variant of the same address must be
- * recognized, or every replayed migration re-upgrades and pays for it.
+ * The already-current recognition: the upgrade target is already the live
+ * implementation. Canonical on both sides — a spelling variant of the same
+ * address must be recognized, or every replayed migration re-upgrades and
+ * pays for it.
  */
 export function isAlreadyCurrent(
   liveImplementation: string,

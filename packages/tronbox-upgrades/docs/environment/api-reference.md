@@ -8,7 +8,7 @@ import { resolveEnvironment, type TronBoxEnvironment } from '../environment';
 ```
 
 Everything here is **synchronous**. Nothing in this seam returns a `Promise`, registers a
-callback, or starts a timer (INV-38).
+callback, or starts a timer.
 
 ---
 
@@ -48,8 +48,7 @@ carrying exactly the slots requested plus `provenance`.
 
 **`handles` (`RawMigrationHandles | undefined`)** — the migration's own globals. Every
 member is `unknown`, because these cross a trust boundary out of a `vm` sandbox and typing
-them as their expected shapes would assert exactly what the shape guards exist to check
-(INV-25):
+them as their expected shapes would assert exactly what the shape guards exist to check:
 
 ```ts
 interface RawMigrationHandles {
@@ -96,11 +95,11 @@ own property; unrequested slots are absent from both the value and the type.
 - `EnvironmentInconsistentError` (`code: 'TRONBOX_ENV_INCONSISTENT'`) — every required
   capability was constructed and the sources disagree.
 
-The three are strictly ordered: `absent`, then `incomplete`, then `inconsistent`
-(INV-11). A disagreement is never reported while a required capability is still
+The three are strictly ordered: `absent`, then `incomplete`, then `inconsistent`.
+A disagreement is never reported while a required capability is still
 unconstructible.
 
-> **`const` type parameters require TypeScript ≥ 5.0** (INV-46). Without them the literal
+> **`const` type parameters require TypeScript ≥ 5.0.** Without them the literal
 > array widens to `SlotName[]` and every slot becomes present in the type, which discards
 > the whole point of `spec`.
 
@@ -164,7 +163,7 @@ was *reachable*, not what this particular slot list happened to look at.
 
 - `crossChecked` is `false` exactly when fewer than two lineages were reachable, and
   `crossCheckSkippedBecause` names which one was available. Neither is inferable from the
-  other fields, which is why both are reported (INV-34 mode 1).
+  other fields, which is why both are reported.
 - `sameObject` is `true` under `tronbox migrate`, where both lineages are one object.
 - The binding is decided by whether the lineage computes its values on read:
   `working_directory` is an own **accessor** on a live `Config` and an own **data property**
@@ -215,7 +214,7 @@ Nothing is normalized — values pass through byte for byte, so a cross-lineage 
 sees what the tool holds.
 
 `contractsBuildDirectoryIsExternal` is **observed by containment**, never inferred from the
-invoking command (INV-3). `build_info_directory` escaping the project root is a violation
+invoking command. `build_info_directory` escaping the project root is a violation
 rather than a supported configuration and yields an `invariant-violated` failure;
 `contracts_build_directory` escaping is legal, which is how
 `build/lib/commands/test.js` points the build tree at a temporary directory.
@@ -258,24 +257,24 @@ Five things about this slot that will bite a consumer who assumes otherwise:
    chain.** It is what keys the `networks` map of every saved artifact. If you need to know
    which chain you are actually talking to, ask the chain.
 2. **`configuredId.syntax` is derived by strict equality against `'*'`** — never a
-   truthiness or regex test — so `'**'` and `'*3'` are `'exact'` (INV-6). `'*'` is legal
+   truthiness or regex test — so `'**'` and `'*3'` are `'exact'`. `'*'` is legal
    and TronBox never resolves it.
 3. **`sender` is wrapped in an object whose `kind` states the caveat**, so a call site
-   cannot skip it (INV-7). The effective sender is chosen at send time —
+   cannot skip it. The effective sender is chosen at send time —
    `TronWrap._getAccounts` replaces `_accounts` wholesale on a TRE node while resetting
    `privateKeyByAccount` — so an authority preflight against this address can pass while
    the transaction sends from a different account.
 4. **`txDefaults` members are `null` where TronBox resolved nothing**, and TronBox's own
    `||` chains treat a configured `0` as absent: with `callValue: 0` merged in from
    `deployParameters`, `config.callValue` reads `undefined`, hence `null` here. An
-   upstream `undefined` always becomes `null`, never the reverse (INV-4).
-5. **`signingKeyConfigured` is derived from presence alone and is never the key**
-   (INV-40). It is a boolean by construction. `Config`'s own top-level `privateKey` getter
+   upstream `undefined` always becomes `null`, never the reverse.
+5. **`signingKeyConfigured` is derived from presence alone and is never the key.**
+   It is a boolean by construction. `Config`'s own top-level `privateKey` getter
    is hardcoded to return `null`, so it is useless as a presence check — the real key lives
    on the network entry.
 
 **A misspelled network name is refused, not defaulted.** The selected network is validated
-against the `networks` map itself before any derived getter is read (INV-16), because
+against the `networks` map itself before any derived getter is read, because
 TronBox's `network_config` getter throws only when the selected network is *falsy* — a name
 merely absent from `networks` yields `_.extend({}, default_tx_values, self.networks[network] || {})`,
 which is pure defaults with no error at all. Reading the getters cannot tell that apart from
@@ -330,7 +329,7 @@ resolvePackaged(packageRelativePath: string): ContractAbstraction
 ```
 
 Loads a JSON artifact from an installed package under `node_modules`. **Returns a
-`ContractAbstraction` or throws — never nullish** (INV-18).
+`ContractAbstraction` or throws — never nullish.**
 
 TronBox's own `FS.prototype.requireJson` collapses three different causes into one `null`.
 This method separates them, deciding each with the least capability that can decide it, in
@@ -369,7 +368,7 @@ caller's argument.
 
 > **`EACCES` diagnoses as missing.** The default probe is `fs.existsSync`, chosen because
 > it is stat-class *and* cannot throw, so an unreadable parent directory answers "not
-> there" rather than escaping as an untranslated host failure (INV-15). The recorded cost
+> there" rather than escaping as an untranslated host failure. The recorded cost
 > is that a permission-denied path is reported as absent. This is the same direction
 > TronBox's own resolver collapses it in.
 
@@ -382,7 +381,7 @@ ambiguities(): ArtifactAmbiguityReport
 The bare-name collision report for the whole project. The index behind it is **lazy and
 computed at most once**, memoized per `ArtifactAccess` instance — never at module scope,
 which would carry a stale index across migrations and, under `tronbox test`, index a build
-tree the run has already replaced (INV-23).
+tree the run has already replaced.
 
 #### `intercept`
 
@@ -391,7 +390,7 @@ readonly intercept: ResolverInterceptHandle
 ```
 
 The host `ResolverIntercept`, handed over by name. **This is the write-back path — never
-substitute `config.resolver`** (INV-24).
+substitute `config.resolver`.**
 `build/components/Resolver/intercept.js:ResolverIntercept.prototype.contracts` returns
 exactly `Object.keys(this.cache).map(key => this.cache[key])`, and that set is what
 `artifactor.saveAll` writes back at the end of the migration. An abstraction obtained from
@@ -413,7 +412,7 @@ interface TronWrapHandle {
 ```
 
 **One name.** Both `tronWrap` and `tronWeb` are accepted as inputs and normalized one-way
-to `tronWrap`; `tronWeb` is never re-exported (INV-27). TronBox builds the sandbox with
+to `tronWrap`; `tronWeb` is never re-exported. TronBox builds the sandbox with
 `tronWeb: tronWrap`, so the misleading name is the host's. If both are supplied and they
 are **not** the same object, that is an `EnvironmentInconsistentError`
 (`chain-handle-conflict`) rather than a preference.
@@ -445,8 +444,9 @@ interface DeployerHandle {
 }
 ```
 
-INV-29's one deliberate exception: the whole deployer, named as such, because SF-4 needs
-the queue. `then` is probed with `in` because it lives on `Deployer.prototype`.
+The one deliberate exception to handles being named rather than modelled: the whole deployer,
+named as such, because the deploy seam needs the queue. `then` is probed with `in` because it
+lives on `Deployer.prototype`.
 
 > **Do not log or `util.inspect` this handle.** See
 > [`safety.md`](./safety.md#handles-are-safe-in-serialization-only).
@@ -486,8 +486,9 @@ the resolver holds carries no `quiet` key at all — so comparing it would throw
 `EnvironmentInconsistentError` on every `tronbox test` run. Absence means `false`. And
 `false` does not imply output is visible.
 
-SF-10 owns the output and warning channel outright; degraded-mode statements ride the
-returned result and failures ride typed errors, with logging advisory only. Do not build a
+The option/result surface owns the output and warning channel outright; degraded-mode
+statements ride the returned result and failures ride typed errors, with logging advisory
+only. Do not build a
 visibility decision on this slot.
 
 Source: `src/environment/output.ts:outputFromHandles`.
@@ -516,15 +517,15 @@ type ArtifactResolution =
 
 **Only the verified branch names the abstraction `contract`.** The asymmetric field name is
 the enforcement, not a convention: storing an unverified abstraction into a `contract`-typed
-position is impossible without renaming it (INV-5).
+position is impossible without renaming it.
 
 `status: 'unique'` asserts that the index is complete and holds no bare-name collision for
 this name — including the zero-candidate case, where the index simply has no entry and the
 source path falls back to the abstraction's own. The index deliberately assesses no
-freshness; that is SF-2's concern.
+freshness; that is the validation ladder's concern.
 
-`status: 'ambiguous'` is **detection only**. Policy for that branch belongs to SF-5, and
-`ArtifactNameAmbiguousError` is exported for SF-5 to throw.
+`status: 'ambiguous'` is **detection only**. Policy for that branch belongs to the proxy
+operations, and `ArtifactNameAmbiguousError` is exported for the proxy operations to throw.
 
 ### `ArtifactCandidate` / `ArtifactNameCollision`
 
@@ -541,7 +542,7 @@ interface ArtifactNameCollision {
 }
 ```
 
-Identifiers and paths only — never the compiled output the name maps to (INV-42).
+Identifiers and paths only — never the compiled output the name maps to.
 
 ### `ArtifactAmbiguityReport`
 
@@ -555,14 +556,14 @@ type ArtifactAmbiguityReport =
 ```
 
 `status: 'indexed'` asserts that **every** output file under `buildInfoDirectory` was read
-and contributed (INV-36). The first unusable entry aborts into `indeterminate` naming that
+and contributed. The first unusable entry aborts into `indeterminate` naming that
 file — there is no partially-indexed report and no per-file skip, because a partial union
 under an `indexed` label is a false negative in the collision check, and false negatives
 are the failure this index exists to prevent. False positives are the accepted direction:
 they are visible, since each candidate names its source path and originating build-info
 file.
 
-Ordering is fully determined (INV-21) — candidates by source path, then contract name, then
+Ordering is fully determined — candidates by source path, then contract name, then
 build-info file; collisions by name — so two calls over the same inputs produce deep-equal
 reports.
 
@@ -580,8 +581,8 @@ type IndeterminateReason =
       readonly file: AbsolutePath };
 ```
 
-A closed union of three mechanisms (INV-34), carrying **paths and a cause string only** —
-never file bytes and never a parsed fragment (INV-42).
+A closed union of three mechanisms, carrying **paths and a cause string only** —
+never file bytes and never a parsed fragment.
 
 `cause` is deliberately not `error.message`. Node's `JSON.parse` embeds a snippet of the
 offending source in its message, so forwarding it would put contract source — in a
@@ -610,14 +611,14 @@ interface BuildInfoReader {
 }
 ```
 
-The seam's **one** injected dependency (INV-43). Two methods, each a separately confined
-capability (INV-31):
+The seam's **one** injected dependency. Two methods, each a separately confined
+capability:
 
 - `read` returns file *content* and is asked only for paths under `buildInfoDirectory`.
 - `exists` returns a `boolean` and is asked only for the one packaged-artifact path
   `resolvePackaged` computes. **Existence, never content.**
 
-The count INV-43 fixes is dependencies, not methods: nothing new is constructed, defaulted,
+The count that is fixed is dependencies, not methods: nothing new is constructed, defaulted,
 threaded through the entry point, or mocked separately, and the method admitted is strictly
 *weaker* than the one already present.
 
@@ -663,7 +664,7 @@ const fileSystemBuildInfoReader: BuildInfoReader;
 ```
 
 The default. Exactly one directory listing plus at most one read-and-parse per
-`*.output.json` entry directly within it (INV-37). The paired `<hash>.json` compiler
+`*.output.json` entry directly within it. The paired `<hash>.json` compiler
 *input* file is never read — it is typically the larger of the pair, and the index does not
 need it because `<hash>.output.json` already retains
 `contracts[sourcePath][contractName]`. `isFile()` also excludes symlinks, so there is no
@@ -691,7 +692,7 @@ interface ArtifactAmbiguityIndex {
 Unions every build-info output file into a bare-name index, and **never ranks candidates**.
 `candidates(name)` normalizes the name and returns a frozen empty array for an unknown one.
 A reader that *throws* from `read` is translated into `build-info-unreadable` anchored on
-`buildInfoDirectory` — no host failure escapes (INV-15).
+`buildInfoDirectory` — no host failure escapes.
 
 Exported for direct use; the `artifacts` slot calls it lazily on your behalf.
 
@@ -703,7 +704,7 @@ function normalizeArtifactName(name: string): string;
 
 Reproduces `build/components/Resolver/intercept.js:ResolverIntercept.prototype.require`'s
 own normalization exactly — `name.replace(/^\.\//, '').replace(/\.sol$/i, '')`, in that
-order, with no separator rewriting, no case folding of the name, and no trimming (INV-8).
+order, with no separator rewriting, no case folding of the name, and no trimming.
 One function, used by both the resolve path and the index, so the two key spaces cannot
 drift apart.
 
@@ -723,11 +724,11 @@ type EnvironmentDiagnosis = 'absent' | 'incomplete' | 'inconsistent';
 ```
 
 Exactly three subclasses, each with a `code` derived from its `diagnosis` by the
-template-literal type (INV-10). Switch on `code` or `diagnosis`, never on `message`.
+template-literal type. Switch on `code` or `diagnosis`, never on `message`.
 
 Every `EnvironmentIncompleteError` message ends with `Declared TronBox peer range: <range>.`
 The declared range has exactly one home — `peerDependencies.tronbox` in this package's own
-manifest — and is read rather than restated, and is never a comparison operand (INV-19). A
+manifest — and is read rather than restated, and is never a comparison operand. A
 TronBox *version* string is unavailable in principle: `require('tronbox')` never resolves,
 because the package declares no `main` and has no root `index.js`. The structural
 `handle-malformed` diagnosis **is** the version check.
@@ -772,11 +773,11 @@ interface UnsatisfiedSlot {
 ```
 
 Read `unsatisfied` rather than parsing the message. `providedIn` and `absentIn` are read
-from the slot table, never authored at a throw site (INV-14), so they always agree with
+from the slot table, never authored at a throw site, so they always agree with
 `slotRequirements`.
 
 `because` distinguishes a host **getter that raised** (`'threw'`) from an **absent own
-property** (`'missing'`). INV-17 turns on those being different states —
+property** (`'missing'`). The distinction matters because those are different states —
 `Config.prototype.addProp`'s getter is a truthiness test, so a key explicitly set to `''`
 falls through to its default and reports a value the user did not configure. Testing
 own-property presence instead of truthiness is what keeps them apart.
@@ -803,7 +804,7 @@ type Inconsistency =
 ```
 
 `config-lineage-field` renders both values verbatim, which is why `field` is constrained to
-the `ConfigScalarField` allow-list (INV-41) — only strings, numbers, booleans and `null`
+the `ConfigScalarField` allow-list — only strings, numbers, booleans and `null`
 reach the formatter.
 
 `artifacts-not-wrapping-deployer-resolver` means the supplied intercept does not wrap the
@@ -825,9 +826,10 @@ class ArtifactNameAmbiguousError extends Error {
 }
 ```
 
-**SF-0 never throws this.** It owns the diagnosis text because it holds the candidates, and
-exports the class for SF-5 to throw if refusal is the policy SF-5 chooses. Deliberately
-**not** a `TronBoxEnvironmentError` subclass — INV-10 fixes that family at three.
+**The environment seam never throws this.** It owns the diagnosis text because it holds the
+candidates, and exports the class for the proxy operations to throw if refusal is the policy
+they choose. Deliberately **not** a `TronBoxEnvironmentError` subclass — that family is fixed
+at three.
 
 ---
 
@@ -885,7 +887,7 @@ const configLineageFields: readonly [...pathFields, ...networkFields];
 
 The compared field set as explicit groups, iterated rather than derived from `Object.keys`.
 A resolution compares exactly the groups whose slots it exposes, which is what keeps the
-cost linear in the number of declared slots plus a fixed field list (INV-45), and keeps
+cost linear in the number of declared slots plus a fixed field list, and keeps
 `internalPathsRead` free of fields nothing needed.
 
 ### `ConfigScalarField`
@@ -917,7 +919,7 @@ deliberately **excluded** — see [`OutputChannelSlot`](#outputchannelslot).
 > then refuses), and **`'*'` is never produced by coercion**, since no number is `'*'`.
 > `bigint`, `boolean` and `toString` carriers keep their named refusal. This is the seam's
 > only value normalization and `src/environment/network.ts:normalizeNetworkId` **is** the
-> closed list — exactly two call sites, both `network_id` (INV-48).
+> closed list — exactly two call sites, both `network_id`.
 
 ---
 
@@ -946,10 +948,10 @@ and never a comparison operand.
 
 ## Handle types
 
-Structural minimums for the host objects, asserted before a handle reaches a slot (INV-25).
+Structural minimums for the host objects, asserted before a handle reaches a slot.
 They model the property paths the seam depends on and nothing else — in particular, **no
-operation-specific methods on `ContractAbstraction`**, whose identity SF-0 preserves and
-whose surface it never describes.
+operation-specific methods on `ContractAbstraction`**, whose identity the environment seam
+preserves and whose surface it never describes.
 
 ```ts
 type ContractAbstraction = object & {
@@ -985,7 +987,7 @@ type AbsolutePath = string & { readonly [AbsolutePathBrand]: true };
 
 A path asserted absolute at the TronBox environment boundary. **The brand is mintable only
 by `src/environment/paths.ts:assertAbsolutePath`, which refuses a non-absolute input rather
-than resolving it** (INV-2).
+than resolving it.**
 
 Resolving would anchor on a cwd that is wrong in principle:
 `build/components/Require.js:Require.file` chdirs to the migration's directory for the
