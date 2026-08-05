@@ -7,7 +7,7 @@ import type {
 } from './types';
 
 /**
- * INV-38: the documented maximum length of a channel's `recorded` array.
+ * The documented maximum length of a channel's `recorded` array.
  *
  * Any number is arbitrary; the truncation note is what carries the honesty. 100
  * per channel, and the reasoning is the failure mode: a single operation producing
@@ -21,8 +21,9 @@ import type {
  * `dist/validate/run.js`. A large project can therefore produce hundreds of
  * relayed notes on one operation, which are then held on the returned result for
  * the caller's lifetime and re-emitted on every migration of a `tronbox test`
- * replay. Silent truncation would be an SC-003 hole; unbounded growth is a memory
- * and legibility problem. Capping with an explicit statement violates neither.
+ * replay. Silent truncation would be a disclosure hole; unbounded growth is a
+ * memory and legibility problem. Capping with an explicit statement violates
+ * neither.
  */
 export const RECORDED_NOTE_CAP = 100;
 
@@ -37,16 +38,17 @@ const DETAIL_INDENT = '    ';
  * A `DegradedNote` that cannot be recorded because a required field is missing or
  * malformed.
  *
- * Added while implementing: INV-35 requires `degraded` to reject an empty `summary` or
- * `remedy` "with a typed error" but does not name the class, and INV-8 requires
- * every rejection in the package to be a typed error carrying a stable `code`.
+ * Added while implementing: one requirement says `degraded` must reject an
+ * empty `summary` or `remedy` "with a typed error" but does not name the class,
+ * and a separate requirement says every rejection in the package must be a
+ * typed error carrying a stable `code`.
  * The `detail` case is the same class of defect — a JavaScript producer can pass a
- * non-array — and refusing it is INV-9's never-coerce rule applied to the note's
+ * non-array — and refusing it is the never-coerce rule applied to the note's
  * own shape.
  *
  * This is a plugin defect, not a user error: the note's producer is always plugin
  * code. The message therefore names the channel's provenance, which is what makes
- * the report actionable (SC-006).
+ * the report actionable.
  */
 export class DegradedNoteInvalidError extends Error {
   readonly code = 'DEGRADED_NOTE_INVALID' as const;
@@ -70,7 +72,7 @@ export class DegradedNoteInvalidError extends Error {
 type EmissionLevel = 'Warning' | 'Note';
 
 /**
- * The single write path, and the single place the silence flag is read (INV-24).
+ * The single write path, and the single place the silence flag is read.
  *
  * Formatting follows TronBox rather than upstream: the bare ASCII prefix
  * `"Warning: "` and four-space-indented detail lines, matching
@@ -79,7 +81,7 @@ type EmissionLevel = 'Warning' | 'Note';
  * probes `tty.isatty` at import time, a frozen environment-dependent decision the
  * plugin has no reason to take.
  *
- * INV-25, three properties in six lines:
+ * Three properties in six lines:
  * - `typeof` rather than `in`, because `console`'s methods and a closure-built
  *   wrapper's differ in ownership.
  * - `.call(sink, …)` because `console`'s methods are not safe to invoke detached
@@ -108,7 +110,7 @@ function emit(
   try {
     write.call(sink, [`${level}: ${title}`, ...lines].join('\n'));
   } catch {
-    // INV-23: the write is a courtesy and nothing load-bearing rides it — the
+    // The write is a courtesy and nothing load-bearing rides it — the
     // `recorded` append already happened, and failures travel as thrown typed
     // errors. A host sink that throws (or a JavaScript host that supplied an
     // object with no `log` at all) must not fail an operation that otherwise
@@ -120,13 +122,13 @@ function emit(
 /**
  * Builds the plugin's channel over a host sink.
  *
- * Every dependency is injected as data (INV-44): the sink and its provenance
+ * Every dependency is injected as data: the sink and its provenance
  * arrive as {@link HostChannelFacts}, so every test is a plain object — no
  * TronBox process, no node, no seam. The channel reads no ambient state: no
  * `process.env`, no clock, no filesystem, no network, and no `console`.
  *
  * The channel is stateful for the life of one operation (it accumulates
- * `recorded`) and synchronous throughout (INV-40).
+ * `recorded`) and synchronous throughout.
  */
 export function createOutputChannel(facts: HostChannelFacts): OutputChannel {
   const appended: DegradedNote[] = [];
@@ -138,8 +140,9 @@ export function createOutputChannel(facts: HostChannelFacts): OutputChannel {
     `${String(facts.hostQuietRequested)})`;
 
   /**
-   * INV-38's truncation statement, built at read time so it names the **final**
-   * suppressed count rather than the count at the moment the cap was reached.
+   * The cap's truncation statement, built at read time so it names the
+   * **final** suppressed count rather than the count at the moment the cap
+   * was reached.
    */
   const truncationNote = (count: number): DegradedNote =>
     Object.freeze({
@@ -173,7 +176,7 @@ export function createOutputChannel(facts: HostChannelFacts): OutputChannel {
     },
 
     degraded(note: DegradedNote): DegradedNote {
-      // INV-35: validate first, so a malformed note can never reach `recorded`.
+      // Validate first, so a malformed note can never reach `recorded`.
       if (note.summary.trim() === '') {
         throw new DegradedNoteInvalidError('summary', describe());
       }
@@ -191,7 +194,8 @@ export function createOutputChannel(facts: HostChannelFacts): OutputChannel {
         remedy: note.remedy,
       });
 
-      // INV-38: the one documented exception to INV-23's unconditional append.
+      // The cap is the one documented exception to the record-then-write
+      // rule's unconditional append.
       // Past the cap the note is neither recorded nor written, and the
       // truncation note in `recorded` states that and how many. The validated,
       // frozen note is still returned, so the caller gets back what it handed
@@ -201,7 +205,7 @@ export function createOutputChannel(facts: HostChannelFacts): OutputChannel {
         return frozen;
       }
 
-      // INV-23: record, *then* attempt the write. The record is the guarantee.
+      // Record, *then* attempt the write. The record is the guarantee.
       appended.push(frozen);
       emit(facts.logger, 'Warning', frozen.summary, [
         ...frozen.detail,
@@ -211,9 +215,9 @@ export function createOutputChannel(facts: HostChannelFacts): OutputChannel {
     },
 
     /**
-     * INV-37: the same members in the same order as the `degraded` calls that
-     * produced them — nothing added, reordered, deduplicated or dropped. Frozen
-     * (INV-16), and built fresh on each read so the truncation note carries the
+     * The same members in the same order as the `degraded` calls that
+     * produced them — nothing added, reordered, deduplicated or dropped.
+     * Frozen, and built fresh on each read so the truncation note carries the
      * final count; the caller's `notes` is a snapshot of this.
      */
     get recorded(): readonly DegradedNote[] {

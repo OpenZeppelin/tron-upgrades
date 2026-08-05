@@ -12,23 +12,23 @@ import type {
 } from './types';
 
 /**
- * **Why this module exists.** SF-2 needs four facts about a compiled contract —
- * the long compiler version, both bytecodes and the source — plus the artifact's
- * own source path. All five live behind `contract._json`, which
- * `build/components/Contract/contract.js` assigns as an own data property
- * (`temp._json = json`), and `_json` is a TronBox-internal property path. INV-28
- * reserves those to `src/environment/**`, so the *observation* happens here and a
- * consumer receives frozen plain data.
+ * **Why this module exists.** The validation ladder needs four facts about a
+ * compiled contract — the long compiler version, both bytecodes and the
+ * source — plus the artifact's own source path. All five live behind
+ * `contract._json`, which `build/components/Contract/contract.js` assigns as
+ * an own data property (`temp._json = json`), and `_json` is a
+ * TronBox-internal property path, and only this directory may read it, so
+ * the *observation* happens here and a consumer receives frozen plain data.
  *
  * This is the compiler slot's argument applied a second time, not a new one: the
- * alternative was never "SF-2 reads it" but "SF-2 reads it *inside*
- * `src/environment/`".
+ * alternative was never "the validation ladder reads it" but "the validation
+ * ladder reads it *inside* `src/environment/`".
  *
  * **What this module deliberately does not do.** It performs no I/O, opens no
  * artifact file and consults no build-info. Everything here comes off the
  * abstraction the seam already resolved, so `record()` costs no filesystem access
- * — which is what lets it stay off the `resolve()` path (INV-23's memoized index is
- * the expensive thing, and this touches none of it).
+ * — which is what lets it stay off the `resolve()` path (the memoized
+ * ambiguity index is the expensive thing, and this touches none of it).
  */
 
 /** The one hop that makes every read below a TronBox-internal read. */
@@ -41,7 +41,7 @@ const JSON_PATH = 'contract._json';
  * halves of that are load-bearing rather than stylistic. `source-scan.ts` collects
  * `readPropertyKeys` by matching call expressions whose callee is literally
  * `readOwnProperty` or `readProperty` and whose second argument is a string
- * literal, and INV-28's enumeration test asserts that set exactly. So a generic
+ * literal, and the internal-path enumeration test asserts that set exactly. So a generic
  * hop-walker (key passed as a variable) *or* a one-line local wrapper (callee not
  * the primitive) would report this module's drift surface as one host key when it
  * is seven. The repetition below buys the enumeration; a helper would spend it.
@@ -75,7 +75,7 @@ const ARTIFACT_RECORD_FIELDS = Object.freeze({
    *
    * The second hop is attempted only when the first yielded an object, so a
    * `compiler` that is a bare string ends the chain without recording
-   * `…compiler.version` as read (INV-33: the reported set is never a superset).
+   * `…compiler.version` as read (the reported set is never a superset).
    */
   'compiler.version': {
     member: 'longCompilerVersion',
@@ -179,8 +179,8 @@ const FIELD_NAMES = Object.freeze(
  *
  * Kept out of {@link ArtifactRecordReport} on purpose. A consumer's diagnosis for
  * an incomplete artifact is *"your TronBox is older than this field"*, and a
- * raising getter is not that — it is a malfunctioning host, which INV-15 turns
- * into one of the seam's own typed errors. `artifacts.ts` owns that translation
+ * raising getter is not that — it is a malfunctioning host, which becomes
+ * one of the seam's own typed errors. `artifacts.ts` owns that translation
  * because it owns the `artifacts` slot's failure wording; this module stays total
  * so it never needs to import the error family.
  */
@@ -189,7 +189,7 @@ export type ArtifactRecordOutcome =
   | { readonly status: 'host-accessor-threw'; readonly path: string };
 
 /**
- * `Object.keys` behind INV-15, exactly as `compiler.ts:ownKeyCount` does it: the
+ * `Object.keys` guarded exactly as `compiler.ts:ownKeyCount` does it: the
  * argument is object-like by construction here, but a host object may still be
  * exotic enough to raise from its own trap, and no host throw leaves the seam.
  */
@@ -219,7 +219,7 @@ function noArtifactRecord(
  * **A field counts as present iff its own-property read yields a `string`.** Two
  * consequences, both deliberate:
  *
- * - Presence, never truthiness (INV-17). `bytecode: "0x"` is what TronBox writes
+ * - Presence, never truthiness. `bytecode: "0x"` is what TronBox writes
  *   for an abstract contract and `""` is reachable too; both are *present*, and a
  *   truthiness test would report the artifact as shape-unsupported for a contract
  *   that simply has no code.

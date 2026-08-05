@@ -64,7 +64,7 @@ const first = await deriveValidationInput({ contract, env });
 if (first.kind === 'refused') { /* … */ }
 
 let input = first.input;
-let report = runEngineReport(input);      // yours — SF-6's
+let report = runEngineReport(input);      // yours — the standalone operations'
 
 // Escalate on ANY non-empty report, with no predicate of your own.
 if (!report.pass && input.provenance.basis.kind === 'build-record-ast') {
@@ -86,8 +86,8 @@ if (!report.pass) {
 
 **Do not write a predicate.** The obvious gate — escalate only where every flagged operation is
 explicable by missing positions — was specified and then measured unimplementable
-(`evidence/probe-p4-gate-observability.js`). A genuinely safe intra-slot padding change and a
-genuine mid-layout insert produce reports identical in every field a gate could key on: one
+(measured with a live gate-observability probe). A genuinely safe intra-slot padding change
+and a genuine mid-layout insert produce reports identical in every field a gate could key on: one
 `insert` op each, the same `originalLabel: null`, the same absent positions, the same
 `changeUncertain: null`. The only difference is the name of the inserted variable, and no gate
 may be built on a user-chosen identifier. The position half of such a predicate is worse than
@@ -243,9 +243,9 @@ the module, so retrying past it turns one contract's memory ceiling into every l
 
 For richer fixtures than the examples here, read the suite.
 
-- `test/sf-2-ladder-paths.test.ts` drives all four paths and asserts the compile count for each,
+- `test/ladder-paths.test.ts` drives all four paths and asserts the compile count for each,
   from a stub for `deps.loadCompiler`. It is the executable form of the ladder table.
-- `test/helpers/sf-2-ladder.ts` ships the fixture builders, the CBOR metadata split, and the
+- `test/helpers/ladder-fixtures.ts` ships the fixture builders, the CBOR metadata split, and the
   compile-counting loader stub.
 - `test/fixtures/` holds the extracted upgrade pairs, including the `__gap` consumption and the
   intra-slot padding pair — the two shapes the fresh path refuses though they are safe.

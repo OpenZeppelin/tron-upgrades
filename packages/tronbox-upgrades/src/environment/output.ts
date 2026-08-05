@@ -22,7 +22,7 @@ type Read<T> =
   | { readonly ok: false; readonly failure: ConfigReadFailure };
 
 /**
- * Defect D-1: an unreachable lineage and an unsupplied handle are different
+ * An unreachable lineage and an unsupplied handle are different
  * facts, and only the first has a property path to name. `noBearingHandle`
  * therefore carries none — the caller owns the slot table and mints
  * `handle-missing` from it, exactly as it already does for every other slot.
@@ -51,7 +51,7 @@ function malformed<T>(
 }
 
 /**
- * INV-35: the guaranteed surface is exactly `log`, so that is the only member
+ * The guaranteed surface is exactly `log`, so that is the only member
  * probed and the only member typed.
  *
  * `log` is the *intersection* of the shapes TronBox injects, which is why the
@@ -113,7 +113,7 @@ function loggerFrom(
  * onto the Config — `quiet` is not a declared prop, so it lands as a plain own
  * property. It is absent from a Config nobody merged it onto (verified: `quiet`
  * appears in no `props` entry), and absence means `false`. The degradation
- * direction is safe: SF-10's primary mechanism is routing through the injected
+ * direction is safe: the option/result surface's primary mechanism is routing through the injected
  * logger, which `--quiet` has already replaced with a noop.
  */
 function quietFrom(
@@ -180,7 +180,8 @@ function quietFrom(
  * **The correction does not change the decision.** A channel that *may* discard
  * has to be treated as if it does, and liveness is not computable from anything
  * the seam can see: it would require knowing what the innermost forwarded function
- * does. So the seam reports provenance and stops; SF-10 owns the consequence.
+ * does. So the seam reports provenance and stops; the option/result surface
+ * owns the consequence.
  *
  * `hostQuietRequested` is read from the lineage matching `origin`, never mixed
  * across lineages.
@@ -203,7 +204,7 @@ export function outputFromHandles(
   if (lineageAttempt.status === 'absent') {
     // Reachable only when *neither* bearing handle was supplied: `useDeployer` is
     // true whenever `deployer` is, and `inspectLineage` reports `absent` only for
-    // a handle that is `undefined`. So there is no broken path to name (D-1).
+    // a handle that is `undefined`. So there is no broken path to name.
     return { ok: false, noBearingHandle: true };
   }
   if (lineageAttempt.status === 'malformed') {

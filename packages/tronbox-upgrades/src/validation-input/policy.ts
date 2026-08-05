@@ -12,13 +12,13 @@ import { unreachableCause, type Cause } from './causes';
  * Three properties hold it, and all three are properties of the *source* rather
  * than of behaviour, which is why they are pinned by scan and not by comment:
  *
- * - **Exactly one importer** — `pipeline.ts` — and exactly one call site
- *   (INV-9). A second call site elsewhere makes the flip two edits in two files,
+ * - **Exactly one importer** — `pipeline.ts` — and exactly one call site.
+ *   A second call site elsewhere makes the flip two edits in two files,
  *   one of which nobody remembers.
- * - **Exactly one module specifier imported here** — `./causes` (INV-10). The
+ * - **Exactly one module specifier imported here** — `./causes`. The
  *   exhaustiveness guard therefore lives with the union rather than in
  *   `errors.ts`, so this module needs no second import to raise.
- * - **Not injectable** (INV-10). A swappable table restores per-call-site
+ * - **Not injectable.** A swappable table restores per-call-site
  *   variation through the back door: one operation passes a lenient table "just
  *   for this check" and the single-policy-point guarantee becomes nominal.
  *   `ValidationInputDependencies` has no `policy` member. The flip test
@@ -27,11 +27,11 @@ import { unreachableCause, type Cause } from './causes';
  *
  * **What v1 decides: refuse, on all eleven.** There is no input v1 produces
  * whose fidelity is anything but slot-level. The `proceed-reduced` machinery is
- * built anyway, because the reporting side is what makes a flip cheap — G4
- * measured that reduced fidelity is *unobservable* from upgrades-core (the report
- * carries no flag and `hasLayout` is not public), so a flip without a detector
- * and a rendered statement produces a plugin that proceeds silently, which is
- * SC-003 violated by the flip itself.
+ * built anyway, because the reporting side is what makes a flip cheap — a
+ * measurement showed that reduced fidelity is *unobservable* from upgrades-core
+ * (the report carries no flag and `hasLayout` is not public), so a flip without
+ * a detector and a rendered statement produces a plugin that proceeds silently,
+ * violating the requirement that reduced-fidelity validation be disclosed.
  */
 
 /** One member in v1, and v1 never constructs it outside the flip test. */
@@ -45,7 +45,7 @@ export type ReducedMode = { readonly kind: 'declaration-order-only' };
  * to be composed downstream from the mode alone — telling the user *that*
  * fidelity was reduced without telling them *why*, and re-coupling diagnosis to
  * disposition, which is the one thing the separation between this module and
- * `diagnose.ts` exists to prevent (INV-12).
+ * `diagnose.ts` exists to prevent.
  */
 export type Disposition =
   | { readonly kind: 'refuse'; readonly cause: Cause }
@@ -68,7 +68,7 @@ const REFUSE = { disposition: 'refuse' } as const;
 
 /**
  * **The flip point.** One row per cause; flipping one is one edit here and
- * nothing anywhere else (INV-46) — `fidelity` is already non-optional,
+ * nothing anywhere else — `fidelity` is already non-optional,
  * `ReducedMode` is already constructible, and `'storage-layout-unavailable'` is
  * already a `DegradedCode` member (`src/output/types.ts:69`).
  *

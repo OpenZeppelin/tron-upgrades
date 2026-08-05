@@ -64,7 +64,8 @@ import {
 } from './solc-input';
 
 /**
- * The whole of SF-2, and **the one place `policy.ts` is imported and called**.
+ * The whole of the validation ladder, and **the one place `policy.ts` is
+ * imported and called**.
  *
  * A refusal is a value, never a throw. That is not stylistic: the pipeline has to
  * be *able* to carry a `proceed-reduced` disposition, and a thrown refusal cannot
@@ -251,7 +252,7 @@ export type ValidationInputOutcome =
 /** ─── What the caller supplies ───────────────────────────────────────────── */
 
 /**
- * Exactly what SF-2 needs from the environment seam, and no more.
+ * Exactly what the validation ladder needs from the environment seam, and no more.
  *
  * **`buildInfoDirectory` is picked, and that reverses an earlier decision rather
  * than relaxing one.** The earlier shape left it out so that reading a build
@@ -264,15 +265,17 @@ export type ValidationInputOutcome =
  * bytecode matches the artifact is evidence about *content*, not provenance —
  * which is the one question the four mis-pairing hazards left undecidable.
  *
- * **`contractsBuildDirectory` is still not picked.** Every artifact fact SF-2
- * needs — both bytecodes, the source, the source path, the long compiler version
- * — arrives off `ArtifactAccess.record`, with no filesystem access at all.
- * Declaring it would be a dependency claim with no reader behind it.
+ * **`contractsBuildDirectory` is still not picked.** Every artifact fact the
+ * validation ladder needs — both bytecodes, the source, the source path, the
+ * long compiler version — arrives off `ArtifactAccess.record`, with no
+ * filesystem access at all. Declaring it would be a dependency claim with no
+ * reader behind it.
  *
  * **`output` is the operation's own `OutputChannel`.** A reduced-fidelity note
  * has to *ride the operation's result*, and a result's notes are exactly one
- * channel's `recorded`. A channel SF-2 minted for itself would be a second
- * channel whose records reach no result — the note written and then lost.
+ * channel's `recorded`. A channel the validation ladder minted for itself
+ * would be a second channel whose records reach no result — the note written
+ * and then lost.
  */
 export interface ValidationInputEnvironment {
   readonly paths: Pick<
@@ -292,8 +295,9 @@ export interface ValidationInputEnvironment {
  * substitutes `policy.ts` at its module boundary in a fixture, which is a test
  * affordance and not an API.
  *
- * There is no writer either: SF-2 persists nothing, so the injected surface has
- * no write capability to misuse. Production defaults are resolved **inside** the
+ * There is no writer either: the validation ladder persists nothing, so the
+ * injected surface has no write capability to misuse. Production defaults are
+ * resolved **inside** the
  * call rather than captured at module scope, which is what lets the nine
  * non-compiler causes — and now the whole fresh path — be exercised with no
  * `~/.tronbox` populated.
@@ -332,8 +336,8 @@ export interface ValidationInputRequest {
    *
    * **Escalation fires on ANY non-empty report, and there is no predicate.** The
    * obvious gate — escalate only where every flagged operation is explicable by
-   * missing positions — was specified and then *measured unimplementable*
-   * (`evidence/probe-p4-gate-observability.js`). Two findings killed it. On the
+   * missing positions — was specified and then *measured unimplementable* with
+   * a live P4-gate observability probe. Two findings killed it. On the
    * decisive pair, a truly safe intra-slot padding change and a genuine
    * mid-layout insert produce reports identical in every field a gate could key
    * on — one `insert` op each, the same `originalLabel: null`, the same absent
@@ -364,7 +368,7 @@ export interface ValidationInputRequest {
  * the consuming project compiles with, and a validation failing to recognise the
  * compiler's own ceiling because of a `lib` setting would be absurd. Emscripten's
  * `RuntimeError` carries `name === 'RuntimeError'` either way, which is what
- * `evidence/probe-wasm-memory-ceiling.js` captured verbatim as
+ * a live compile probe captured verbatim as
  * `RuntimeError: memory access out of bounds`.
  *
  * Anything that is **not** a wasm abort is re-raised: a timeout is a different
@@ -521,21 +525,23 @@ function assertInput(input: ValidationInput, reducedByPolicy: boolean): void {
 /**
  * Resolves the artifact, or hands the decision back to whoever owns it.
  *
- * `resolve` reports three statuses and only one of them is SF-2's:
+ * `resolve` reports three statuses and only one of them is the validation
+ * ladder's:
  *
  * - **`unique`** — proceed.
  * - **`ambiguous`** — *policy for this branch is the operation's*, stated in the
  *   seam itself, and the operation is expected to decide before calling here.
- *   When it has not, SF-2 fails closed by raising the seam's **own** diagnosis
- *   rather than validating one of N same-named contracts: picking silently is the
- *   mis-pairing class this whole sub-feature exists to remove, and
- *   `ArtifactNameAmbiguousError` renders the candidates itself, so no sentence is
- *   hand-written here.
+ *   When it has not, the validation ladder fails closed by raising the seam's
+ *   **own** diagnosis rather than validating one of N same-named contracts:
+ *   picking silently is the mis-pairing class this whole sub-feature exists to
+ *   remove, and `ArtifactNameAmbiguousError` renders the candidates itself, so
+ *   no sentence is hand-written here.
  * - **`indeterminate`** — the build-info index could not be built, so *collisions
  *   could not be checked*; the abstraction still came from the host's own
  *   resolver for that name. The operation owns the statement for it
- *   (`'artifact-name-indeterminate'`) and SF-2 must not invent a second
- *   rendering, so it proceeds on the abstraction and says nothing.
+ *   (`'artifact-name-indeterminate'`) and the validation ladder must not
+ *   invent a second rendering, so it proceeds on the abstraction and says
+ *   nothing.
  */
 function artifactAbstraction(
   env: ValidationInputEnvironment,
@@ -917,7 +923,7 @@ function finishInput(request: FinishRequest): ValidationInput {
  * struct still surfaces as a name or type change and is refused, so the class an
  * upstream slot-absence notice would have guarded here is empty; the divergence
  * direction without positions is over-rejection, never silent acceptance. The
- * note is recorded because a reduced-fidelity comparison must be stated (SC-003)
+ * note is recorded because a reduced-fidelity comparison must be stated
  * — a caller reading `namespaced-ast-only` learns how much the comparison could
  * see, not that it was unsafe.
  */

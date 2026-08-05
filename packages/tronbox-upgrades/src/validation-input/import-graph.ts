@@ -16,8 +16,9 @@ import {
  * The plugin's own import resolver. Causes 4 and 5 are born here.
  *
  * **Owning resolution is structural, not a preference.** The host's resolver is
- * off-limits under SF-0's INV-49, and F-12 measured the reason it would not help
- * anyway: `TronSolc.js:55` calls `compile(input, null, null)` — **no import
+ * off-limits under the environment seam's host-import boundary, and measurement
+ * showed the reason it would not help anyway: `TronSolc.js:55` calls
+ * `compile(input, null, null)` — **no import
  * callback** — so every source has to be in the input before solc runs. A project
  * whose graph is not resolved first gets
  * `ParserError: Source "Nope.sol" not found: File not supplied initially`, which
@@ -25,18 +26,18 @@ import {
  * from a genuine source error. Owning the walk is what turns a
  * previously undetectable condition into two causes with two different remedies.
  *
- * **The walk starts at the target and never enumerates the contracts directory**
- * (INV-43). That is what makes cost a function of graph depth rather than project
+ * **The walk starts at the target and never enumerates the contracts directory.**
+ * That is what makes cost a function of graph depth rather than project
  * size: a 226-file project and a 2,260-file project present the compiler with the
- * same input for the same contract. `evidence/probe-oz-closure-static.js` measured
+ * same input for the same contract. A live closure-size probe measured
  * realistic OpenZeppelin upgradeable closures at min 3 · median 26 · max 39 files.
  */
 
 /**
- * A source as the *host* addresses it, which is the distinction F-13 is about: a
- * project file is reached and keyed by absolute path, an npm import is reached by
- * filesystem path but **keyed by its own specifier**. Collapsing the two is the
- * single highest-consequence mistake available in this sub-feature.
+ * A source as the *host* addresses it: a project file is reached and keyed by
+ * absolute path, an npm import is reached by filesystem path but **keyed by
+ * its own specifier**. Collapsing the two is the single highest-consequence
+ * mistake available in this sub-feature.
  */
 type SourceRef =
   | { readonly kind: 'file'; readonly absolutePath: string }
@@ -207,7 +208,7 @@ function unresolvableImport(pending: PendingRef, targetLabel: string): Cause {
  *
  * Reproduces the host's dispatch and rewriting rules exactly — see `source-key.ts`
  * for the clone citations behind each — because a graph resolved by different
- * rules is a *different set of keys*, and F-6 measured that a different key set
+ * rules is a *different set of keys*, and measurement showed that a different key set
  * changes every identity the plugin computes.
  */
 export function resolveSourceGraph(
@@ -259,8 +260,8 @@ export function resolveSourceGraph(
       content = request.readSource(diskPath);
     } catch {
       // Present and unreadable is a different problem with a different remedy
-      // from present-and-absent, which is why `because` exists (INV-27's two
-      // fixtures). The throw itself is never quoted (INV-17).
+      // from present-and-absent, which is why `because` exists — two fixtures
+      // cover both. The throw itself is never quoted.
       return {
         ok: false,
         cause: {

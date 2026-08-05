@@ -26,16 +26,17 @@ import {
 /**
  * Every fixture the suite drives, reduced to the strings it makes observable.
  *
- * INV-40's own stated test is *"assert the sentinel appears nowhere in
- * `JSON.stringify(composite)` … across **all** fixtures"* — plural, deliberately.
- * A leak that only shows up on the disagreement path, or only in an
- * `IndeterminateReason`, is exactly the leak a single-fixture assertion misses.
- * This catalogue is what makes "all fixtures" mechanical: adding a fixture here
- * subjects it to the sentinel sweep, and INV-41's and INV-42's sweeps reuse it.
+ * The credential-redaction invariant's own stated test is *"assert the sentinel
+ * appears nowhere in `JSON.stringify(composite)` … across **all** fixtures"* —
+ * plural, deliberately. A leak that only shows up on the disagreement path, or
+ * only in an `IndeterminateReason`, is exactly the leak a single-fixture
+ * assertion misses. This catalogue is what makes "all fixtures" mechanical:
+ * adding a fixture here subjects it to the sentinel sweep, and the sweeps for
+ * the no-serialized-host-object and no-widened-exposure invariants reuse it.
  *
  * Every entry configures {@link SENTINEL_PRIVATE_KEY} on the selected network,
  * so the secret is genuinely one property away from the values the seam projects
- * — which is the situation INV-40 describes, not a hypothetical one.
+ * — a real risk of leaking, not a hypothetical one.
  */
 export interface FixtureProbe {
   readonly name: string;
@@ -44,12 +45,12 @@ export interface FixtureProbe {
   /**
    * Everything a user could see, in **both** rendering channels.
    *
-   * INV-40 makes this plural on purpose. `JSON.stringify` consults
-   * `handles.ts:sealSlot`'s `toJSON`, so a sweep over serialization alone tests the
-   * *backstop* and would pass on a composite that prints a credential to a
-   * terminal. Each entry therefore contributes its `util.inspect(…, { depth: null })`
-   * rendering of {@link projectedSurface} as well — the same fixture, the channel
-   * `toJSON` is invisible to.
+   * The redaction guarantee makes this plural on purpose. `JSON.stringify`
+   * consults `handles.ts:sealSlot`'s `toJSON`, so a sweep over serialization
+   * alone tests the *backstop* and would pass on a composite that prints a
+   * credential to a terminal. Each entry therefore contributes its
+   * `util.inspect(…, { depth: null })` rendering of {@link projectedSurface}
+   * as well — the same fixture, the channel `toJSON` is invisible to.
    */
   readonly observable: readonly string[];
 }
@@ -419,7 +420,7 @@ export function allFixtureProbes(): readonly FixtureProbe[] {
 
     // --- added later, so the new behaviour is swept like the rest -----------
 
-    probe('packaged artifact missing (INV-18 cause 2)', () => {
+    probe('packaged artifact missing (resolution cause 2)', () => {
       const shape = migrateShapedHandles({}, { mode: 'null' });
       return observeComposite(
         resolveEnvironment(shape.handles, { require: ['artifacts'] }, {
@@ -428,7 +429,7 @@ export function allFixtureProbes(): readonly FixtureProbe[] {
       );
     }),
 
-    probe('packaged artifact present but malformed (INV-18 cause 3)', () => {
+    probe('packaged artifact present but malformed (resolution cause 3)', () => {
       const shape = migrateShapedHandles({}, { mode: 'null' });
       return observeComposite(
         resolveEnvironment(shape.handles, { require: ['artifacts'] }, {
@@ -448,7 +449,7 @@ export function allFixtureProbes(): readonly FixtureProbe[] {
       );
     }),
 
-    probe('numeric network_id on both lineages (INV-48)', () => {
+    probe('numeric network_id on both lineages, normalized and accepted', () => {
       const shape = migrateShapedHandles({
         networkId: 1,
         networks: { development: networkEntry({ networkId: 1 }) },
@@ -458,7 +459,7 @@ export function allFixtureProbes(): readonly FixtureProbe[] {
       );
     }),
 
-    probe('falsy numeric network_id, refused (INV-48)', () => {
+    probe('falsy numeric network_id, refused', () => {
       const shape = migrateShapedHandles({
         networkId: 0,
         networks: { development: networkEntry({ networkId: 0 }) },
@@ -468,7 +469,7 @@ export function allFixtureProbes(): readonly FixtureProbe[] {
       );
     }),
 
-    probe('bigint network_id, refused by type (INV-48)', () => {
+    probe('bigint network_id, refused by type', () => {
       const shape = migrateShapedHandles({
         networks: { development: networkEntry({ networkId: 1n }) },
       });
@@ -477,7 +478,7 @@ export function allFixtureProbes(): readonly FixtureProbe[] {
       );
     }),
 
-    probe('unsupplied output handles under a chain-only context (D-1)', () =>
+    probe('unsupplied output handles under a chain-only context', () =>
       observeComposite(
         resolveEnvironment(handles({ tronWrap: tronWrapHandle() }), {
           require: ['chain', 'output'],

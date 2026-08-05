@@ -48,18 +48,20 @@ import {
 } from './helpers/source-scan';
 
 /**
- * Performance, Scalability & Re-usability — INV-43 … INV-47.
+ * Performance, Scalability & Re-usability — the dependency-injection surface,
+ * ambient-state independence, load, and portability.
  *
  * Two sub-techniques, and both ship here.
  *
- * *Load* has an unusual shape for this sub-feature. SF-0 serves no callers over a
- * network and does no I/O on its default path, so there is no throughput budget to
- * probe — the cost model is "how many host property reads per resolution", and the
- * property that matters is that the count depends on the *declared slot list* and
- * not on the size of the user's configuration. A project with fifty networks and
- * two hundred config keys must cost what a minimal one costs. That is asserted
- * directly below rather than approximated with a timer, which would be flaky and
- * would measure the fixture rather than the seam.
+ * *Load* has an unusual shape for this sub-feature. The environment seam serves
+ * no callers over a network and does no I/O on its default path, so there is no
+ * throughput budget to probe — the cost model is "how many host property reads
+ * per resolution", and the property that matters is that the count depends on
+ * the *declared slot list* and not on the size of the user's configuration. A
+ * project with fifty networks and two hundred config keys must cost what a
+ * minimal one costs. That is asserted directly below rather than approximated
+ * with a timer, which would be flaky and would measure the fixture rather than
+ * the seam.
  *
  * *Portability* gets the strongest form the skill describes: the artifact embedded
  * in a second host. `createArtifactAccess` is driven with a hand-built intercept, a
@@ -89,10 +91,11 @@ function readCost(
 }
 
 // ---------------------------------------------------------------------------
-// INV-43
+// exactly one injected dependency, no concrete singleton, no fs outside
+// ambiguity.ts
 // ---------------------------------------------------------------------------
 
-describe('INV-43: exactly one injected dependency, no concrete singleton, no fs outside ambiguity.ts', () => {
+describe('exactly one injected dependency, no concrete singleton, no fs outside ambiguity.ts', () => {
   it('declares exactly one dependency on the injection surface', () => {
     const resolveSource = environmentSources().find(
       source => source.relative === 'resolve.ts',
@@ -147,10 +150,11 @@ describe('INV-43: exactly one injected dependency, no concrete singleton, no fs 
 
   it('covers all three indeterminate branches with plain fixtures and no build tree', () => {
     // The point of injecting the reader: the three `indeterminate` branches are
-    // routine states (INV-34), so they need cheap tests. An `fs`-coupled module
+    // routine, expected states, so they need cheap tests. An `fs`-coupled module
     // would make each of these build and tear down a deliberately corrupt build
     // tree — the kind of test that gets skipped once it turns flaky, which is how
-    // a routine degraded path ends up uncovered in violation of SC-003.
+    // a routine degraded path ends up uncovered against the coverage goal it
+    // violates.
     const branches = [
       absentReader(),
       unreadableReader(`${DEFAULT_BUILD_INFO_DIR}/a.output.json`, 'EACCES'),
@@ -280,8 +284,8 @@ describe('INV-43: exactly one injected dependency, no concrete singleton, no fs 
   });
 
   it('exposes the real reader as a value the second host can decline to use', () => {
-    // Two members, and the count is the assertion: INV-31 fixes the
-    // interface at `read` and `exists`, so a third would be a widening that has to
+    // Two members, and the count is the assertion: the reader interface is
+    // fixed at `read` and `exists`, so a third would be a widening that has to
     // pass through the invariant rather than arrive with a commit.
     expect(Object.isFrozen(fileSystemBuildInfoReader)).toBe(true);
     expect(sortedOwnKeys(fileSystemBuildInfoReader)).toEqual([
@@ -291,11 +295,12 @@ describe('INV-43: exactly one injected dependency, no concrete singleton, no fs 
   });
 
   it('still declares exactly one injected dependency after the probe was added', () => {
-    // INV-43's actual subject, which the second method does not touch: the count
-    // that matters is *dependencies*, not methods. `exists` arrived on the object
-    // already threaded through `EnvironmentDependencies`, so nothing new is
-    // constructed, defaulted, or mocked separately — asserted here rather than
-    // argued, because "one dependency" is the property SF-11 will re-check.
+    // The actual subject of this section, which the second method does not touch:
+    // the count that matters is *dependencies*, not methods. `exists` arrived on
+    // the object already threaded through `EnvironmentDependencies`, so nothing
+    // new is constructed, defaulted, or mocked separately — asserted here rather
+    // than argued, because "one dependency" is the property packaging will
+    // re-check.
     const resolveSource = environmentSources().find(
       source => source.relative === 'resolve.ts',
     );
@@ -326,10 +331,10 @@ describe('INV-43: exactly one injected dependency, no concrete singleton, no fs 
 });
 
 // ---------------------------------------------------------------------------
-// INV-44
+// no dependence on ambient process state
 // ---------------------------------------------------------------------------
 
-describe('INV-44: no dependence on ambient process state', () => {
+describe('no dependence on ambient process state', () => {
   const originalCwd = process.cwd();
 
   afterEach(() => {
@@ -365,9 +370,10 @@ describe('INV-44: no dependence on ambient process state', () => {
   });
 
   it('refuses a relative project anchor identically from any cwd', () => {
-    // The cwd-independence of the *refusal*, which is INV-2's mechanism seen from
-    // here: a seam that resolved instead of refusing would produce a different
-    // absolute path per cwd, and the difference would be invisible.
+    // The cwd-independence of the *refusal*, which is the relative-anchor
+    // refusal's mechanism seen from here: a seam that resolved instead of
+    // refusing would produce a different absolute path per cwd, and the
+    // difference would be invisible.
     const message = (): string => {
       const error = caught(() =>
         resolveEnvironment(migrateShapedHandles({ root: '../shared' }).handles, {
@@ -401,8 +407,9 @@ describe('INV-44: no dependence on ambient process state', () => {
   });
 
   it('puts no timestamp anywhere in the provenance or the composite', () => {
-    // A clock would make INV-21's determinism unachievable for no gain, and a
-    // timestamp is the one field that looks harmless and breaks deep equality.
+    // A clock would make the composite's determinism unachievable for no gain,
+    // and a timestamp is the one field that looks harmless and breaks deep
+    // equality.
     const env = resolveEnvironment(
       migrateShapedHandles().handles,
       { require: slotNames },
@@ -460,10 +467,10 @@ describe('INV-44: no dependence on ambient process state', () => {
 });
 
 // ---------------------------------------------------------------------------
-// INV-45
+// default-path resolution does no I/O and costs O(declared slots)
 // ---------------------------------------------------------------------------
 
-describe('INV-45: default-path resolution does no I/O and costs O(declared slots)', () => {
+describe('default-path resolution does no I/O and costs O(declared slots)', () => {
   it('performs zero reads for a full-slot resolution that never asks for ambiguities', () => {
     // The invariant's own stated test. Eager indexing would turn a run of dozens
     // of migrations into dozens of megabyte-scale reads of files most runs do not
@@ -591,15 +598,15 @@ describe('INV-45: default-path resolution does no I/O and costs O(declared slots
 });
 
 // ---------------------------------------------------------------------------
-// INV-46
+// the TypeScript >= 5.0 floor is an invariant, not a preference
 // ---------------------------------------------------------------------------
 
-describe('INV-46: the TypeScript >= 5.0 floor is an invariant, not a preference', () => {
+describe('the TypeScript >= 5.0 floor is an invariant, not a preference', () => {
   it('declares a floor of at least 5.0 in the package manifest', () => {
     // The declared floor has to live in the package's own configuration, because
-    // below 5.0 `const` type parameters do not exist and INV-1's narrowing
-    // silently widens to the full `SlotName` union — the property is not degraded,
-    // it is absent.
+    // below 5.0 `const` type parameters do not exist and the slot-narrowing
+    // guarantee silently widens to the full `SlotName` union — the property is
+    // not degraded, it is absent.
     const declared = packageJson.devDependencies.typescript;
     expect(declared).toBeDefined();
     const major = Number(/(\d+)\./.exec(declared)?.[1] ?? '0');
@@ -620,7 +627,7 @@ describe('INV-46: the TypeScript >= 5.0 floor is an invariant, not a preference'
       require: ['paths'],
     });
     expect(env.paths.root).toBe('/proj');
-    // @ts-expect-error INV-46 / INV-1: `network` was not declared, so it is absent from the type.
+    // @ts-expect-error the TS floor / slot-narrowing: `network` was not declared, so it is absent from the type.
     expect(env.network).toBeUndefined();
   });
 
@@ -657,10 +664,10 @@ describe('INV-46: the TypeScript >= 5.0 floor is an invariant, not a preference'
 });
 
 // ---------------------------------------------------------------------------
-// INV-47
+// host-shaped but consumer-agnostic
 // ---------------------------------------------------------------------------
 
-describe('INV-47: host-shaped but consumer-agnostic', () => {
+describe('host-shaped but consumer-agnostic', () => {
   it('names no proxy, upgrade, validation or manifest concept as an identifier', () => {
     // Identifiers, not raw text: the seam's doc comments legitimately reference
     // `TronWebProxy.js` and the plugin's own manifest while explaining the upstream
@@ -677,11 +684,11 @@ describe('INV-47: host-shaped but consumer-agnostic', () => {
   });
 
   it('imports nothing outside node builtins, the seam itself, the manifest and the shared leaf', () => {
-    // The dependency direction, checkable. `../../package.json` is INV-19's
-    // single home for the declared peer range, and `../host-sharing` is the one
-    // sanctioned shared leaf: it imports nothing at all, so depending on it
-    // acquires no other directory — the collapse of the twice-declared
-    // host-sharing refusal ruled for the packaging pass.
+    // The dependency direction, checkable. `../../package.json` is the version
+    // guard's single home for the declared peer range, and `../host-sharing`
+    // is the one sanctioned shared leaf: it imports nothing at all, so
+    // depending on it acquires no other directory — the collapse of the
+    // twice-declared host-sharing refusal ruled for the packaging pass.
     for (const source of environmentSources()) {
       for (const specifier of source.importSpecifiers) {
         const permitted =
@@ -711,12 +718,13 @@ describe('INV-47: host-shaped but consumer-agnostic', () => {
         `${source.relative} reaches out of the seam`,
       ).toEqual([]);
     }
-    // The mirror of INV-28, and live rather than prospective: `src/chain`,
-    // `src/options`, `src/output`, `src/results` and `src/index.ts` are all under
-    // this scan today, and each does depend on the seam — so what is being asserted
-    // is that every one of those dependencies goes through `environment/index` and
-    // none reaches a seam internal directly. The subject is asserted non-empty
-    // because a rule this cheap to satisfy vacuously is worth proving it is not.
+    // The mirror of the one-way dependency rule, and live rather than
+    // prospective: `src/chain`, `src/options`, `src/output`, `src/results` and
+    // `src/index.ts` are all under this scan today, and each does depend on the
+    // seam — so what is being asserted is that every one of those dependencies
+    // goes through `environment/index` and none reaches a seam internal
+    // directly. The subject is asserted non-empty because a rule this cheap to
+    // satisfy vacuously is worth proving it is not.
     const outside = nonEnvironmentSources();
     for (const source of outside) {
       expect(
@@ -758,7 +766,8 @@ describe('INV-47: host-shaped but consumer-agnostic', () => {
   });
 
   it('needs no proxy fixture to exercise a config projection', () => {
-    // The practical cost INV-47 avoids, asserted as a fact about this very suite:
+    // The practical cost avoided by staying host-shaped but consumer-agnostic,
+    // asserted as a fact about this very suite:
     // every fixture is a plain object, and none of them mentions a proxy, an
     // implementation address or a manifest. A seam that knew about proxies could
     // not be reasoned about independently of the operations.
@@ -776,8 +785,9 @@ describe('INV-47: host-shaped but consumer-agnostic', () => {
   it('exposes the same seam face to every invocation shape', () => {
     // Host-shaped, consumer-agnostic: the same entry point serves the migrate
     // shape, the mocha-file shape and the deployer-only shape with no shape-specific
-    // branch in the caller. This is also what lets SF-4 refuse when no deployer is
-    // present rather than be forced to support it — nothing here presupposes one.
+    // branch in the caller. This is also what lets the deploy seam refuse when no
+    // deployer is present rather than be forced to support it — nothing here
+    // presupposes one.
     const shapes = [
       ['migrate', migrateShapedHandles().handles, ['paths', 'network']],
       ['artifacts only', artifactsOnlyHandles().handles, ['paths', 'network']],

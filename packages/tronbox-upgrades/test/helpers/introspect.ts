@@ -7,10 +7,12 @@
  * **five** deliberately exposed host handles (`scheduling.deployer`,
  * `artifacts.intercept`, `chain.tronWrap`, `output.logger`,
  * `receipts.waitForTransactionReceipt`) appear as the redaction marker instead of
- * as objects. That is the right view for INV-29's and INV-40's sweeps: a live
- * `deployer` reaches the `Config` — and from there a configured `privateKey` — by
- * enumerable traversal, and so does a live `ResolverIntercept`, so an unredacted
- * walk would report a violation for exposures INV-29 explicitly permits.
+ * as objects. That is the right view for the handle-sealing rule's and the
+ * credential-redaction guarantee's sweeps: a live `deployer` reaches the
+ * `Config` — and from there a configured `privateKey` — by enumerable
+ * traversal, and so does a live `ResolverIntercept`, so an unredacted walk
+ * would report a violation for exposures the handle-sealing rule explicitly
+ * permits.
  *
  * {@link reachableObjects} walks live object identities with an explicit stop
  * set, for the aliasing assertions that need identity rather than shape.
@@ -132,9 +134,10 @@ export function reachableObjects(
  * Every dotted path at which `target` is reachable from `root` by **own enumerable**
  * properties, up to `maxDepth` segments.
  *
- * The definition INV-29's reachability column is stated in, and the reason it is
- * path-based rather than identity-based. {@link reachableObjects} carries one global
- * `seen` set, which is right for aliasing assertions and wrong for counting routes:
+ * This is the definition behind the handle-sealing rule's reachability
+ * column, and the reason it is path-based rather than identity-based.
+ * {@link reachableObjects} carries one global `seen` set, which is right for
+ * aliasing assertions and wrong for counting routes:
  * on a real host graph `config.networks` and `config._values.networks` are the *same
  * object*, so a global visited set reports whichever route it reaches first and
  * structurally cannot observe the other. That is why `real-tronbox.test.ts` could
@@ -193,21 +196,24 @@ export function sortedOwnKeys(value: object): readonly string[] {
 }
 
 /**
- * INV-40's subject: what the seam **projects**, with the host handles it
- * deliberately exposes (INV-29) dropped rather than serialized.
+ * The credential-redaction guarantee's subject: what the seam **projects**,
+ * with the host handles it deliberately exposes (per the handle-sealing
+ * rule) dropped rather than serialized.
  *
  * The third view, and it exists because the other two cannot express this
  * invariant. {@link serializedTree} runs `toJSON`, so it only ever tests the
- * *backstop*; a live traversal tests INV-29's exposure, not INV-40's subject. This
- * one identifies handle members the way the implementation defines them — a key
+ * *backstop*; a live traversal tests the handle-sealing rule's exposure, not
+ * the credential-redaction guarantee's subject. This one identifies handle
+ * members the way the implementation defines them — a key
  * whose position in the slot's own `toJSON` output holds `redactionMarker`, since
  * `handles.ts:sealSlot` is the only producer of that string — drops exactly those
  * keys, and keeps **every other value live and by reference**.
  *
  * That last property is what makes the result safe to hand to `util.inspect`: the
  * redaction is never applied to a retained value, so a projected field aliasing a
- * host object is still fully reachable in the output. Only the handles themselves
- * are gone, which is precisely the scoping INV-40 states.
+ * host object is still fully reachable in the output. Only the handles
+ * themselves are gone, which is precisely the scoping the credential-redaction
+ * guarantee states.
  */
 export function projectedSurface(
   value: unknown,
@@ -234,8 +240,9 @@ export function projectedSurface(
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
     if (redacted !== undefined && redacted[key] === redactionMarker) {
-      // A host handle: INV-29 governs it, and INV-40 explicitly does not range
-      // over the graph reachable through it.
+      // A host handle: the handle-sealing rule governs it, and the
+      // credential-redaction guarantee explicitly does not range over the
+      // graph reachable through it.
       continue;
     }
     out[key] = projectedSurface(child, redactionMarker, seen);

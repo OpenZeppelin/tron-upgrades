@@ -6,20 +6,21 @@ import { MAX_LIBRARY_NAME_LENGTH } from './identity';
 /**
  * Cause → rendered message. Unconditional, and independent of policy.
  *
- * **This module does not import `./policy` and must not** (INV-11). Cause
+ * **This module does not import `./policy` and must not.** Cause
  * determination and message rendering happen where the failure is observed,
  * whatever the table decides; only the *disposition* is policy. That separation
- * is what makes a leniency flip provably unable to change the diagnosis
- * (INV-12), and what makes eleven cause tests plus one policy-table test
- * possible instead of eleven × two.
+ * is what makes a leniency flip provably unable to change the diagnosis, and
+ * what makes eleven cause tests plus one policy-table test possible instead of
+ * eleven × two.
  *
- * Every headline interpolates the concrete failing thing its own cause carries
- * (INV-14): the contract, the source key and path, the specifier and its
+ * Every headline interpolates the concrete failing thing its own cause
+ * carries: the contract, the source key and path, the specifier and its
  * importer, the two long versions that disagreed, the library and its band. No
  * headline is generic and none covers two causes — which is the property that
- * makes SC-006 checkable per path rather than in aggregate.
+ * makes the actionable-diagnosis requirement checkable per path rather than in
+ * aggregate.
  *
- * Every remedy is distinct across the eleven (INV-13). The pair that makes that
+ * Every remedy is distinct across the eleven. The pair that makes that
  * rule earn its keep is 7 versus 11: both are fixed by running
  * `tronbox compile`, and the remedy is what tells the user which situation they
  * are in — recompile a stale artifact, or go read the compiler's own errors.
@@ -27,8 +28,8 @@ import { MAX_LIBRARY_NAME_LENGTH } from './identity';
 
 /**
  * One rendered refusal. Both fields required, both non-empty: a diagnosis that
- * says something failed without saying what to do satisfies SC-006's letter and
- * defeats its purpose.
+ * says something failed without saying what to do satisfies the
+ * actionable-diagnosis requirement's letter and defeats its purpose.
  */
 export interface Diagnosis {
   /** One sentence naming the contract or input and the cause. */
@@ -38,9 +39,10 @@ export interface Diagnosis {
 }
 
 /**
- * INV-13's runtime guard. A blank string is a plugin bug rather than a user
- * condition, so it raises rather than rendering an empty line — mirroring
- * SF-10's `DegradedNote` rule (`src/output/types.ts:125-130`, *"Never empty"*).
+ * This function's runtime guard. A blank string is a plugin bug rather than a
+ * user condition, so it raises rather than rendering an empty line — mirroring
+ * the option/result surface's `DegradedNote` rule (`src/output/types.ts:125-130`,
+ * *"Never empty"*).
  */
 function diagnosis(headline: string, remedy: string): Diagnosis {
   if (headline.trim() === '' || remedy.trim() === '') {

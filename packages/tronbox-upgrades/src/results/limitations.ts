@@ -6,11 +6,12 @@ import type { ContractHandle } from './types';
  * Where the host's abstraction cannot honour a capability, the limitation is
  * declared **at the return value** and refuses when reached, naming the mechanism
  * and the alternative — never an empty value a caller would reasonably read as
- * evidence that nothing happened (scenario 7, divergence D-7).
+ * evidence that nothing happened (scenario 7 — a recorded divergence,
+ * detailed below).
  *
- * INV-20: the refusal is installed on a **`Proxy` over** the host handle, never on
+ * The refusal is installed on a **`Proxy` over** the host handle, never on
  * the host handle itself, so `src/results/**` contains **no property-installation
- * site at all** and satisfies the host-object augmentation policy (INV-19) by
+ * site at all** and satisfies the host-object augmentation policy by
  * construction rather than by check — nothing is mutated, so there is nothing to
  * guard.
  *
@@ -67,8 +68,8 @@ export class ResultCapabilityUnavailableError extends Error {
 /**
  * A registry named a member the host does not have.
  *
- * Added while implementing: INV-22 requires `sealUnavailable` to refuse such a member
- * "and say why" without naming the class, and INV-8 requires a typed error with a
+ * Added while implementing: `sealUnavailable` must refuse such a member
+ * "and say why" without naming the class, with a typed error carrying a
  * stable `code`.
  */
 export class UnavailableMemberAbsentError extends Error {
@@ -92,7 +93,7 @@ export class UnavailableMemberAbsentError extends Error {
 /**
  * The v1 registry, whose sole member is `events`.
  *
- * **Scoped precisely, and the scoping is the finding** (INV-22).
+ * **Scoped precisely, and the scoping is the finding.**
  * `build/components/Contract/contract.js:Contract._properties` declares
  * `events: function events(){ return [] }` — an **unconditional empty array**,
  * byte-identical on 4.9.0 and 4.8.0 — which a caller reasonably reads as "the
@@ -107,8 +108,9 @@ export class UnavailableMemberAbsentError extends Error {
  * The distinction is recorded here so a later reader does not take the omission as
  * an oversight.
  *
- * Which receipt path the alternative names is SF-4's to finalise; SF-10 supplies
- * the mechanism, the error type, and this one established instance.
+ * Which receipt path the alternative names is the deploy seam's to finalise;
+ * the option/result surface supplies the mechanism, the error type, and this
+ * one established instance.
  */
 export const unavailableContractMembers: LimitationRegistry = Object.freeze({
   events: Object.freeze({
@@ -127,10 +129,10 @@ export const unavailableContractMembers: LimitationRegistry = Object.freeze({
  * `registry` and forwards everything else unchanged.
  *
  * @throws {UnavailableMemberAbsentError} if the registry names a member the target
- *   does not have (INV-22) — checked at seal time, before the proxy exists, so a
+ *   does not have — checked at seal time, before the proxy exists, so a
  *   host change is reported where it happens rather than at the caller's first read.
  *
- * INV-42, sealing is **subtractive-on-read and neutral-on-shape**: only a `get`
+ * Sealing is **subtractive-on-read and neutral-on-shape**: only a `get`
  * trap, with no `set`, `defineProperty`, `ownKeys` or `getOwnPropertyDescriptor`
  * trap that could alter visibility. The sealed handle exposes exactly what the host
  * handle exposed, adds no enumerable member, and adds no member the host did not
@@ -141,11 +143,11 @@ export const unavailableContractMembers: LimitationRegistry = Object.freeze({
  *
  * That neutrality matters more than it looks: `Object.keys` on TronBox's handle
  * already includes `_json` — the full artifact, bytecode and source map — so any
- * trap that changed enumerability would amplify an existing exposure. INV-41: the
+ * trap that changed enumerability would amplify an existing exposure. The
  * refusal message names the member and the remedy only, never the target's
  * internals, and no host-supplied object is ever passed to a formatter.
  *
- * INV-21: the returned proxy travels to the migration author only. No plugin path
+ * The returned proxy travels to the migration author only. No plugin path
  * hands it back to `ResolverIntercept.require`/`contracts`, to `artifactor.saveAll`,
  * to a deployer step, or to any other host API — the proxy is created at the return
  * boundary, after every host interaction is complete. A host that read a trapped

@@ -2,9 +2,9 @@
  * The shared result-type contract for every operation, plus the host-object
  * augmentation policy the whole package works under.
  *
- * INV-43: this directory imports only `../output`, and only for `DegradedNote`.
+ * This directory imports only `../output`, and only for `DegradedNote`.
  *
- * SF-11 owns the package entry point; this is the directory's face to its
+ * Packaging owns the package entry point; this is the directory's face to its
  * siblings.
  */
 export {

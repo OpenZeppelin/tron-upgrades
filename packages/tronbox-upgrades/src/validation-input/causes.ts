@@ -1,22 +1,23 @@
 import { ValidationInputInvariantError } from './errors';
 
 /**
- * The closed union of the eleven reasons SF-2 cannot produce a validation input,
- * and nothing else. Pure data: no policy, no rendering, no I/O.
+ * The closed union of the eleven reasons the validation ladder cannot produce a
+ * validation input, and nothing else. Pure data: no policy, no rendering, no I/O.
  *
  * **Closed is the property that matters.** It is what makes one
  * `could not validate` covering eleven different situations unrepresentable —
- * the SC-006 failure the enumeration exists to prevent — and it is what makes
- * *"any obligation SF-2 owes a diagnosis for has a member"* (INV-2) checkable
- * rather than aspirational. Adding an obligation adds a member; there is no
- * `throw` at a call site for a condition that lacks one.
+ * the actionable-diagnosis failure the enumeration exists to prevent — and it
+ * is what makes *"any obligation the validation ladder owes a diagnosis for
+ * has a member"* checkable rather than aspirational. Adding an obligation adds
+ * a member; there is no `throw` at a call site for a condition that lacks one.
  *
- * **Every payload field is a scalar or a closed union** (INV-17). That is not a
- * convention asking politely: there is no field on any member that a Solidity
- * source string, a settings object, a host handle or an upstream `Error` could be
- * assigned to, so the leak is unrepresentable rather than filtered. INV-39
- * confines source text to `solcInput.sources[key].content` and this type is half
- * of why that holds.
+ * **Every payload field is a scalar or a closed union — the scalars-only
+ * rule.** That is not a convention asking politely: there is no field on any
+ * member that a Solidity source string, a settings object, a host handle or an
+ * upstream `Error` could be assigned to, so the leak is unrepresentable rather
+ * than filtered. The source-confinement rule confines source text to
+ * `solcInput.sources[key].content` elsewhere, and this type is half of why
+ * that holds.
  */
 export type Cause =
   /**
@@ -24,7 +25,7 @@ export type Cause =
    *
    * Detectable before any work: an existence check on the derived path. The path
    * is carried so the remedy names *which* file was looked for, which is the only
-   * way a user can tell a missing download from a moved cache (INV-48).
+   * way a user can tell a missing download from a moved cache.
    */
   | {
       readonly kind: 'compiler-absent';
@@ -37,8 +38,8 @@ export type Cause =
    *
    * A distinct cause from 1 and 3: the compiler may be present, loadable and
    * matching, and still outside the range this plugin has verified. The declared floor, and the
-   * gate is on the *version* rather than on the output because F-5 measured a
-   * sub-0.5.13 compiler accepting a `storageLayout` request with zero
+   * gate is on the *version* rather than on the output because measurement
+   * showed a sub-0.5.13 compiler accepting a `storageLayout` request with zero
    * diagnostics of any severity and simply omitting the key.
    */
   | {
@@ -49,7 +50,7 @@ export type Cause =
   /**
    * 3 — the loaded compiler is not the build that produced the artifact.
    *
-   * Compared as the **long** version (INV-5). C3 measured why a triple cannot
+   * Compared as the **long** version. A measurement showed why a triple cannot
    * work: `~/.tronbox/solc/soljson_v0.8.26.js` reports
    * `0.8.26+commit.733b4d28.Emscripten.clang` and
    * `~/.tronbox/evm-solc/soljson_v0.8.26.js` reports
@@ -66,9 +67,10 @@ export type Cause =
   /**
    * 4 — a source in the closure is missing or unreadable.
    *
-   * The **path**, never the bytes (INV-17, INV-39). `because` separates the two
-   * remedies: a file that is gone is restored, a file that is present and
-   * unreadable is a permission or encoding problem.
+   * The **path**, never the bytes — the scalars-only and source-confinement
+   * rules together. `because` separates the two remedies: a file that is gone
+   * is restored, a file that is present and unreadable is a permission or
+   * encoding problem.
    */
   | {
       readonly kind: 'source-unreadable';
@@ -80,7 +82,7 @@ export type Cause =
    * 5 — an import cannot be resolved to a source the plugin may supply.
    *
    * Both halves are needed: the specifier alone does not say which file to edit.
-   * Decided *before* solc runs (INV-27), because F-12 measured what happens
+   * Decided *before* solc runs, because measurement showed what happens
    * otherwise — `ParserError: Source "Nope.sol" not found: File not supplied
    * initially`, a message about the plugin's own input assembly that a user
    * cannot act on.
@@ -91,10 +93,10 @@ export type Cause =
       readonly specifier: string;
     }
   /**
-   * 6 — the artifact lacks a field SF-2 requires.
+   * 6 — the artifact lacks a field the validation ladder requires.
    *
    * `missingField` is a closed union rather than a free string, so a new
-   * requirement cannot be reported as a generic absence (INV-19). Its five
+   * requirement cannot be reported as a generic absence. Its five
    * members are exactly the seam's `ArtifactRecordField`, which is TronBox's own
    * artifact allow-list minus what nothing needs — so a field can be absent only
    * because the host version predates it, which is precisely what the remedy
@@ -118,19 +120,20 @@ export type Cause =
    * originally specified `identity: ArtifactIdentityComparison`.**
    * Two reasons that field cannot stay, and the second is the substantive one:
    *
-   * - It is an object, so it fails INV-17's own type-level instrument (*"every
-   *   `Cause` member's payload fields extend `string | number | boolean`"*).
+   * - It is an object, so it fails the type-level instrument that checks
+   *   *"every `Cause` member's payload fields extend
+   *   `string | number | boolean`"*.
    * - **It is constant on this path, so it carries no information a message could
-   *   name.** INV-32 fires this cause *iff* `withoutMetadataMatches` is `false`;
+   *   name.** This cause fires *iff* `withoutMetadataMatches` is `false`;
    *   a differing trimmed hash implies a differing full hash, so
-   *   `withMetadataMatches` is `false` too; and INV-31 makes
-   *   `metadataOnlyDifference` present *iff*
+   *   `withMetadataMatches` is `false` too; and `metadataOnlyDifference` is
+   *   present *iff*
    *   `withoutMetadataMatches && !withMetadataMatches`, so it is absent. The
    *   record is always `{ false, false }` here.
    *
    * The full comparison record still exists and is still reported — on
-   * `InputProvenance.identity` for the success path (INV-4), where it is *not*
-   * constant and where the metadata-only row lives (INV-31).
+   * `InputProvenance.identity` for the success path, where it is *not*
+   * constant and where the metadata-only row lives.
    */
   | { readonly kind: 'artifact-stale'; readonly contract: string }
   /**
@@ -139,13 +142,14 @@ export type Cause =
    * Fires by **catching**, not by timing: the TVM wasm reports
    * its ceiling as a `WebAssembly.RuntimeError`, measured verbatim as
    * `RuntimeError: memory access out of bounds`
-   * (`evidence/probe-wasm-memory-ceiling.js`). Terminal — one contract's closure
-   * is the smallest partition there is (INV-37).
+   * (measured with a live compile probe). Terminal — one contract's closure
+   * is the smallest partition there is.
    *
    * **`raised` is a closed union, corrected from the originally specified
-   * `raised: string`.** INV-17's violation scenario names quoting the wasm's
-   * `RuntimeError` into this message as the violation, so the field cannot hold
-   * the throw's text. A classification keeps the distinction the probe measured —
+   * `raised: string`.** The scalars-only rule's violation scenario names
+   * quoting the wasm's `RuntimeError` into this message as the violation, so
+   * the field cannot hold the throw's text. A classification keeps the
+   * distinction the probe measured —
    * the ceiling has one verbatim string, and any other wasm abort is a different
    * event — while quoting nothing.
    */
@@ -159,13 +163,13 @@ export type Cause =
    * 9 — the layout for the contract under validation is empty or absent.
    *
    * A cause and not an invariant throw, even though it means the plugin has a
-   * bug, because F-4 measured the consequence of letting it through:
+   * bug, because measurement showed the consequence of letting it through:
    * `getStorageUpgradeErrors(EMPTY_original, real_updated)` returns **no
    * errors** and `assertStorageUpgradeSafe(EMPTY, real)` does not throw — an
    * empty reference layout classifies every variable as a safe append. A silent
    * accept is the worst outcome in this sub-feature, so the condition goes
    * through the same enumerated, rendered, tested path as everything else rather
-   * than depending on an exception reaching a handler (INV-18).
+   * than depending on an exception reaching a handler.
    */
   | {
       readonly kind: 'layout-vacuous';
@@ -175,13 +179,14 @@ export type Cause =
   /**
    * 10 — a linked library's name is past the length the host can encode.
    *
-   * F-9: `Compile/index.js:replaceLinkReferences` builds `'__' + name`, pads with
-   * `_` while shorter than 40 and splices over a 40-character window without ever
-   * truncating, while upgrades-core normalizes on `/__\w{36}__/g`. So 37–38
+   * Measured directly: `Compile/index.js:replaceLinkReferences` builds
+   * `'__' + name`, pads with `_` while shorter than 40 and splices over a
+   * 40-character window without ever truncating, while upgrades-core
+   * normalizes on `/__\w{36}__/g`. So 37–38
    * characters leaves the artifact intact and makes `hashBytecode` throw, and
    * ≥ 39 lengthens the artifact's bytecode and shifts every following byte. The
    * message names the library and the band because upgrades-core's own
-   * `Bytecode is not a valid hex string` names neither (INV-14, INV-42).
+   * `Bytecode is not a valid hex string` names neither.
    */
   | {
       readonly kind: 'library-name-unsupported';
@@ -195,12 +200,13 @@ export type Cause =
    * It is not cause 7: cause 7 fires *iff*
    * `withoutMetadataMatches` is `false`, which is a **comparison result**, and a
    * compile that fails produces no artifact to compare — so overloading cause 7
-   * would not merely name the wrong state, it would make INV-32 false as
-   * written.
+   * would not merely name the wrong state, it would make that biconditional
+   * false as written.
    *
    * **The count, never the text.** solc's error strings are unbounded and
-   * routinely carry absolute filesystem paths; rendering them is SF-10's
-   * territory and INV-17's / INV-39's prohibition here. A `number` fits the
+   * routinely carry absolute filesystem paths; rendering them is the
+   * option/result surface's territory and the scalars-only and
+   * source-confinement rules' prohibition here. A `number` fits the
    * scalars-only rule and a diagnostic array does not, so the type enforces the
    * condition. The host already owns that rendering —
    * `Compile/index.js:111`, `:116`, `:120` and `:141` at `v4.9.0` take
@@ -245,7 +251,7 @@ export const ARTIFACT_FIELDS_VERIFIED_SINCE = '4.8.0';
  * runtime `switch` default is that a default only fires when a new member is
  * *reached*, while the alias fails when the member is *added*. So a twelfth
  * obligation that arrives without a diagnosis, a remedy and a policy entry is a
- * compile error and not a review finding (INV-2).
+ * compile error and not a review finding.
  */
 export const causeKinds = [
   'compiler-absent',
@@ -272,7 +278,7 @@ type _CauseKindsComplete = NoMissingMembers<
  * second import.
  *
  * It lives here rather than in `errors.ts` because it is a fact about *this*
- * union, and because INV-10's instrument pins `policy.ts` to exactly one module
+ * union, and because an instrument pins `policy.ts` to exactly one module
  * specifier — `./causes`. A guard reachable only from `errors.ts` would make that
  * two.
  */

@@ -9,7 +9,7 @@ import type {
 } from './types';
 
 /**
- * INV-19: the declared range has exactly one home — `peerDependencies.tronbox`
+ * The declared range has exactly one home — `peerDependencies.tronbox`
  * in the plugin's own manifest — is read rather than restated, and is never a
  * comparison operand.
  *
@@ -29,12 +29,12 @@ import type {
  * seam reads intact. The structural `handle-malformed` diagnosis *is* the version
  * check, and it answers the question that matters — is the property path this seam
  * needs present? — rather than a proxy for it. Reading the host's manifest is
- * additionally forbidden outright by INV-49: no module in the plugin imports the
+ * additionally forbidden outright: no module in the plugin imports the
  * host, by any path.
  */
 const declaredTronBoxRange: string = packageJson.peerDependencies.tronbox;
 
-/** INV-5 / INV-10: a union gaining a member becomes a compile error, not a fallthrough. */
+/** Exhaustiveness check: a union gaining a member becomes a compile error, not a fallthrough. */
 function assertNever(value: never, context: string): never {
   throw new Error(
     `${context}: unhandled variant ${JSON.stringify(value)}`,
@@ -47,7 +47,7 @@ function formatList(values: readonly string[]): string {
 
 /**
  * Renders a compared Config value for an `inconsistent` message. Only members
- * of `ConfigScalarField` reach this (INV-13 / INV-41), so the values are
+ * of `ConfigScalarField` reach this, so the values are
  * strings, numbers, booleans or `null` — never a host object and never a
  * credential.
  */
@@ -132,7 +132,7 @@ function renderInconsistency(inconsistency: Inconsistency): string {
 }
 
 /**
- * INV-10: exactly three subclasses, each with a `code` derived from its
+ * Exactly three subclasses, each with a `code` derived from its
  * `diagnosis` by the template-literal type. A fourth failure class cannot be
  * added without deliberately widening `EnvironmentDiagnosis`.
  */
@@ -141,7 +141,7 @@ export abstract class TronBoxEnvironmentError extends Error {
   abstract readonly code: `TRONBOX_ENV_${Uppercase<EnvironmentDiagnosis>}`;
 }
 
-/** INV-11: the only diagnosis that says "outside a TronBox migration context". */
+/** The only diagnosis that says "outside a TronBox migration context". */
 export class EnvironmentAbsentError extends TronBoxEnvironmentError {
   readonly diagnosis = 'absent' as const;
   readonly code = 'TRONBOX_ENV_ABSENT' as const;
@@ -159,7 +159,7 @@ export class EnvironmentAbsentError extends TronBoxEnvironmentError {
   }
 }
 
-/** INV-11: a required capability cannot be constructed. */
+/** A required capability cannot be constructed. */
 export class EnvironmentIncompleteError extends TronBoxEnvironmentError {
   readonly diagnosis = 'incomplete' as const;
   readonly code = 'TRONBOX_ENV_INCOMPLETE' as const;
@@ -177,7 +177,7 @@ export class EnvironmentIncompleteError extends TronBoxEnvironmentError {
   }
 }
 
-/** INV-11: every required capability was constructed and the sources disagree. */
+/** Every required capability was constructed and the sources disagree. */
 export class EnvironmentInconsistentError extends TronBoxEnvironmentError {
   readonly diagnosis = 'inconsistent' as const;
   readonly code = 'TRONBOX_ENV_INCONSISTENT' as const;
@@ -195,10 +195,10 @@ export class EnvironmentInconsistentError extends TronBoxEnvironmentError {
 }
 
 /**
- * Exported for SF-5 to throw if refusal is the policy it chooses. SF-0 owns
- * the diagnosis text because it holds the candidates; SF-0 never throws this
- * itself. Deliberately not a `TronBoxEnvironmentError` subclass — INV-10 fixes
- * that family at three.
+ * Exported for the proxy operations to throw if refusal is the policy it
+ * chooses. The environment seam owns the diagnosis text because it holds the
+ * candidates; the environment seam never throws this itself. Deliberately not
+ * a `TronBoxEnvironmentError` subclass — that family is fixed at three.
  */
 export class ArtifactNameAmbiguousError extends Error {
   readonly candidates: readonly ArtifactCandidate[];
@@ -229,7 +229,7 @@ export function getDeclaredTronBoxRange(): string {
 }
 
 /**
- * INV-14: the only constructor for an `UnsatisfiedSlot`. `providedIn` and
+ * The only constructor for an `UnsatisfiedSlot`. `providedIn` and
  * `absentIn` are read from the slot table, never authored at a throw site, so
  * a table edit cannot leave a hand-written message contradicting it.
  */

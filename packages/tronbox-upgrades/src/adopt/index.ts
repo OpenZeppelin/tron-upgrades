@@ -3,10 +3,10 @@
  * the plugin into the deployment record, so they become upgradeable and
  * validatable through it. The operation that writes the layout every
  * subsequent upgrade validates against — which is why nothing here records
- * without the on-chain comparison passing (INV-1): a plausible-looking wrong
+ * without the on-chain comparison passing: a plausible-looking wrong
  * baseline is a silent false negative in every later safety check.
  *
- * Adoption sends nothing (INV-5): no queue, no deploy, no transaction — reads
+ * Adoption sends nothing: no queue, no deploy, no transaction — reads
  * and record writes only.
  */
 
@@ -60,7 +60,7 @@ export async function runForceImport(
   const address = canonicalizeAddress(addressInput);
   const readers = toolkit.chain.read;
 
-  // INV-3 — the batched slot read discriminates no-code as its own fact (a
+  // The batched slot read discriminates no-code as its own fact (a
   // TVM node rejects per-slot reads for a no-code address, and the per-slot
   // readers raise on empty slots — both measured), so classification uses the
   // one non-raising instrument.
@@ -97,7 +97,7 @@ export async function runForceImport(
     }
   }
 
-  // INV-2 — the kind gate, before anything validates or writes.
+  // The kind gate, before anything validates or writes.
   if (resolved.kind !== undefined && resolved.kind !== found) {
     throw new AdoptionKindMismatchError(address, found, resolved.kind);
   }
@@ -107,7 +107,7 @@ export async function runForceImport(
     { ...resolved, kind: found === 'implementation' ? resolved.kind : found === 'beacon' ? 'beacon' : found },
   );
 
-  // INV-1 — the verification. Empty expected bytecode refuses rather than
+  // The verification. Empty expected bytecode refuses rather than
   // matching everything (the vacuity arm).
   const expected = (contract as { deployedBytecode?: unknown }).deployedBytecode;
   if (typeof expected !== 'string' || expected.replace(/^0x/, '') === '') {
@@ -131,7 +131,7 @@ export async function runForceImport(
     );
   }
 
-  // INV-4 — replay and conflicts, against the existing record.
+  // Replay and conflicts, against the existing record.
   const proxyKinds: ReadonlyArray<AdoptedKind> = ['transparent', 'uups', 'beacon'];
   if (proxyKinds.includes(found) && found !== 'beacon') {
     const existing = await toolkit.session.getProxyRecord(address);

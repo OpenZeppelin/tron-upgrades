@@ -8,21 +8,21 @@ import type { AbsolutePath } from '../../src/environment/types';
 import { SENTINEL_FILE_CONTENT } from './config-fixtures';
 
 /**
- * `BuildInfoReader` fixtures — the seam's one injected dependency (INV-43).
+ * `BuildInfoReader` fixtures — the seam's one injected dependency.
  *
- * They exist so the three `IndeterminateReason` branches, which INV-34
- * establishes are *routine* states rather than rare fallbacks, are testable
- * without building a deliberately corrupt build tree. A `fs`-coupled module
- * would make each of those tests construct and tear down broken directories —
- * the kind of test that gets skipped once it turns flaky, which is how a routine
- * degraded path ends up uncovered in violation of SC-003.
+ * They exist so the three `IndeterminateReason` branches, established as
+ * *routine* states rather than rare fallbacks, are testable without building
+ * a deliberately corrupt build tree. A `fs`-coupled module would make each of
+ * those tests construct and tear down broken directories — the kind of test
+ * that gets skipped once it turns flaky, which is how a routine degraded path
+ * ends up uncovered in violation of the "zero silent degraded paths"
+ * requirement.
  *
- * **The interface has two methods.** INV-31 fixes it at exactly
- * `read` and `exists`, and `exists` is *required* rather than optional
- * deliberately: an optional probe would force `resolvePackaged` to keep a
- * fallback path for readers that decline it, which is precisely where INV-18's
- * missing-vs-malformed split would quietly regress back to one combined message.
- * So every fixture here declares one.
+ * **The interface has exactly two methods: `read` and `exists`.** `exists` is
+ * *required* rather than optional deliberately: an optional probe would force
+ * `resolvePackaged` to keep a fallback path for readers that decline it, which
+ * is precisely where the missing-vs-malformed split would quietly regress
+ * back to one combined message. So every fixture here declares one.
  */
 
 export const DEFAULT_BUILD_INFO_DIR = '/proj/build/build-info';
@@ -34,18 +34,19 @@ export function absolute(value: string): AbsolutePath {
 /**
  * The `exists` answer for the fixtures that exist to drive `read`.
  *
- * `false` rather than `true`, and the choice is not arbitrary. These fixtures are
- * never the subject of an INV-18 assertion, so the value is unobservable through
- * them today — but if a future edit did route a probe here, `false` yields the
- * "does not exist at <path>" refusal, which is a visible and actionable message,
- * where `true` yields the malformed refusal, which asserts the file *is* present.
+ * `false` rather than `true`, and the choice is not arbitrary. These fixtures
+ * are never the subject of a missing-vs-malformed assertion, so the value is
+ * unobservable through them today — but if a future edit did route a probe
+ * here, `false` yields the "does not exist at <path>" refusal, which is a
+ * visible and actionable message, where `true` yields the malformed refusal,
+ * which asserts the file *is* present.
  * A wrong-but-loud diagnosis beats a wrong-and-confident one.
  *
  * Deliberately not a throw: `resolvePackaged` catches a throwing probe and
  * translates it (by design — see `artifacts.ts:resolvePackaged`), so a trap here
  * would be absorbed into a refusal rather than surfacing as a test failure. The
  * guard against a stray probe is structural instead — see the `exists` call-site
- * scan in `error-semantics.test.ts` (INV-31).
+ * scan in `error-semantics.test.ts`.
  */
 const DECLINES_EXISTENCE = (): boolean => false;
 
@@ -54,10 +55,10 @@ export interface CountingReader extends BuildInfoReader {
   readonly directories: readonly AbsolutePath[];
   readonly callCount: number;
   /**
-   * Every path `exists` was asked about, in order. INV-31 confines the probe to
-   * the one host-arithmetic path, and INV-18's order makes "never probed" the
-   * assertion for an escaping path — both need the calls recorded, not just
-   * counted.
+   * Every path `exists` was asked about, in order. The two-method contract
+   * confines the probe to the one host-arithmetic path, and the
+   * missing-vs-malformed order makes "never probed" the assertion for an
+   * escaping path — both need the calls recorded, not just counted.
    */
   readonly probedPaths: readonly AbsolutePath[];
   readonly probeCount: number;
@@ -96,12 +97,14 @@ export function countingReader(
 }
 
 /**
- * INV-18's existence-probe fixture: answers from `answer`, records every path,
- * and reads as `absent` because `resolvePackaged` never consults `read`.
+ * The existence-probe fixture for the missing-vs-malformed split: answers
+ * from `answer`, records every path, and reads as `absent` because
+ * `resolvePackaged` never consults `read`.
  *
- * This is what makes all three of INV-18's messages reachable from a unit test
- * with no broken file on a real disk — the reason the amendment put the probe on
- * the injected dependency rather than calling `fs` from `artifacts.ts`.
+ * This is what makes all three of that split's messages reachable from a unit
+ * test with no broken file on a real disk — the reason the amendment put the
+ * probe on the injected dependency rather than calling `fs` from
+ * `artifacts.ts`.
  */
 export function existenceProbeReader(
   answer: boolean | ((file: AbsolutePath) => boolean),
@@ -143,7 +146,7 @@ export function unreadableReader(
   };
 }
 
-/** A reader that names a file outside `buildInfoDirectory` (INV-31). */
+/** A reader that names a file outside `buildInfoDirectory`. */
 export function escapingUnreadableReader(): BuildInfoReader {
   return unreadableReader('/etc/passwd', 'EACCES');
 }
@@ -168,12 +171,15 @@ export interface BuildInfoFileSpec {
   readonly contracts?: readonly ContractEntry[];
   /** Replaces the whole parsed output — for malformed-shape fixtures. */
   readonly output?: unknown;
-  /** Place the file somewhere else entirely, for INV-31's containment test. */
+  /**
+   * Place the file somewhere else entirely, for the buildInfoDirectory-
+   * containment test.
+   */
   readonly absolutePath?: string;
 }
 
 /**
- * A solc standard-JSON output object carrying ABI and bytecode, so INV-42's
+ * A solc standard-JSON output object carrying ABI and bytecode, so the
  * "identifiers and paths, never content" assertion has content to *not* find.
  */
 function contractsOutput(
@@ -216,7 +222,10 @@ export function filesReader(
   };
 }
 
-/** An in-memory reader over a name→output map — the "second host" for INV-43. */
+/**
+ * An in-memory reader over a name→output map — the "second host" for the
+ * seam's one injected dependency.
+ */
 export function inMemoryReader(
   store: ReadonlyMap<string, unknown>,
 ): BuildInfoReader {
@@ -231,8 +240,8 @@ export function inMemoryReader(
         : { status: 'files', files };
     },
     // The second host answers the probe from the same in-memory store, so
-    // INV-43's embed covers both methods rather than declaring one and stubbing
-    // the other.
+    // this implementation covers both methods rather than declaring one and
+    // stubbing the other.
     exists: (file: AbsolutePath) => store.has(path.basename(file)),
   };
 }

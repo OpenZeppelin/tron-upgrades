@@ -4,11 +4,12 @@ import type { RedeployMode } from './types';
  * The defaults table: one entry per option this package owns, each traced to the
  * parity-target site its value came from.
  *
- * INV-46: **the six validation defaults are not here, and that is the point.**
+ * **The six validation defaults are not here, and that is the point.**
  * `resolveUpgradeOptions` calls upstream's `withValidationDefaults`, so they cannot
  * drift by construction. A local re-implementation of `kind: 'transparent'` or
  * `unsafeAllowRenames: false` that drifted from upstream would flip the safety
- * posture of every operation with no diagnostic — the risk SF-10 exists to remove:
+ * posture of every operation with no diagnostic — the risk the option/result
+ * surface exists to remove:
  * *"a silently flipped default … changes safety posture across every
  * operation"*.
  *
@@ -23,9 +24,9 @@ export const pluginOptionDefaults: {
   readonly redeployImplementation: RedeployMode;
   readonly useDeployedImplementation: boolean;
 } = Object.freeze({
-  /** Milliseconds. Live on TRON — divergence D-1. */
+  /** Milliseconds. Live on TRON — a recorded divergence from the parity target. */
   timeout: 60_000,
-  /** Milliseconds. Live on TRON — divergence D-1. */
+  /** Milliseconds. Live on TRON — a recorded divergence from the parity target. */
   pollingInterval: 5_000,
   redeployImplementation: 'onchange',
   /** Collapsed into `redeployImplementation` at resolution; never surfaces. */
@@ -45,7 +46,7 @@ export const DEFAULT_INITIALIZER = 'initialize';
 /**
  * What `withValidationDefaults({})` is recorded as returning.
  *
- * INV-46's canary asserts this against the installed package in **both**
+ * A canary asserts this against the installed package in **both**
  * directions, so an `upgrades-core` bump that changes a validation default is a
  * failing test rather than a silent safety-posture change. This value is **never
  * read by resolution** — it is the canary's expectation, not a fallback, and

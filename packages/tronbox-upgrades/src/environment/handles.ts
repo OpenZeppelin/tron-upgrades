@@ -1,7 +1,7 @@
 /**
  * The outcome of reading one property off a host object.
  *
- * INV-17 turns on the three states being distinguishable: a key that is absent,
+ * The three states must stay distinguishable: a key that is absent,
  * a key present with a nullish value, and a key present with a falsy-but-valid
  * value. `'threw'` is a fourth, host-specific state —
  * `build/components/Config.js:Config`'s `network_config` getter raises
@@ -19,10 +19,10 @@ export type PropertyRead =
     };
 
 /**
- * INV-33: every TronBox-internal property path a resolution reads is recorded
+ * Every TronBox-internal property path a resolution reads is recorded
  * at the read site, so the reported set is neither a static list nor a
- * superset. An instance's lifetime is one resolution — INV-20 forbids
- * module-scope mutable state, which is why this is a class and not a module
+ * superset. An instance's lifetime is one resolution — module-scope mutable
+ * state is forbidden, which is why this is a class and not a module
  * singleton.
  */
 export class InternalPathRecorder {
@@ -64,13 +64,13 @@ function read(
     }
     return { ok: true, value: owner[key] };
   } catch {
-    // A host accessor raised. INV-15: no host throw escapes the seam.
+    // A host accessor raised. No host throw escapes the seam.
     return { ok: false, reason: 'threw' };
   }
 }
 
 /**
- * INV-17: own-property presence, never truthiness. `Config.prototype.addProp`'s
+ * Own-property presence, never truthiness. `Config.prototype.addProp`'s
  * getter is `if (this._values[key]) return this._values[key]; …` — a truthiness
  * test — so a key explicitly set to `''` falls through to its default and
  * reports a value the user did not configure. Testing presence instead of
@@ -109,7 +109,7 @@ export function supplied(value: unknown): boolean {
 /**
  * What a redacted host handle serializes to.
  *
- * **Five host handles are exposed whole and all five are sealed.** INV-29's rule
+ * **Five host handles are exposed whole and all five are sealed.** The rule
  * is *all five are unsafe to log*, deliberately not keyed to the subset that is
  * credential-reachable today — a rule keyed to that subset is one an upstream
  * bump silently expires. The column below is a fact about `v4.8.0` and `v4.9.0`;
@@ -140,8 +140,9 @@ export function supplied(value: unknown): boolean {
  * mask the seam does not own is not a guarantee the seam can make, and an
  * unprobed handle is not a safe one.
  *
- * INV-40 requires that no credential appear in any slot field, while INV-29
- * deliberately exposes those five as named capabilities — a slot that hid its
+ * The no-credential-leak guarantee requires that no credential appear in any
+ * slot field, while the five-handles rule deliberately exposes those five as
+ * named capabilities — a slot that hid its
  * handle would not be a usable capability. TronBox applies no shield to `Config`,
  * `Deployer` or `Resolver`, so the seam applies one at its own boundary.
  */
@@ -159,8 +160,8 @@ export const REDACTED_HOST_HANDLE =
  * handles arrive as arguments (`types.ts:RawMigrationHandles`) rather than
  * being fetched from anywhere.
  *
- * The refusal is deliberately **not** a `TronBoxEnvironmentError` — INV-10
- * fixes that family at three, and this is not a diagnosis of the user's
+ * The refusal is deliberately **not** a `TronBoxEnvironmentError` — that
+ * family is fixed at three, and this is not a diagnosis of the user's
  * environment.
  */
 import {
@@ -196,7 +197,7 @@ export type { HostSharingGuard };
  *
  * Note what the guard is *not* protecting against, so the two hazards do not get
  * conflated: `Object.defineProperty` here cannot fail on a non-configurable
- * property the way SF-10's `events` augmentation does, because the host installs
+ * property the way the option/result surface's `events` augmentation does, because the host installs
  * `toJSON` as a `_static_method` — writable and configurable — rather than through
  * `Contract.addProp`, which forces `configurable: false`. That makes this site
  * *mechanically* fine and is exactly why the guard is needed: without it the only

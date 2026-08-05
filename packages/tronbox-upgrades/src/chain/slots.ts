@@ -2,18 +2,18 @@
  * The ERC-1967 slot keys, the three ABI selectors, and the pure address/word
  * helpers that decode what a storage read returns.
  *
- * **INV-45: this module has zero imports.** Not from the host, not from
+ * **This module has zero imports.** Not from the host, not from
  * `@openzeppelin/upgrades-core`, not from a Node built-in, not from a sibling in
- * `src/chain/`. That is what makes SF-11's extraction a file move plus a
- * re-export rather than a dependency untangling, and the import INV-45's
- * violation scenario names as the most likely one to creep in is `./errors` —
- * for a throw.
+ * `src/chain/`. That is what makes packaging's extraction a file move plus a
+ * re-export rather than a dependency untangling, and the import most likely
+ * to creep in and violate that rule is `./errors` — for a throw.
  *
  * So the two errors this module raises are **declared here** and re-exported
- * from `errors.ts`. INV-6 and INV-7 require `slotToAddress` and `toRpcAddress`
- * to *raise*; INV-45 requires this file to import nothing; an `Error` subclass
- * needs no import, so both hold at once. INV-19's "closed and enumerable from
- * `errors.ts`" survives because `import * as errors` sees a re-export, and the
+ * from `errors.ts`. The `slotToAddress` and `toRpcAddress` refusal rules
+ * require them to *raise*; the zero-imports rule requires this file to import
+ * nothing; an `Error` subclass needs no import, so both hold at once. The
+ * closed-and-enumerable-from-`errors.ts` guarantee survives because
+ * `import * as errors` sees a re-export, and the
  * reversal cost if that turns out wrong is a file move plus two lines.
  */
 
@@ -26,11 +26,11 @@ declare const ChainAddressBrand: unique symbol;
  * Not checksummed, and the brand is what stops that from being a silent bug.
  * upgrades-core compares addresses with `===` while reading its own manifest, so
  * a casing mismatch silently drops a recorded proxy kind and layout — which is
- * why canonicalization has exactly one home, and it is SF-3's record boundary,
- * not here. SF-3 is expected to define its own brand for the canonical form, so
- * assignment fails in both directions.
+ * why canonicalization has exactly one home, and it is the record layer's
+ * record boundary, not here. The record layer is expected to define its own
+ * brand for the canonical form, so assignment fails in both directions.
  *
- * INV-5: for comparison use {@link sameAddress}. Never `===`.
+ * For comparison use {@link sameAddress}. Never `===`.
  */
 export type ChainAddress = string & {
   readonly [ChainAddressBrand]: 'lowercase-hex';
@@ -50,7 +50,7 @@ const TRON_HEX_CHARS = ADDRESS_HEX_CHARS + 2;
 const BASE58_ADDRESS_CHARS = 34;
 
 /**
- * INV-44: nothing SF-1 renders is unbounded. A caller can hand these helpers an
+ * Nothing the chain layer renders is unbounded. A caller can hand these helpers an
  * arbitrarily long string — a whole HTML error page has reached a decoder before
  * — and the refusal has to stay readable.
  */
@@ -88,7 +88,7 @@ export class ChainSlotMalformedError extends Error {
 }
 
 /**
- * INV-7: a Base58 `T…` address is refused here rather than forwarded.
+ * A Base58 `T…` address is refused here rather than forwarded.
  *
  * Measured live: `eth_getCode` with `TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t` returns
  * `-32602 exception decoding Hex string: invalid characters encountered in Hex
@@ -120,7 +120,7 @@ export class ChainAddressUnusableError extends Error {
  * Derived from upgrades-core's own `toEip1967Hash` and re-verified in-process at
  * `1.46.0` while writing this file. They are published as literals rather than
  * imported because the engine hardcodes none of them — it derives all five at
- * each call site — but INV-49 makes them a *pinned* copy: a test re-runs the
+ * each call site — but they are kept as a *pinned* copy: a test re-runs the
  * engine's derivation and compares, so a bump that changes a label or the
  * hashing fails a test instead of asking `eth_getStorageAt` about a different
  * slot than the engine reads.
@@ -150,12 +150,12 @@ export const legacyEip1967Slots: Readonly<
 });
 
 /**
- * The three selectors SF-1 needs, as constants.
+ * The three selectors the chain layer needs, as constants.
  *
  * Each is `keccak256(signature)[0:4]` of a fixed string, so computing them at
  * runtime would buy nothing and cost a keccak dependency the package does not
- * have. Re-derived against `ethereumjs-util` while writing this file; INV-49
- * pins them the same way as the slots.
+ * have. Re-derived against `ethereumjs-util` while writing this file; the
+ * same pinned-copy discipline pins them the same way as the slots.
  */
 export const selectors = Object.freeze({
   /** `UPGRADE_INTERFACE_VERSION()` */
@@ -183,7 +183,7 @@ function isHexDigits(value: string): boolean {
 }
 
 /**
- * INV-6: decides emptiness without assuming a fixed length and without any
+ * Decides emptiness without assuming a fixed length and without any
  * construction that throws on a short input.
  *
  * The engine's own `eip-1967.js:isEmptySlot` is
@@ -226,7 +226,7 @@ export function looksLikeSlotAddressWord(word: string): boolean {
 /**
  * The last 20 bytes of a 32-byte word, validated.
  *
- * INV-6: never produces a value by truncation alone. Exactly 32 bytes of hex,
+ * Never produces a value by truncation alone. Exactly 32 bytes of hex,
  * top 12 bytes zero, or {@link ChainSlotMalformedError}.
  *
  * @throws {ChainSlotMalformedError} the word is not 32 bytes of hex, or its top
@@ -257,7 +257,7 @@ export function slotToAddress(word: string): ChainAddress {
 export const zeroChainAddress: ChainAddress = slotToAddress(zeroSlotWord);
 
 /**
- * INV-5: the only sanctioned address comparison. Case-insensitive,
+ * The only sanctioned address comparison. Case-insensitive,
  * `0x`-optional, length-checked.
  *
  * Length-checked because a comparison that passes for two strings which are not
@@ -288,7 +288,7 @@ function looksLikeBase58Address(value: string): boolean {
 /**
  * Canonicalizes an inbound address argument to `0x`-prefixed 20-byte hex.
  *
- * INV-7. Measured tolerance on java-tron: `0x`-prefixed accepted, bare hex
+ * Measured tolerance on java-tron: `0x`-prefixed accepted, bare hex
  * accepted, `41`-prefixed TRON hex accepted, **Base58 `T…` rejected**. So a
  * Base58 string is refused here rather than passed through, which is the
  * sibling's `looksLikeAddress` behaviour and the best-designed catch in it.

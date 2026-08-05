@@ -1,5 +1,5 @@
 /**
- * Proxy-artifact triage over the seam's three-variant resolution (INV-8):
+ * Proxy-artifact triage over the seam's three-variant resolution:
  * exactly three outcomes, none silent.
  *
  * In v1 the proxy contracts are compiled by the CONSUMER project (one import

@@ -8,9 +8,10 @@
  *     fact in a message is also reachable as a field.
  *  2. **The diagnosis kind is a field, deliberately absent from the message.**
  *     `ChainRpcError.diagnosis` tells you what the node error *means*;
- *     `ChainRpcError.message` carries the node's verbatim text and SF-1's framing
- *     around it, and never the kind (`src/chain/errors.ts:204-222`). The reason is
- *     measurable: upstream's `callOptionalSignature` matches four case-sensitive
+ *     `ChainRpcError.message` carries the node's verbatim text and the chain
+ *     layer's framing around it, and never the kind
+ *     (`src/chain/errors.ts:204-222`). The reason is measurable: upstream's
+ *     `callOptionalSignature` matches four case-sensitive
  *     substrings, `'REVERT opcode executed'.includes('revert')` is `false` — but the
  *     string `'reverted'` *does* contain `revert`, so interpolating the kind into the
  *     message would silently perform the translation the design forbids.
@@ -109,7 +110,8 @@ export function classifyChainError(cause: unknown): string {
   if (cause instanceof ChainAddressUnusableError) {
     return `${cause.code} — ${cause.because}`;
   }
-  // Not SF-1's. Let it propagate as itself rather than relabelling it.
+  // Not one the chain layer defines. Let it propagate as itself rather than
+  // relabelling it.
   throw cause;
 }
 
@@ -160,9 +162,10 @@ export function describeDiagnosis(diagnosis: TvmDiagnosis): string {
 /**
  * The method sets are **data**, not `switch` statements, so a consumer can read them
  * and a test can assert them (`src/chain/policy.ts:1-20`). Eight required plus two
- * refused; the eighth, `eth_getBlockByNumber`, is SF-1's own and upgrades-core never
- * calls it — which is precisely why removing it as "unused" would silently disable
- * the instance fingerprint while every engine-facing test still passed.
+ * refused; the eighth, `eth_getBlockByNumber`, is the chain layer's own and
+ * upgrades-core never calls it — which is precisely why removing it as
+ * "unused" would silently disable the instance fingerprint while every
+ * engine-facing test still passed.
  */
 export function methodSets(): {
   readonly required: readonly string[];

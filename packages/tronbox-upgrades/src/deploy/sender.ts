@@ -1,11 +1,11 @@
 /**
- * The single effective-sender algorithm (INV-12, INV-13): one resolution site,
+ * The single effective-sender algorithm: one resolution site,
  * called once per operation before any authority preflight, its value threaded
  * to both the preflight and the send — and then *verified* after the fact,
  * because the host chooses the signer at send time and threading alone is a
  * promise, not a check.
  *
- * Identity is an **address, everywhere** (INV-14). This module reads the seam's
+ * Identity is an **address, everywhere**. This module reads the seam's
  * non-authoritative configured sender — an address or `null` — and never
  * touches, stores, or renders key material. The reachable-key hazard is real
  * and measured (a configured `privateKey` sits at depth 4 from the deployer
@@ -49,7 +49,7 @@ export function resolveEffectiveSender(
 }
 
 /**
- * The after-the-fact comparison (INV-13). `signedBy` is whatever identity the
+ * The after-the-fact comparison. `signedBy` is whatever identity the
  * transaction reports having signed it, in any of the three encodings — it is
  * canonicalized here, so the comparison is on identity and never on spelling.
  * A mismatch refuses naming both, because the pair is the evidence.

@@ -181,8 +181,8 @@ slashes. HTTP Basic userinfo and query-string API keys reach `fullNode.host` unt
 override certainly can carry both.
 
 **`ChainAccess` needs no redaction step, and that is a design property rather than an omission.**
-SF-0's seam meets the same guarantee by *redacting* handles on serialization, because its slots
-expose them as named capabilities; this surface meets it by *construction*, because no exported
+The environment seam meets the same guarantee by *redacting* handles on serialization, because its
+slots expose them as named capabilities; this surface meets it by *construction*, because no exported
 object holds a handle or a raw URL in a **field**. `JSON.stringify(access)` is safe and does not
 throw. The first field added for convenience silently undoes it — which is also why the seam's
 `sealSlot` is deliberately not needed here.

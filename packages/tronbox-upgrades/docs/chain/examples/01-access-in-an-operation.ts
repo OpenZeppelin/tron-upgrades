@@ -31,9 +31,9 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * The whole of the wiring. `chain` is the only slot SF-1 needs, and asking for
- * more would make an operation fail in `tronbox console`, where four of the seven
- * slots are absent.
+ * The whole of the wiring. `chain` is the only slot the chain layer needs, and
+ * asking for more would make an operation fail in `tronbox console`, where
+ * four of the seven slots are absent.
  */
 export async function openChain(
   handles: RawMigrationHandles,
@@ -84,9 +84,9 @@ export async function openChainOrExplain(
 
 /**
  * `Manifest.forNetwork` is the engine entry point every deploy and every upgrade
- * goes through. It probes `anvil_metadata` and `hardhat_metadata`; SF-1 throws for
- * both, from a table, before any request, and `getDevInstanceMetadata` absorbs
- * both throws by design
+ * goes through. It probes `anvil_metadata` and `hardhat_metadata`; the chain
+ * layer throws for both, from a table, before any request, and
+ * `getDevInstanceMetadata` absorbs both throws by design
  * (`node_modules/@openzeppelin/upgrades-core/dist/manifest.js:30-53`).
  *
  * So the refusals are invisible here, which is the point — see
@@ -97,12 +97,13 @@ export async function manifestFor(access: ChainAccess): Promise<Manifest> {
 }
 
 /*
- * Deliberately NOT provided, because it is the trap SF-1 exists to close:
+ * Deliberately NOT provided, because it is the trap the chain layer exists to
+ * close:
  *
  *   Manifest.forNetwork(env.chain.tronWrap);   // does not compile
  *
- * SF-0's `TronWrapHandle` is `{ trx: object }` and stays that way. Widening it
- * would make this line type-check, and `tronWrap.send` POSTs to
+ * The environment seam's `TronWrapHandle` is `{ trx: object }` and stays that
+ * way. Widening it would make this line type-check, and `tronWrap.send` POSTs to
  * `networkConfig.fullNode + '/tre'` — which answers on a local TRE and returns
  * HTTP 405 on every public network, surfacing as
  * `TRE RPC 'eth_chainId': Request failed with status code 405`
@@ -121,11 +122,11 @@ export async function manifestFor(access: ChainAccess): Promise<Manifest> {
  * across a migration is supported, cheaper, and the only way to pay for the
  * instance fingerprint once.
  *
- * The obligation SF-1 states and cannot enforce: an operation's deployment record
- * and the engine's manifest write must go through the **same** instance, because
- * two instances against a load-balanced endpoint can resolve two chain ids — and
- * then each manifest file is internally consistent and neither describes the
- * deployment.
+ * The obligation the chain layer states and cannot enforce: an operation's
+ * deployment record and the engine's manifest write must go through the
+ * **same** instance, because two instances against a load-balanced endpoint
+ * can resolve two chain ids — and then each manifest file is internally
+ * consistent and neither describes the deployment.
  */
 const perHandle = new WeakMap<object, Promise<ChainAccess>>();
 

@@ -1,6 +1,6 @@
 /**
  * Deployment-time library linking: refuse a linked implementation by default,
- * and never take the host linker's silence for consent (INV-20, INV-21).
+ * and never take the host linker's silence for consent.
  *
  * ## Why silence proves nothing, measured
  *
@@ -75,7 +75,7 @@ export function linkedLibraryNames(unlinkedBytecode: string): readonly string[] 
 }
 
 /**
- * INV-20: a linked implementation refuses by default, naming the libraries and
+ * A linked implementation refuses by default, naming the libraries and
  * the opt-out — and the opt-out's message states the weaker baseline the user
  * is accepting, because that is a commitment of the opt-in, not politeness.
  */
@@ -89,7 +89,7 @@ export function refuseUnlessLinkingAllowed(
 }
 
 /**
- * INV-21: after the host's linking flow, the bytecode about to deploy must
+ * After the host's linking flow, the bytecode about to deploy must
  * carry no unresolved placeholder. Verified on the bytecode, never inferred
  * from the linker returning — link silence is not consent. This is also the
  * seam's half of the joint obligation that the expert opt-out never approves

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
  * Compiles `upgrade-pairs.json` against the real TVM wasm and writes
- * `ladder-corpus.json` — the real solc standard-JSON the SF-2 ladder tests drive.
+ * `ladder-corpus.json` — the real solc standard-JSON the validation ladder tests drive.
  *
  * WHY A GENERATED CORPUS RATHER THAN COMPILING IN THE SUITE.
  *

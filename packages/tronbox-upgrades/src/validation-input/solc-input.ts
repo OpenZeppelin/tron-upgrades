@@ -3,8 +3,8 @@ import type { SolcInput, SolcOutput } from '@openzeppelin/upgrades-core';
 import type { CompilerConfiguration } from '../environment';
 
 /**
- * The solc standard-JSON boundary: the two record shapes SF-2 hands its
- * consumers, and the assembly of the input.
+ * The solc standard-JSON boundary: the two record shapes the validation ladder
+ * hands its consumers, and the assembly of the input.
  *
  * **The output type is upgrades-core's own `SolcOutput`, not a local copy.** It is
  * literally the parameter type of `validate(solcOutput, decodeSrc, solcVersion,
@@ -16,18 +16,19 @@ import type { CompilerConfiguration } from '../environment';
  */
 export type SolcStandardOutput = SolcOutput;
 
-/** One solc diagnostic, narrowed to the two fields SF-2 reads. */
+/** One solc diagnostic, narrowed to the two fields the validation ladder reads. */
 export interface SolcDiagnostic {
   /**
    * solc also emits `'info'` on newer compilers; upstream's own type declares
-   * only these two, and SF-2 only ever asks whether a diagnostic is an `error`,
-   * so a wider value is read as "not an error" — which is correct.
+   * only these two, and the validation ladder only ever asks whether a
+   * diagnostic is an `error`, so a wider value is read as "not an error" —
+   * which is correct.
    */
   readonly severity: 'error' | 'warning' | string;
 }
 
 /**
- * The input SF-2 constructs.
+ * The input the validation ladder constructs.
  *
  * Pinned assignable to upstream's `SolcInput` by {@link _InputIsUpstreamShaped}
  * below, so `validate`'s fourth argument and `solcInputOutputDecoder`'s first
@@ -35,7 +36,7 @@ export interface SolcDiagnostic {
  */
 export interface SolcStandardInput {
   readonly language: 'Solidity';
-  /** INV-39: the *only* place Solidity source text exists in this sub-feature. */
+  /** The *only* place Solidity source text exists in this sub-feature. */
   readonly sources: Readonly<Record<string, { readonly content: string }>>;
   readonly settings: SolcStandardSettings;
 }
@@ -75,15 +76,15 @@ const HOST_CONTRACT_OUTPUTS = [
 ] as const;
 
 /**
- * The one thing SF-2 adds to what the host would have sent (INV-28).
+ * The one thing the validation ladder adds to what the host would have sent.
  *
- * F-6 is the measurement the whole ruling rests on: with TronBox's exact
+ * The whole ruling rests on one measurement: with TronBox's exact
  * selection versus that selection plus this entry, `evm.bytecode.object`,
  * `evm.deployedBytecode.object` **and** `metadata` all come back byte-identical,
  * because `outputSelection` is not a member of solc metadata. Sanity-checked in
- * the same probe against `optimizer`, which *is* in metadata and changes both —
- * so this is a property of `outputSelection` specifically and not of the compiler
- * ignoring settings. `evidence/probe-recompile-fidelity.js` §1.
+ * the same live recompile-fidelity probe (§1) against `optimizer`, which *is* in
+ * metadata and changes both — so this is a property of `outputSelection`
+ * specifically and not of the compiler ignoring settings.
  */
 const STORAGE_LAYOUT_OUTPUT = 'storageLayout';
 
@@ -100,11 +101,11 @@ function outputSelection(): Record<string, Record<string, string[]>> {
  * Assembles the standard-JSON input for one partition.
  *
  * **The settings arrive as the seam's frozen copy and are neither mutated nor
- * normalized** (INV-28). `CompilerConfiguration.settings` is
+ * normalized.** `CompilerConfiguration.settings` is
  * `Object.freeze(structuredClone(value))` (`src/environment/compiler.ts:349-366`),
  * so an attempted mutation throws in strict mode instead of silently reaching the
  * user's next `tronbox compile`. Nothing here "helpfully" enables the optimizer
- * either: F-6 measured that `optimizer` *is* in solc metadata, so touching it
+ * either: measurement showed that `optimizer` *is* in solc metadata, so touching it
  * changes both bytecode hashes and makes the staleness gate fire on every
  * correctly built project with a remedy that cannot help.
  *
@@ -112,7 +113,7 @@ function outputSelection(): Record<string, Record<string, string[]>> {
  * precedence, so a user-configured `outputSelection` is overwritten here exactly
  * as TronBox overwrites it. That is not a liberty: if the plugin honoured a
  * user's selection where the host does not, the recompile would no longer be the
- * host's compile plus one entry, and F-6's byte-identity would not transfer.
+ * host's compile plus one entry, and the measured byte-identity would not transfer.
  */
 export function buildSolcInput(
   sources: Readonly<Record<string, string>>,

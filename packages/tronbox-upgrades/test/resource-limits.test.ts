@@ -36,12 +36,14 @@ import {
 } from './helpers/source-scan';
 
 /**
- * Resource Limits & Rate — INV-37, INV-38, INV-39.
+ * Resource Limits & Rate — bounded index I/O, fully synchronous resolution,
+ * and no unbounded growth, retry, or timer.
  *
  * The quota/boundary technique, in the shape a synchronous projection admits.
- * SF-0 has no rate limit to probe because it serves no callers over a network; its
- * resource bounds are I/O count, scheduling primitives, and retained memory. So
- * the tests count calls with an instrumented reader, drive the *default* reader
+ * The environment seam has no rate limit to probe because it serves no callers
+ * over a network; its resource bounds are I/O count, scheduling primitives,
+ * and retained memory. So the tests count calls with an instrumented reader,
+ * drive the *default* reader
  * against a deliberately awkward real directory, and scan the source for the
  * scheduling primitives that would make an unbounded cost representable.
  *
@@ -68,10 +70,10 @@ function isThenable(value: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// INV-37
+// Bounded, non-recursive index I/O
 // ---------------------------------------------------------------------------
 
-describe('INV-37: index I/O is bounded and non-recursive', () => {
+describe('index I/O is bounded and non-recursive', () => {
   it('costs exactly one directory listing, whatever the file count', () => {
     for (const count of [0, 1, 3, 25]) {
       const specs = Array.from({ length: count }, (_unused, index) => ({
@@ -90,7 +92,7 @@ describe('INV-37: index I/O is bounded and non-recursive', () => {
   });
 
   it('reads the directory once per composite, however many surfaces are consulted', () => {
-    // The memo (INV-23) is what bounds this. Ten `ambiguities()` calls and ten
+    // The memo is what bounds this. Ten `ambiguities()` calls and ten
     // `resolve()` calls over one composite must not become twenty listings.
     const reader = countingReader(collidingReader());
     const shape = migrateShapedHandles();
@@ -231,7 +233,7 @@ describe('INV-37: index I/O is bounded and non-recursive', () => {
     // *content* of an arbitrary file would make per-file cost unbounded by
     // construction. Two members, and the second does not weaken this
     // — `exists` returns a `boolean`, so it costs one stat and can return no bytes
-    // however it is called. What INV-37 bounds is content, not questions.
+    // however it is called. What is bounded here is content, not questions.
     const ambiguitySource = environmentSources().find(
       source => source.relative === 'ambiguity.ts',
     );
@@ -258,8 +260,8 @@ describe('INV-37: index I/O is bounded and non-recursive', () => {
     // the index and `existsSync` for the probe — no `stat`, no `realpath`, no
     // `opendir`, no recursive option.
     //
-    // `existsSync` is the point rather than an addition tolerated: INV-31 requires
-    // the probe to be *stat-class*, and the obvious shortcut
+    // `existsSync` is the point rather than an addition tolerated: the disk-read
+    // discipline requires the probe to be *stat-class*, and the obvious shortcut
     // (`readFileSync`-and-discard) is a declared violation. A default that
     // satisfied the signature by reading the file would show up here as no new
     // chain at all, so the assertion is that the stat-class call is present.
@@ -295,7 +297,8 @@ describe('INV-37: index I/O is bounded and non-recursive', () => {
     // A directory named like an artifact answers `true`, not `false`. Recorded
     // rather than asserted-away: `statSync(...).isFile()` would report *missing*
     // for a path that plainly exists, which is a worse claim than the one this
-    // makes. INV-18's malformed message is where such a path lands.
+    // makes. The malformed-artifact diagnosis, not the missing-artifact one, is
+    // where such a path lands.
     fs.mkdirSync(path.join(dir, 'Directory.json'));
     expect(
       fileSystemBuildInfoReader.exists(
@@ -306,8 +309,8 @@ describe('INV-37: index I/O is bounded and non-recursive', () => {
 
   it('answers "not there" rather than throwing for an unreadable parent', () => {
     // The recorded cost of choosing `existsSync`: it cannot throw, so an `EACCES`
-    // parent is diagnosed missing rather than escaping the seam untranslated
-    // (INV-15). Pinned as a deliberate trade, not discovered later as a bug.
+    // parent is diagnosed missing rather than escaping the seam untranslated.
+    // Pinned as a deliberate trade, not discovered later as a bug.
     const nonsense = absolute(path.join(makeTempDir('exists-deep'), 'a', 'b', 'c.json'));
     expect(() => fileSystemBuildInfoReader.exists(nonsense)).not.toThrow();
     expect(fileSystemBuildInfoReader.exists(nonsense)).toBe(false);
@@ -315,10 +318,10 @@ describe('INV-37: index I/O is bounded and non-recursive', () => {
 });
 
 // ---------------------------------------------------------------------------
-// INV-38
+// Fully synchronous resolution
 // ---------------------------------------------------------------------------
 
-describe('INV-38: resolution is fully synchronous — SF-0 introduces no promise', () => {
+describe('resolution is fully synchronous — the environment seam introduces no promise', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -374,10 +377,11 @@ describe('INV-38: resolution is fully synchronous — SF-0 introduces no promise
   });
 
   it('leaves the deployer thenable, since that is the host queue and the point of the slot', () => {
-    // The one deliberate exception, stated rather than left to be noticed. INV-29
-    // exposes the whole deployer because SF-4 needs the queue, and the queue's
-    // interface *is* `then`. The composite around it must not be thenable, or an
-    // `await resolveEnvironment(...)` upstream would silently adopt it.
+    // The one deliberate exception, stated rather than left to be noticed. The
+    // whole deployer is exposed as such because the deploy seam needs the queue,
+    // and the queue's interface *is* `then`. The composite around it must not be
+    // thenable, or an `await resolveEnvironment(...)` upstream would silently
+    // adopt it.
     const shape = migrateShapedHandles();
     const env = resolveEnvironment(shape.handles, { require: ['scheduling'] });
     expect(isThenable(env.scheduling.deployer)).toBe(true);
@@ -426,7 +430,7 @@ describe('INV-38: resolution is fully synchronous — SF-0 introduces no promise
       // passing after the async rule was deleted.
       exists: (_file: AbsolutePath): boolean => false,
     };
-    // @ts-expect-error INV-38: BuildInfoReader.read must return synchronously.
+    // @ts-expect-error BuildInfoReader.read must return synchronously.
     const rejected: BuildInfoReader = asyncReader;
     expect(typeof rejected.read).toBe('function');
     expect(typeof rejected.exists).toBe('function');
@@ -452,14 +456,14 @@ describe('INV-38: resolution is fully synchronous — SF-0 introduces no promise
 });
 
 // ---------------------------------------------------------------------------
-// INV-39
+// No unbounded growth, no retry, no timer
 // ---------------------------------------------------------------------------
 
-describe('INV-39: no unbounded growth, no retry, no timer', () => {
+describe('no unbounded growth, no retry, no timer', () => {
   it('declares no module-scope collection and no module-scope mutable binding', () => {
     // A module-scope memo keyed per migration grows monotonically and holds every
     // migration's intercept and Config alive for the whole run — a leak that also
-    // defeats INV-22 by keeping stale handles reachable.
+    // defeats migration-scoped freshness by keeping stale handles reachable.
     for (const source of environmentSources()) {
       expect(
         source.topLevelMutableBindings,
@@ -647,9 +651,10 @@ describe('INV-39: no unbounded growth, no retry, no timer', () => {
   });
 
   it('adds no cost for a slot list that needs no index', () => {
-    // Cross-check with INV-45: the bound only matters if the common path pays
-    // nothing. A resolution that never consults `ambiguities()` performs zero
-    // listings even with every other slot required.
+    // Cross-check with the no-I/O-on-the-common-path rule: the bound only
+    // matters if the common path pays nothing. A resolution that never
+    // consults `ambiguities()` performs zero listings even with every other
+    // slot required.
     const reader = countingReader(collidingReader());
     const shape = migrateShapedHandles();
     const env = resolveEnvironment(

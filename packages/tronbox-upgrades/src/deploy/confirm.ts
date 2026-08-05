@@ -1,5 +1,5 @@
 /**
- * The two-predicate confirmation gate (INV-7, INV-8): *confirmed* means the
+ * The two-predicate confirmation gate: *confirmed* means the
  * transaction is on-chain, and *succeeded* means its own receipt affirms it —
  * two different predicates, and the wait handle answers only the first, because
  * it resolves with the receipt without inspecting it.
@@ -21,11 +21,11 @@
  * 'FAILED'` passes transfers and successes alike (the key is absent on both),
  * and a truthiness read of `receipt.result` passes `'REVERT'`. The gate reads
  * `receipt.result === 'SUCCESS'` exactly, and classifies **absence as
- * indeterminate** — never success (the vacuity INV-8 bans: a field that is
+ * indeterminate** — never success (the vacuity ban: a field that is
  * `undefined` on every receipt must not make every transaction "successful"),
  * and never reverted (that would invent a failure the chain never reported).
  *
- * No path here re-sends anything (INV-10): polling retries *reads*, exhaustion
+ * No path here re-sends anything: polling retries *reads*, exhaustion
  * is terminal, and the verdict carries the hash so the user can check what the
  * plugin could not.
  */
@@ -45,7 +45,7 @@ export const HOST_CONFIRMATION_BOUNDS: ConfirmationBounds = Object.freeze({
  * The wait dependency as this gate consumes it: the seam's
  * `receipts.waitForTransactionReceipt`, already bound to its chain handle.
  * Injected rather than imported, so the gate is testable against fixture
- * receipts with no host present (and so this module touches no host, INV-19).
+ * receipts with no host present (and so this module touches no host).
  */
 export type BoundWait = (
   transactionHash: string,
@@ -85,7 +85,7 @@ export async function confirmTransaction(
   } catch {
     // The handle rejects on exhaustion ("Transaction receipt not found").
     // Terminal for this operation: the transaction may still land, so the
-    // verdict carries the bound and the hash, and nothing is re-sent (INV-10).
+    // verdict carries the bound and the hash, and nothing is re-sent.
     return {
       kind: 'indeterminate',
       transactionHash,
@@ -127,7 +127,7 @@ export async function confirmTransaction(
 
   // A receipt with no execution verdict. For the contract transactions this
   // seam sends, that shape is unexpected — and unexpected must not classify as
-  // success (INV-8's vacuity ban) nor as a failure the chain never reported.
+  // success (the vacuity ban) nor as a failure the chain never reported.
   return {
     kind: 'indeterminate',
     transactionHash,

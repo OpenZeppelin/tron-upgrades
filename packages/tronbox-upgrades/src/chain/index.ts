@@ -1,15 +1,16 @@
 /**
- * SF-1's face to its siblings: one composite, built by one async factory.
+ * The chain layer's face to its siblings: one composite, built by one async factory.
  *
  * `src/chain/**` imports from `src/environment/**` and from
- * `@openzeppelin/upgrades-core` **types** only (INV-48). It imports no other
+ * `@openzeppelin/upgrades-core` **types** only. It imports no other
  * sub-feature's module — not `src/options/**`, `src/output/**`, `src/results/**`,
- * nor any future sibling — so SF-3, SF-5, SF-6, SF-7, SF-8 and SF-9 can depend on
- * it without a cycle. Within the directory the dependency direction is strictly
- * downward: `policy | classify | slots → errors → endpoint → transport → provider
- * → read | instance → index`.
+ * nor any future sibling — so the record layer, the proxy operations, the
+ * standalone operations, adoption (forceImport), the admin operation and the
+ * beacon operations can depend on it without a cycle. Within the directory the
+ * dependency direction is strictly downward: `policy | classify | slots →
+ * errors → endpoint → transport → provider → read | instance → index`.
  *
- * SF-11 owns the package entry point; this is the directory's face.
+ * Packaging owns the package entry point; this is the directory's face.
  */
 
 import type { EthereumProvider } from '@openzeppelin/upgrades-core';
@@ -55,20 +56,23 @@ import { ChainMethodRefusedError } from './errors';
  *
  * So the two shapes are declared separately and bridged exactly once, here:
  *
- * - {@link TronEthereumProvider} is SF-1's **internal** seam, deliberately loose,
- *   because INV-47 requires every `read.ts` / `instance.ts` function to be callable
- *   with a bare `{ send }` object and no `ChainAccess` in existence. Narrowing it to
- *   the engine's overloads would make that impossible without a cast in every test.
+ * - {@link TronEthereumProvider} is the chain layer's **internal** seam,
+ *   deliberately loose, because every `read.ts` / `instance.ts` function must
+ *   be callable with a bare `{ send }` object and no `ChainAccess` in
+ *   existence. Narrowing it to the engine's overloads would make that
+ *   impossible without a cast in every test.
  * - `ChainAccess.provider` is declared as the engine's **own** `EthereumProvider`,
- *   so INV-30's first defence still holds at compile time and holds *better*:
- *   `Manifest.forNetwork(access.provider)` type-checks and
- *   `Manifest.forNetwork(env.chain.tronWrap)` does not, and no consumer — SF-3,
- *   SF-5, SF-6, SF-7, SF-8, SF-9 — writes a cast of its own.
+ *   so the first defence against the `/tre` trap still holds at compile time
+ *   and holds *better*: `Manifest.forNetwork(access.provider)` type-checks and
+ *   `Manifest.forNetwork(env.chain.tronWrap)` does not, and no consumer — the
+ *   record layer, the proxy operations, the standalone operations, adoption
+ *   (forceImport), the admin operation, the beacon operations — writes a cast
+ *   of its own.
  *
  * What the bridge asserts, stated rather than buried: for the two `*_metadata`
- * overloads SF-1 **throws** (INV-12), which satisfies any declared return type; for
+ * overloads the chain layer **throws**, which satisfies any declared return type; for
  * the five methods upstream reads unguarded, `stringResultMethods` validates the
- * result (INV-4); for the three transaction and block methods it forwards the
+ * result; for the three transaction and block methods it forwards the
  * node's value unvalidated, which is the same trust upstream places in any
  * provider. The unvalidated three are recorded as a limitation rather than hidden
  * behind the cast.
@@ -78,16 +82,17 @@ function asEngineProvider(provider: TronEthereumProvider): EthereumProvider {
 }
 
 /**
- * SF-1's whole outbound surface. One object, handed to upgrades-core and shared
- * with SF-3, which is what makes the spec's "exactly one translation point"
- * structural rather than conventional.
+ * The chain layer's whole outbound surface. One object, handed to upgrades-core
+ * and shared with the record layer, which is what makes the spec's "exactly
+ * one translation point" structural rather than conventional.
  *
- * **INV-3: handle-bearing by closure only.** No field holds `tronWrap`, anything
+ * **Handle-bearing by closure only.** No field holds `tronWrap`, anything
  * reachable from it, or the raw endpoint URL — both live in closures — so
  * `JSON.stringify(access)` cannot leak either and does not throw. That is why
- * `sealSlot` is unnecessary here: SF-0 met INV-40's guarantee by *redaction*
- * because its slots expose handles as named capabilities; SF-1 meets it by
- * *construction*, because there is no field to redact. The adapter was expected to
+ * `sealSlot` is unnecessary here: the environment seam met the
+ * no-credential-leak guarantee by *redaction* because its slots expose handles
+ * as named capabilities; the chain layer meets it by *construction*, because
+ * there is no field to redact. The adapter was expected to
  * need sealing; it does not, and the reason is a
  * design property that the first field added for convenience would silently undo.
  */
@@ -100,43 +105,45 @@ export interface ChainAccess {
    */
   readonly provider: EthereumProvider;
   readonly endpoint: EndpointDescriptor;
-  /** Read once per instance and memoized. `send` itself memoizes nothing (INV-23). */
+  /** Read once per instance and memoized. `send` itself memoizes nothing. */
   identity(): Promise<ChainInstanceIdentity>;
   readonly read: ChainReaders;
 }
 
 /**
- * The four seams — the complete set of things SF-1 takes from its environment,
- * each with a stated default (INV-46).
+ * The four seams — the complete set of things the chain layer takes from its
+ * environment, each with a stated default.
  *
- * A consumer embedding SF-1 in a different host changes configuration, not source:
- * SF-1's own test suite is the first consumer that is not TronBox and SF-12's
- * harness is the second, so a reached-for dependency would mean both need a live
+ * A consumer embedding the chain layer in a different host changes
+ * configuration, not source: the chain layer's own test suite is the first
+ * consumer that is not TronBox and the consumer end-to-end harness is the
+ * second, so a reached-for dependency would mean both need a live
  * node to test a pure classification.
  */
 export interface ChainAccessDependencies {
   /**
-   * Highest-precedence endpoint source. SF-1's own DI seam, not a user-facing
-   * option — a per-network key in `tronbox-config.js` was rejected because reading
-   * `networks[<name>].<key>` is a TronBox-internal property path and SF-0's INV-28
-   * permits those only inside `src/environment/**`, so it would have required a
-   * materially larger SF-0 change than the one authorized.
+   * Highest-precedence endpoint source. The chain layer's own DI seam, not a
+   * user-facing option — a per-network key in `tronbox-config.js` was rejected
+   * because reading `networks[<name>].<key>` is a TronBox-internal property
+   * path and the environment seam permits those only inside
+   * `src/environment/**`, so it would have required a materially larger
+   * environment-seam change than the one authorized.
    */
   readonly endpointOverride?: string;
   /**
-   * Injected rather than read from the global at module load (INV-24). Defaults to
+   * Injected rather than read from the global at module load. Defaults to
    * `process.env`, read **once, here**, at factory time — a module-load read would
    * bake the endpoint into the process, so under `tronbox console`, where a user
    * legitimately switches network mid-session, the override would silently
    * continue to point at the first network.
    */
   readonly env?: Readonly<Record<string, string | undefined>>;
-  /** Defaults to the handle's own `fullNode.request`, or to `fetch` across origins (INV-43). */
+  /** Defaults to the handle's own `fullNode.request`, or to `fetch` across origins. */
   readonly post?: JsonRpcPost;
   /**
    * Best-effort native-API reachability check, used **only** to choose between two
    * wordings of an unavailable-capability message. Its own failure never changes
-   * the diagnosis (INV-32).
+   * the diagnosis.
    */
   readonly probeNativeApi?: () => Promise<boolean>;
 }
@@ -151,11 +158,11 @@ export interface CapabilityVerdict {
 export interface RefusalVerdict {
   readonly method: string;
   /**
-   * `true` when **SF-1** refused before any request. INV-38: a report that says
-   * only "anvil_metadata: unavailable" is indistinguishable between "SF-1 refuses
-   * this by policy" and "this node happens not to serve it" — and those have
-   * opposite implications. The first is a guarantee; the second is a coincidence
-   * SF-1 explicitly refuses to depend on.
+   * `true` when **the chain layer** refused before any request. A report that
+   * says only "anvil_metadata: unavailable" is indistinguishable between "the
+   * chain layer refuses this by policy" and "this node happens not to serve
+   * it" — and those have opposite implications. The first is a guarantee; the
+   * second is a coincidence the chain layer explicitly refuses to depend on.
    */
   readonly refusedLocally: boolean;
 }
@@ -167,7 +174,7 @@ export interface CapabilityReport {
 }
 
 /**
- * Builds SF-1's composite from the seam's `chain` slot.
+ * Builds the chain layer's composite from the seam's `chain` slot.
  *
  * Async because it performs **exactly one** capability probe — `eth_chainId` —
  * so that a target network without the eth-compat JSON-RPC service fails once, up
@@ -177,26 +184,27 @@ export interface CapabilityReport {
  * but not `eth_getStorageAt`" is not a configuration the node produces; the
  * complete answer is available on demand through {@link verifyCapabilities}.
  *
- * **There is deliberately no unprobed variant** (INV-32): no
+ * **There is deliberately no unprobed variant**: no
  * `createChainAccessUnchecked`, no `skipProbe`, no lazy mode. An escape hatch is
  * worse than no probe, because the diagnosis's main failure mode is a caller who
  * skipped it — and it will be skipped in exactly the harness where the endpoint is
  * least standard. Tests substitute `deps.post` instead.
  *
- * INV-50: this is **not** a module singleton. Constructing one per operation is
+ * This is **not** a module singleton. Constructing one per operation is
  * correct and costs one probe; holding one across a whole migration is supported
- * and cheaper, and is the only way to pay for the fingerprint once. SF-1 states and
- * **cannot enforce** that SF-3's records and the engine's must be written through
- * the *same* instance, because both must resolve the same chain id for their
- * records to land in the same manifest file — two instances against a
+ * and cheaper, and is the only way to pay for the fingerprint once. The chain
+ * layer states and **cannot enforce** that the record layer's records and the
+ * engine's must be written through the *same* instance, because both must
+ * resolve the same chain id for their records to land in the same manifest
+ * file — two instances against a
  * load-balanced endpoint can resolve two, and then each file is internally
  * consistent and neither describes the deployment.
  *
  * @throws {EnvironmentIncompleteError} the `chain` handle does not expose
- *   `fullNode.host` / `fullNode.request` (`handle-malformed`, preserving SF-0's
- *   `'missing'`/`'threw'` distinction), or it does but the endpoint cannot serve
- *   eth-compat JSON-RPC (`invariant-violated`, naming the capability, the config
- *   key, the port pair and the remedy).
+ *   `fullNode.host` / `fullNode.request` (`handle-malformed`, preserving the
+ *   environment seam's `'missing'`/`'threw'` distinction), or it does but the
+ *   endpoint cannot serve eth-compat JSON-RPC (`invariant-violated`, naming
+ *   the capability, the config key, the port pair and the remedy).
  * @throws {ChainEndpointRefusedError} the resolved endpoint is structurally
  *   unusable — not http(s), or pointed at the host's `/tre` cheatcode path.
  */
@@ -214,7 +222,7 @@ export async function createChainAccess(
 
   await probeJsonRpc(provider, resolved, deps.probeNativeApi);
 
-  // INV-23: the memo is the *promise*, so a second call while the first is in
+  // The memo is the *promise*, so a second call while the first is in
   // flight awaits the first rather than issuing a second set of three reads — the
   // in-flight case is covered by construction rather than by a lock. A rejection
   // is memoized too, which is what "at most once per instance" means.
@@ -234,7 +242,7 @@ export async function createChainAccess(
 }
 
 /**
- * INV-32's probe, and INV-37(a): it completes before any reader is reachable,
+ * The capability probe: it completes before any reader is reachable,
  * because `read` is only obtainable from this factory's resolved value.
  */
 async function probeJsonRpc(
@@ -246,10 +254,10 @@ async function probeJsonRpc(
     await provider.send('eth_chainId', []);
     return;
   } catch (cause) {
-    // A discriminating predicate, not a blanket catch (INV-14): only the three
+    // A discriminating predicate, not a blanket catch: only the three
     // failures that *are* "this endpoint cannot serve eth-compat JSON-RPC" become
-    // the capability diagnosis. A defect inside SF-1 propagates as itself rather
-    // than being reported to the user as a problem with their node.
+    // the capability diagnosis. A defect inside the chain layer propagates as
+    // itself rather than being reported to the user as a problem with their node.
     if (
       !(cause instanceof ChainTransportError) &&
       !(cause instanceof ChainRpcError) &&
@@ -259,7 +267,7 @@ async function probeJsonRpc(
     }
 
     const probe = overrideProbe ?? (() => resolved.probeNativeApi());
-    // INV-32 / INV-14: the **one** deliberate absorption in `src/chain/**`, and it
+    // The **one** deliberate absorption in `src/chain/**`, and it
     // is mandated rather than tolerated — this probe's own failure may change only
     // the wording of the message, never the diagnosis, so all three outcomes
     // (`true`, `false`, threw) produce the same `code` and the same `cause.kind`.
@@ -282,7 +290,7 @@ const GENESIS_BLOCK_TAG = '0x0';
 
 /**
  * Harmless arguments for each required method: the zero address, the zero hash,
- * and block 0. INV-33: every one is a read.
+ * and block 0. Every one is a read.
  */
 const probeArguments: Readonly<Record<string, readonly unknown[]>> =
   Object.freeze({
@@ -355,14 +363,14 @@ async function probeMethod(
 }
 
 /**
- * Probes all eight methods SF-1 depends on and reports each verdict, plus both
- * refusals.
+ * Probes all eight methods the chain layer depends on and reports each
+ * verdict, plus both refusals.
  *
  * **Not on the hot path** — `createChainAccess` probes one method. This exists for
- * SF-12's harness and for a diagnostics command, where paying eight round-trips to
- * get a complete answer is the right trade. It performs no writes and changes no
- * state on the `ChainAccess` it is given, including leaving `identity()`'s memo
- * untouched (INV-38).
+ * the consumer end-to-end harness and for a diagnostics command, where paying
+ * eight round-trips to get a complete answer is the right trade. It performs
+ * no writes and changes no state on the `ChainAccess` it is given, including
+ * leaving `identity()`'s memo untouched.
  *
  * `ok` means **the node served the method**, not "the probe succeeded": a node
  * error about the probe arguments is evidence the method exists, and only
@@ -372,7 +380,7 @@ async function probeMethod(
  * refusal is driven through `send` and the resulting
  * {@link ChainMethodRefusedError} is what sets `refusedLocally`, so a report
  * claiming a local refusal cannot be produced by a build in which the refusal was
- * softened. INV-38's test turns on exactly that: a `post` that would answer
+ * softened. The local-refusal guarantee's test turns on exactly that: a `post` that would answer
  * `anvil_metadata` successfully must still yield `refusedLocally: true` and **zero**
  * recorded posts for it.
  */
@@ -405,7 +413,7 @@ export async function verifyCapabilities(
   });
 }
 
-// ── Re-exports: SF-1's public surface for its six consumers ──────────────────
+// ── Re-exports: the chain layer's public surface for its six consumers ───────
 
 export {
   ChainAddressUnusableError,

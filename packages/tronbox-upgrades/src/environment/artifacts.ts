@@ -47,7 +47,7 @@ function malformed(
 }
 
 /**
- * INV-25: the `artifacts` handle reaches a slot only after every property path
+ * The `artifacts` handle reaches a slot only after every property path
  * this slot depends on has been shown to exist. `require` and `contracts` are
  * probed with `in` because they live on `ResolverIntercept.prototype`;
  * `resolver` is an own property.
@@ -95,9 +95,9 @@ export function interceptFromHandle(
 }
 
 /**
- * INV-15: a host failure becomes one of SF-0's own typed shapes. Reuses
- * `EnvironmentIncompleteError` with an `invariant-violated` cause rather than
- * introducing a fourth error class, which INV-10 forbids.
+ * A host failure becomes one of the environment seam's own typed shapes.
+ * Reuses `EnvironmentIncompleteError` with an `invariant-violated` cause
+ * rather than introducing a fourth error class, which is forbidden.
  */
 function artifactFailure(detail: string): never {
   throw new EnvironmentIncompleteError([
@@ -113,7 +113,7 @@ type InterceptOutcome =
   | { readonly ok: false; readonly channel: 'nullish' };
 
 /**
- * INV-24: every abstraction the seam returns comes through the injected
+ * Every abstraction the seam returns comes through the injected
  * intercept, never through a fresh resolver and never through `config.resolver`.
  *
  * `build/components/Resolver/intercept.js:ResolverIntercept.prototype.contracts`
@@ -123,7 +123,7 @@ type InterceptOutcome =
  * absent from the cache, so it works for the whole operation and its address is
  * silently missing from the artifact afterwards.
  *
- * INV-15 covers both host failure channels: `Resolver.prototype.require` throws
+ * Both host failure channels are covered: `Resolver.prototype.require` throws
  * a bare `Error("Could not find artifacts for … from any sources")`, while the
  * sources themselves signal failure by returning `null`.
  */
@@ -167,13 +167,14 @@ function bareNameHint(name: string): string {
  * The API contract for a packaged path, checked with pure path arithmetic and
  * zero filesystem access.
  *
- * This is the first of INV-18's three ordered checks, and the only one needing
- * no capability whatever. Of the three causes `build/components/Resolver/fs.js
+ * This is the first of the three ordered checks (containment, existence,
+ * malformed), and the only one needing no capability whatever. Of the three
+ * causes `build/components/Resolver/fs.js
  * :FS.prototype.requireJson` collapses into one `null` — absent, malformed JSON,
  * and outside the project — the third is decidable here with zero I/O and is
  * refused by name. Deciding it first is what guarantees an escaping path is
  * never probed; the other two are separated after delegation, by the reader's
- * existence probe (INV-31's second method).
+ * existence probe (the injected reader's second method).
  *
  * The refusals below subsume TronBox's own containment test rather than
  * reproducing it. `requireJson` prefixes any path not starting with `./` with
@@ -230,9 +231,9 @@ function validatePackageRelativePath(
 /**
  * Builds the `artifacts` slot.
  *
- * INV-23: the ambiguity index is lazy and computed at most once, memoized in
+ * The ambiguity index is lazy and computed at most once, memoized in
  * this closure — never at module scope, which would carry a stale index across
- * migrations (INV-20) and, under `tronbox test`, index a build tree the run has
+ * migrations and, under `tronbox test`, index a build tree the run has
  * already replaced.
  */
 export function createArtifactAccess(
@@ -274,7 +275,7 @@ export function createArtifactAccess(
 
     const report = getIndex().report;
     if (report.status === 'indeterminate') {
-      // INV-34 mode 2, and a routine state rather than a rare fallback:
+      // One of the indeterminate-report modes, and a routine state rather than a rare fallback:
       // build-info is never written under `tronbox test`, which is the same
       // context that forces a full migration replay.
       return Object.freeze({
@@ -287,8 +288,8 @@ export function createArtifactAccess(
 
     const candidates = getIndex().candidates(normalizedName);
     if (candidates.length > 1) {
-      // INV-5: detection only. Policy for this branch is SF-5's, and
-      // `ArtifactNameAmbiguousError` is exported for SF-5 to throw.
+      // Detection only. Policy for this branch is the proxy operations', and
+      // `ArtifactNameAmbiguousError` is exported for the proxy operations to throw.
       return Object.freeze({
         status: 'ambiguous',
         name: normalizedName,
@@ -299,7 +300,7 @@ export function createArtifactAccess(
 
     // Zero candidates is a complete index that holds no entry for this name —
     // so no bare-name collision exists, which is what `unique` asserts. The
-    // index deliberately assesses no freshness (that is SF-2's), so the source
+    // index deliberately assesses no freshness (that is the validation ladder's), so the source
     // path falls back to the abstraction's own.
     const sourcePath =
       candidates[0]?.sourcePath ?? contractSourcePath(contract);
@@ -319,7 +320,7 @@ export function createArtifactAccess(
   }
 
   /**
-   * INV-18: returns a `ContractAbstraction` or throws. Never nullish.
+   * Returns a `ContractAbstraction` or throws. Never nullish.
    *
    * The three causes are decided in the order containment → existence →
    * malformed, each with the least capability that can decide it. Containment is
@@ -327,7 +328,7 @@ export function createArtifactAccess(
    * reader's existence probe returning `false`. "Malformed" is concluded only
    * from the *conjunction* of existence and the host's failure, which is what
    * makes it impossible to report for a file that is simply absent — the
-   * distinction SF-5's acceptance scenario 6 needs, because the two causes have
+   * distinction the proxy operations' acceptance scenario 6 needs, because the two causes have
    * different remedies.
    *
    * The probe runs only after the host has already failed, so the happy path
@@ -346,7 +347,7 @@ export function createArtifactAccess(
     // so the messages name a real location rather than the caller's argument.
     // Absolute by construction — `paths.root` carries the brand and `path.join`
     // preserves it — but minted through the one assertion function all the same,
-    // because INV-2 admits no other way to obtain an `AbsolutePath`.
+    // because there is no other way to obtain an `AbsolutePath`.
     const hostPath = path.join(paths.root, 'node_modules', validated);
     let exists: boolean;
     try {
@@ -383,14 +384,15 @@ export function createArtifactAccess(
   }
 
   /**
-   * INV-28: the `_json` hop happens inside the seam, and what leaves is frozen
+   * The `_json` hop happens inside the seam, and what leaves is frozen
    * plain data.
    *
-   * INV-15 is discharged here rather than in `artifact-record.ts`: that module
-   * stays total and reports a raising host accessor as an outcome, and this is
-   * where it becomes one of SF-0's own errors. The refusal names the property path
-   * only — never a value read off the artifact, which for `source` would be the
-   * user's own file content (INV-42).
+   * The host-failure translation happens here rather than in
+   * `artifact-record.ts`: that module stays total and reports a raising host
+   * accessor as an outcome, and this is where it becomes one of the
+   * environment seam's own errors. The refusal names the property path
+   * only — never a value read off the artifact, which for `source` would be
+   * the user's own file content.
    */
   function record(contract: ContractAbstraction): ArtifactRecordReport {
     const outcome = readArtifactRecord(contract);

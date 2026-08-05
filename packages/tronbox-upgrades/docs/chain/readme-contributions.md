@@ -1,8 +1,8 @@
 # README contributions from chain-state access
 
 User-observable facts this sub-feature contributes to the package README. **The README is assembled
-by SF-12 and proved followable there** — these are fragments, in the shape the assembler can lift,
-not a document.
+by the consumer end-to-end harness and proved followable there** — these are fragments, in the
+shape the assembler can lift, not a document.
 
 Everything below is user-facing. Nothing here mentions a sub-feature, an invariant number, or a
 module path: a user who reads the README does not experience either.

@@ -43,7 +43,7 @@ export async function runTransferProxyAdminOwnership(
   const proxyAddress = canonicalizeAddress(proxy);
   const targetOwner = canonicalizeAddress(newOwner);
 
-  // INV-3 — an empty admin slot refuses before anything else. The batched
+  // An empty admin slot refuses before anything else. The batched
   // read, because the per-slot reader raises on an empty slot (measured).
   const slots = await toolkit.proxySlots(proxyAddress);
   if (slots.kind === 'no-code' || slots.admin === null) {
@@ -51,7 +51,7 @@ export async function runTransferProxyAdminOwnership(
   }
   const adminAddress = canonicalizeAddress(slots.admin);
 
-  // INV-1 — the pre-read (scenario 3). Nothing sends when it already answers.
+  // The pre-read (scenario 3). Nothing sends when it already answers.
   const currentOwner = await toolkit.ownerOf(adminAddress);
   if (currentOwner !== null && currentOwner === targetOwner) {
     // Already transferred: a declared no-op naming the holder — the replay
@@ -80,7 +80,7 @@ export async function runTransferProxyAdminOwnership(
 
   const deployer = toolkit.requireDeployer();
 
-  // INV-5 — one queued step: send, confirm, verify.
+  // One queued step: send, confirm, verify.
   const outcome = await toolkit.queue(deployer, async () => {
     const writeBack = await toolkit.callThroughFacade({
       facadeName: 'ProxyAdmin',
@@ -97,7 +97,7 @@ export async function runTransferProxyAdminOwnership(
       throw new ConfirmationIndeterminateError(verdict);
     }
 
-    // INV-2 — the verify re-read, canonical and unconditional (scenario 1's
+    // The verify re-read, canonical and unconditional (scenario 1's
     // "actually surfacing": success is the chain's answer, not the receipt's).
     const observed = await toolkit.ownerOf(adminAddress);
     if (observed !== targetOwner) {

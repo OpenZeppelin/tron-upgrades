@@ -3,7 +3,7 @@
  * `readProxySlots`, `tvmCallOptional`, and the three replacements for
  * upgrades-core functions that are unsafe on TRON.
  *
- * **INV-47: every function here takes a `TronEthereumProvider` as its first
+ * **Every function here takes a `TronEthereumProvider` as its first
  * parameter.** This module closes over no channel, no handle, no endpoint and no
  * `ChainAccess`. That is what makes "exactly one translation point" a *shape*
  * rather than a rule: free functions that each construct their own transport are
@@ -11,10 +11,10 @@
  * and *verifying* it through the other, so its post-upgrade check can compare
  * answers about two different addresses. Taking `send` as a parameter means a
  * second transport has to be passed in explicitly at a call site someone reviews,
- * and it is simultaneously what makes these bodies host-free for SF-11's
+ * and it is simultaneously what makes these bodies host-free for packaging's
  * extraction.
  *
- * **INV-14 is the module's governing rule: no transport failure is ever converted
+ * **This module's governing rule: no transport failure is ever converted
  * into a no-answer, a `false`, a zero address, an empty slot or `undefined`.**
  * Every catch below is predicated on `ChainRpcError` *and* on
  * `isProbeOutcome(diagnosis)`; there is no `catch (_)`, no bare `catch {}`, and no
@@ -51,7 +51,7 @@ import {
 /**
  * The outcome of an optional `eth_call` probe.
  *
- * A **union, not `string | undefined`** (INV-8), because the two no-answer reasons
+ * A **union, not `string | undefined`**, because the two no-answer reasons
  * must stay distinguishable. `undefined` is where the sibling loses that, and the
  * user-facing result is measured: `beacon.ts:assertIsBeacon` tells a user their
  * address "is not an upgradeable beacon: its `implementation()` getter did not
@@ -64,7 +64,7 @@ export type OptionalCallOutcome =
       readonly because: 'reverted' | 'no-contract-at-address';
     };
 
-/** What `readProxySlots` found. INV-17: `no-code` is a different fact from three `null`s. */
+/** What `readProxySlots` found. `no-code` is a different fact from three `null`s. */
 export type ProxySlotsRead =
   | { readonly kind: 'no-code' }
   | {
@@ -85,7 +85,7 @@ export type BeaconRead =
       readonly because: 'call-did-not-answer' | 'answer-is-not-an-address';
     };
 
-/** The reader surface bound to one provider. INV-47: a thin binding, not a reimplementation. */
+/** The reader surface bound to one provider. A thin binding, not a reimplementation. */
 export interface ChainReaders {
   hasCode(address: string): Promise<boolean>;
   readImplementationAddress(proxy: string): Promise<ChainAddress>;
@@ -168,7 +168,7 @@ function slotsFor(label: SlotLabel): readonly string[] {
     : [eip1967Slots[label], legacyEip1967Slots[label]];
 }
 
-/** INV-40: one round-trip. */
+/** One round-trip. */
 export async function hasCode(
   send: TronEthereumProvider,
   address: string,
@@ -227,16 +227,16 @@ export async function readBeaconAddress(
 
 /**
  * The minimum that makes "nothing is deployed here" and "this is not a proxy"
- * distinguishable (INV-17), without SF-1 deciding proxy kind.
+ * distinguishable, without the chain layer deciding proxy kind.
  *
- * INV-37(b): **one `eth_getCode` first**, and the slot reads happen only if there
+ * **One `eth_getCode` first**, and the slot reads happen only if there
  * is code — so a no-code address costs **one** round-trip rather than six, which
- * is the observable that proves the ordering. INV-40: bounded at 6 for all three
+ * is the observable that proves the ordering. Bounded at 6 for all three
  * slots, and the bound does not depend on chain data, which is why the requested
  * labels are de-duplicated.
  *
- * Proxy-kind *judgment* stays with SF-5 / SF-9 — this returns what the slots say,
- * never what it means.
+ * Proxy-kind *judgment* stays with the proxy operations / the beacon
+ * operations — this returns what the slots say, never what it means.
  */
 export async function readProxySlots(
   send: TronEthereumProvider,
@@ -274,23 +274,24 @@ function probeReason(
 }
 
 /**
- * SF-1's replacement for `callOptionalSignature`, and the reason no message
- * translation is needed.
+ * The chain layer's replacement for `callOptionalSignature`, and the reason no
+ * message translation is needed.
  *
  * Returns a union rather than `string | undefined`, and — the property that
  * matters — **never converts a transport failure into a no-answer**. Only a
  * `ChainRpcError` whose diagnosis satisfies `isProbeOutcome` returns; everything
  * else raises.
  *
- * INV-22: SF-1 never appends, rewrites or augments a node error message so that
- * `call-optional-signature.js`'s four case-sensitive substrings match.
+ * The chain layer never appends, rewrites or augments a node error message so
+ * that `call-optional-signature.js`'s four case-sensitive substrings match.
  * `'REVERT opcode executed'.includes('revert')` is `false`, verified by execution,
  * so all four miss both of TRON's probe outcomes and `callOptionalSignature`
  * rethrows where it should return `undefined`. Translating would depend on a
  * private implementation detail a minor bump can reword — the same
  * borrowed-premise failure the no-spoofing rule rejects — and it would report
- * "revert" for "Smart contract is not exist.", collapsing INV-17's distinction at
- * the engine boundary. Supplying replacements and denying the plugin the five
+ * "revert" for "Smart contract is not exist.", collapsing the
+ * reverted/no-contract-at-address distinction at the engine boundary.
+ * Supplying replacements and denying the plugin the five
  * upstream names is free because all five are reachable from plugin code only.
  */
 export async function tvmCallOptional(
@@ -317,7 +318,7 @@ export async function tvmCallOptional(
         because: probeReason(cause.diagnosis),
       } as const);
     }
-    // INV-14 / INV-16: a transport failure, a wrong-shaped result, and an
+    // A transport failure, a wrong-shaped result, and an
     // `unclassified` node error all raise. "Out of energy" arrives on the same
     // `-32000` as a revert and is a real failure with a real remedy, so absorbing
     // it here would skip a transparent-proxy admin check on an account that
@@ -329,8 +330,8 @@ export async function tvmCallOptional(
 // ── The three replacements for upgrades-core functions unsafe on TRON ────────
 //
 // Named differently from upstream on purpose, so a mis-import is visible at the
-// call site rather than silently correct-looking. INV-22's deny-list is closed at
-// five names: `getUpgradeInterfaceVersion`, `inferProxyAdmin`,
+// call site rather than silently correct-looking. The no-translation rule's
+// deny-list is closed at five names: `getUpgradeInterfaceVersion`, `inferProxyAdmin`,
 // `getImplementationAddressFromBeacon`, `isBeacon`,
 // `getImplementationAddressFromProxy` — no module in this package may call them.
 
@@ -371,7 +372,8 @@ function decodeAbiString(data: string): string | undefined {
   }
 
   // Percent-decoding is used rather than `Buffer` or `TextDecoder` so this module
-  // reaches for no runtime object at all (INV-45's spirit, INV-33's letter) — the
+  // reaches for no runtime object at all (in the spirit of the zero-imports
+  // discipline, and to the letter of the no-Node-built-ins rule) — the
   // pairs are already validated hex by `stringResultMethods.eth_call`.
   const percentEncoded = (bytes.match(/../g) ?? [])
     .map(pair => `%${pair}`)
@@ -400,7 +402,7 @@ export async function readUpgradeInterfaceVersion(
     address,
     selectors.upgradeInterfaceVersion,
   );
-  // The one permitted `| undefined` in SF-1's surface (INV-8): it mirrors
+  // The one permitted `| undefined` in the chain layer's surface: it mirrors
   // upstream's documented contract for a **present, answering** contract that has
   // no such getter, and it is the only one.
   return outcome.kind === 'answered'
@@ -430,14 +432,14 @@ export async function looksLikeProxyAdmin(
 /**
  * Replaces `getImplementationAddressFromBeacon` / `isBeacon`.
  *
- * INV-37(b): probes `eth_getCode` **first**, which is what separates "nothing is deployed
+ * Probes `eth_getCode` **first**, which is what separates "nothing is deployed
    * there" from "deployed but not a beacon" — the node reports both identically, and
    * conflating them tells a user their address is not a beacon when in fact it is
    * not anything. It separates those two
  * conditions — upstream collapses them into `InvalidBeacon`, so a user with
  * nothing deployed at the address is told their contract "doesn't look like a
  * beacon" and the correct action, check the address, is not among the ones the
- * message suggests. INV-40: one round-trip with no code, exactly two with code.
+ * message suggests. One round-trip with no code, exactly two with code.
  */
 export async function readBeaconImplementation(
   send: TronEthereumProvider,
@@ -469,7 +471,7 @@ export async function readBeaconImplementation(
 /**
  * Binds the reader surface to one provider.
  *
- * INV-47: a thin binding, so `access.read.readImplementationAddress(p)` and the
+ * A thin binding, so `access.read.readImplementationAddress(p)` and the
  * free `readImplementationAddress(access.provider, p)` produce identical results
  * and identical request sequences.
  */

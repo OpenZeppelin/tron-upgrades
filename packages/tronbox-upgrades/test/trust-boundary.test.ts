@@ -35,9 +35,12 @@ import {
 } from './helpers/source-scan';
 
 /**
- * Trust & Capability Boundary — INV-25 … INV-29.
+ * Trust & Capability Boundary, covering the handle-entry guard, the
+ * deployer-resolver pairing check, chain-handle normalization, the
+ * internal-property-path scope, and the no-raw-host-object rule.
  *
- * SF-0 has no authorization surface: it signs nothing and calls nothing. What it
+ * The environment seam has no authorization surface: it signs nothing and calls
+ * nothing. What it
  * has is a trust boundary — handles arrive from a `vm` sandbox, unvalidated, and
  * the seam is the single place permitted to reach TronBox internals. The
  * technique is therefore auth-boundary testing in the shape that applies:
@@ -171,7 +174,7 @@ const malformedCases: readonly MalformedCase[] = (
   require: [slot, 'chain'] as readonly SlotName[],
 }));
 
-describe('INV-25: handles enter as unknown and reach a slot only through a guard', () => {
+describe('handles enter as unknown and reach a slot only through a guard', () => {
   it.each(
     malformedCases.map(entry => [
       `${entry.handle} as ${entry.label}`,
@@ -270,7 +273,7 @@ describe('INV-25: handles enter as unknown and reach a slot only through a guard
   });
 });
 
-describe('INV-26: when both are present, artifacts must wrap the deployer resolver', () => {
+describe('when both are present, artifacts must wrap the deployer resolver', () => {
   it('refuses an intercept wrapping a foreign resolver', () => {
     const shape = migrateShapedHandles();
     const foreignResolver: Record<string, unknown> = {};
@@ -299,9 +302,9 @@ describe('INV-26: when both are present, artifacts must wrap the deployer resolv
   });
 
   it('resolves normally with only artifacts, proving no deployer is presupposed', () => {
-    // This is what leaves SF-4 free to refuse when no deployer is present: the
-    // check is conditioned on both handles being present, never on a deployer
-    // existing.
+    // This is what leaves the deploy seam free to refuse when no deployer is
+    // present: the check is conditioned on both handles being present, never on
+    // a deployer existing.
     const shape = artifactsOnlyHandles();
     const env = resolveEnvironment(
       shape.handles,
@@ -350,7 +353,8 @@ describe('INV-26: when both are present, artifacts must wrap the deployer resolv
 
   it('does not let that read failure fail a resolution that declared no lineage slot', () => {
     // implementation defect 3, in its second shape: a slot the caller never declared
-    // must not be able to fail the resolution, or INV-1's purpose is defeated.
+    // must not be able to fail the resolution, or the declared-slots-only
+    // guarantee's purpose is defeated.
     const shape = migrateShapedHandles({ omit: ['resolver'] });
     const env = resolveEnvironment(shape.handles, { require: ['chain'] });
     expect(env.chain).toBeDefined();
@@ -367,7 +371,7 @@ describe('INV-26: when both are present, artifacts must wrap the deployer resolv
   });
 });
 
-describe('INV-27: the chain handle is normalized one-way and a conflict is inconsistent', () => {
+describe('the chain handle is normalized one-way and a conflict is inconsistent', () => {
   it('accepts both names for one object', () => {
     const wrap = tronWrapHandle();
     const shape = migrateShapedHandles();
@@ -404,8 +408,8 @@ describe('INV-27: the chain handle is normalized one-way and a conflict is incon
     // `build/components/Migrate/index.js:Migration` builds the sandbox with
     // `tronWeb: tronWrap`, so the misleading name is the host's, not the user's.
     // Refusing it would push the host's inconsistency onto the user;
-    // re-exporting it would invite SF-1 to reach for TronWeb methods that are
-    // not there.
+    // re-exporting it would invite the chain layer to reach for TronWeb methods
+    // that are not there.
     const wrap = tronWrapHandle();
     const env = resolveEnvironment(handles({ tronWeb: wrap }), {
       require: ['chain'],
@@ -437,7 +441,7 @@ describe('INV-27: the chain handle is normalized one-way and a conflict is incon
   });
 });
 
-describe('INV-28: only src/environment/** reads a TronBox-internal property path', () => {
+describe('only src/environment/** reads a TronBox-internal property path', () => {
   it('finds no internal property path outside the seam', () => {
     const outside = nonEnvironmentSources();
     const forbidden =
@@ -552,7 +556,7 @@ describe('INV-28: only src/environment/** reads a TronBox-internal property path
 
   it('enumerates the exact set of host keys the seam reads by literal name', () => {
     // The drift surface, as data. A new key read here is a new upstream
-    // dependency, and INV-33's `internalPathsRead` is the runtime corroboration.
+    // dependency, and `internalPathsRead` recording it is the runtime corroboration.
     const keys = new Set<string>();
     for (const source of environmentSources()) {
       for (const key of source.readPropertyKeys) {
@@ -608,7 +612,7 @@ describe('INV-28: only src/environment/** reads a TronBox-internal property path
   });
 });
 
-describe('INV-29: no raw host object is exposed', () => {
+describe('no raw host object is exposed', () => {
   it('exposes no Config, network_config or basePath key anywhere in the composite', () => {
     const shape = migrateShapedHandles({
       networks: { development: networkEntry({ from: 'TFrom' }) },
@@ -646,7 +650,7 @@ describe('INV-29: no raw host object is exposed', () => {
     // per-slot enumeration so adding a sixth handle-bearing slot without redacting
     // it fails here.
     //
-    // INV-29's rule is *all five are unsafe to log*, deliberately not keyed to the
+    // The rule is *all five are unsafe to log*, deliberately not keyed to the
     // two that are credential-reachable on v4.8.0 / v4.9.0 — a rule keyed to that
     // subset is one an upstream bump silently expires, while the five sealing sites
     // are the seam's own. `sensitive-data.test.ts` holds the reachability
@@ -673,8 +677,8 @@ describe('INV-29: no raw host object is exposed', () => {
   it('never exposes deployer.basePath, which is the migrations directory', () => {
     // `Deployer` sets `this.basePath = options.basePath || process.cwd()` and
     // `Migration` passes `path.dirname(this.file)`. It is absolute, plausible,
-    // and named like a project root — SF-3 anchoring a record on it would put the
-    // record inside `migrations/`.
+    // and named like a project root — the record layer anchoring a record on it
+    // would put the record inside `migrations/`.
     const shape = migrateShapedHandles();
     const env = resolveEnvironment(shape.handles, {
       require: ['paths', 'scheduling'],

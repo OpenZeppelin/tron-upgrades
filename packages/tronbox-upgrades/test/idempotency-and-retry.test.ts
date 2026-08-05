@@ -22,7 +22,9 @@ import {
 import { environmentSources } from './helpers/source-scan';
 
 /**
- * Idempotency & Retry — INV-20 … INV-24.
+ * Idempotency & Retry, covering module-scope statelessness, deterministic
+ * resolution, migration-scoped freshness, the lazy ambiguity index, and routing
+ * through the injected intercept.
  *
  * Technique: replay. Every test either drives the same inputs twice and compares,
  * or drives two different handle sets through one loaded module and asserts the
@@ -31,7 +33,7 @@ import { environmentSources } from './helpers/source-scan';
  * unit-level half plus the mechanical absences the property rests on.
  */
 
-describe('INV-20: no module-scope mutable state in src/environment/**', () => {
+describe('no module-scope mutable state in src/environment/**', () => {
   it('declares no module-scope let or var', () => {
     for (const source of environmentSources()) {
       expect(
@@ -107,7 +109,7 @@ describe('INV-20: no module-scope mutable state in src/environment/**', () => {
   });
 });
 
-describe('INV-21: resolution is deterministic and repeatable', () => {
+describe('resolution is deterministic and repeatable', () => {
   it('returns observationally equal composites for the same inputs', () => {
     const shape = migrateShapedHandles();
     const reader = singleContractReader();
@@ -193,7 +195,7 @@ describe('INV-21: resolution is deterministic and repeatable', () => {
   });
 });
 
-describe('INV-22: migration-scoped freshness, and memoization never keys on the Config', () => {
+describe('migration-scoped freshness, and memoization never keys on the Config', () => {
   it('derives every slot of the second composite from the second handles', () => {
     const first = migrateShapedHandles({
       root: '/proj-one',
@@ -242,10 +244,11 @@ describe('INV-22: migration-scoped freshness, and memoization never keys on the 
   });
 
   it('a WeakMap keyed on the deployer gives one entry per migration', () => {
-    // The memoization rule SF-4 inherits. Keying on the `deployer` — a fresh
-    // object per migration — is compatible with this invariant; keying on the
-    // `Config`, which is shared across the whole run, reproduces the staleness
-    // INV-20 forbids while looking like a per-invocation cache.
+    // The memoization rule the deploy seam inherits. Keying on the `deployer` — a
+    // fresh object per migration — is compatible with this invariant; keying on
+    // the `Config`, which is shared across the whole run, reproduces the staleness
+    // the module-scope statelessness guarantee forbids while looking like a
+    // per-invocation cache.
     const first = migrateShapedHandles({ root: '/proj-one' });
     const second = migrateShapedHandles({ root: '/proj-two' });
     const byDeployer = new WeakMap<object, number>();
@@ -263,7 +266,7 @@ describe('INV-22: migration-scoped freshness, and memoization never keys on the 
   });
 });
 
-describe('INV-23: the ambiguity index is lazy, computed once, stable within its composite', () => {
+describe('the ambiguity index is lazy, computed once, stable within its composite', () => {
   it('performs no build-info I/O for a resolution that never consults the index', () => {
     const shape = migrateShapedHandles();
     const reader = countingReader(collidingReader());
@@ -323,7 +326,7 @@ describe('INV-23: the ambiguity index is lazy, computed once, stable within its 
   });
 });
 
-describe('INV-24: resolve routes through the injected intercept', () => {
+describe('resolve routes through the injected intercept', () => {
   it('returns the identical abstraction for repeated resolves of one name', () => {
     const shape = migrateShapedHandles();
     const env = resolveEnvironment(
@@ -360,11 +363,12 @@ describe('INV-24: resolve routes through the injected intercept', () => {
   });
 
   it('never obtains an abstraction through config.resolver', () => {
-    // INV-24 as it now stands: *"no path yields a `ContractAbstraction`
-    // except the injected intercept"*. `config.resolver` is read — INV-26's pairing
-    // check compares it — and that read is permitted and enumerated, so the
-    // property under test is about what the read is *used for*, not whether it
-    // happens. A throwing `require` on the Config's own resolver proves it: any path
+    // This invariant as it now stands: *"no path yields a `ContractAbstraction`
+    // except the injected intercept"*. `config.resolver` is read — the
+    // deployer-resolver pairing check compares it — and that read is permitted
+    // and enumerated, so the property under test is about what the read is
+    // *used for*, not whether it happens. A throwing `require` on the Config's
+    // own resolver proves it: any path
     // that reached for an abstraction there would fail loudly instead of silently
     // returning a functionally identical object that is absent from the write-back
     // cache.
@@ -384,26 +388,28 @@ describe('INV-24: resolve routes through the injected intercept', () => {
     expect(shape.intercept.calls).toEqual(['Box', 'pkg/Box.json']);
   });
 
-  it('records the one read of config.resolver that INV-26 requires', () => {
-    // This was flagged as a contradiction: INV-24's original wording
-    // ("`config.resolver` is never read") could not hold alongside INV-26, whose
-    // pairing check *is* that read. It is resolved by narrowing INV-24 to
-    // "no path yields a `ContractAbstraction`" and enumerating the one permitted
-    // read — and INV-33 recording it is a feature, not a leak: `internalPathsRead`
-    // is what makes the actual surface checkable rather than aspirational, and it
-    // is the canary that fires if a second read of the reference appears.
+  it('records the one read of config.resolver that the deployer-resolver pairing check requires', () => {
+    // This was flagged as a contradiction: this invariant's original wording
+    // ("`config.resolver` is never read") could not hold alongside the
+    // deployer-resolver pairing check, whose check *is* that read. It is resolved
+    // by narrowing this invariant to "no path yields a `ContractAbstraction`" and
+    // enumerating the one permitted read — and recording it in
+    // `internalPathsRead` is a feature, not a leak: that is what makes the actual
+    // surface checkable rather than aspirational, and it is the canary that fires
+    // if a second read of the reference appears.
     const shape = migrateShapedHandles();
     const env = resolveEnvironment(shape.handles, { require: ['paths'] });
     expect(env.provenance.internalPathsRead).toContain(
       'deployer.options.options.resolver',
     );
     // "The one read" made precise, because the recorded set contains two
-    // resolver-shaped paths and only one of them is INV-24's. `artifacts.resolver`
-    // is the *lineage hop* — the intercept's resolver is how the seam reaches the
-    // Config behind the `artifacts` handle at all, and every path-and-network slot
-    // depends on it. `deployer.options.options.resolver` is the identity comparison
-    // INV-26 requires and INV-24 enumerates as permitted. Conflating them would let
-    // a second comparison read slip in behind the lineage traversal.
+    // resolver-shaped paths and only one of them is this invariant's.
+    // `artifacts.resolver` is the *lineage hop* — the intercept's resolver is how
+    // the seam reaches the Config behind the `artifacts` handle at all, and every
+    // path-and-network slot depends on it. `deployer.options.options.resolver` is
+    // the identity comparison the deployer-resolver pairing check requires and
+    // this invariant enumerates as permitted. Conflating them would let a second
+    // comparison read slip in behind the lineage traversal.
     const resolverReads = env.provenance.internalPathsRead.filter(read =>
       /\.resolver$/.test(read),
     );

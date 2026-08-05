@@ -10,12 +10,13 @@ import path from 'node:path';
  *   **present with an `undefined` value**, not to an absent key. That is what
  *   `build/components/Config.js:Config`'s getters produce, since
  *   `build/components/TronWrap/constants.js:deployParameters` declares
- *   `tokenValue: undefined`, `tokenId: undefined`, `from: undefined`. INV-4 and
- *   INV-17 both depend on absent and present-but-undefined being different
- *   states, so a fixture that omitted the keys would exercise the wrong branch.
+ *   `tokenValue: undefined`, `tokenId: undefined`, `from: undefined`. The
+ *   distinction between an absent key and one present but undefined is
+ *   load-bearing here, so a fixture that omitted the keys would exercise the
+ *   wrong branch.
  * - `feeLimit: 1e9`, `userFeePercentage: 100`, `originEnergyLimit: 1e7` are the
  *   `deployParameters` constants — the "complete, plausible, entirely fictional
- *   network configuration" INV-16 exists to refuse.
+ *   network configuration" the seam is built to refuse.
  * - `working_directory` is an own **accessor** on a live `Config` and an own
  *   **data property** on the `Config.prototype.with` snapshot. That descriptor
  *   difference is the only thing `config-lineage.ts:classifyBinding` inspects.
@@ -60,18 +61,19 @@ export interface ConfigFixtureSpec {
    * Define the derived scalars as **accessors over `networks[network]`**, the
    * way a live `Config` computes them, instead of as data properties.
    *
-   * INV-9's mutation test needs this: on a real live Config every one of these
-   * is late-bound through the freshly merged `network_config`, so mutating
-   * `networks[name].from` after resolution changes what the *host* reports. A
-   * data-property fixture would pass INV-9's assertion for the wrong reason —
-   * the fixture, not the seam, would be the thing that copied.
+   * The mutation test for late-bound network config needs this: on a real
+   * live Config every one of these is late-bound through the freshly merged
+   * `network_config`, so mutating `networks[name].from` after resolution
+   * changes what the *host* reports. A data-property fixture would pass that
+   * assertion for the wrong reason — the fixture, not the seam, would be the
+   * thing that copied.
    */
   readonly liveGetters?: boolean;
-  /** Extra own properties, for "a future upstream key" tests (INV-41). */
+  /** Extra own properties, for "a future upstream key" tests. */
   readonly extra?: Readonly<Record<string, unknown>>;
-  /** Keys deleted entirely — absent, not nullish (INV-17). */
+  /** Keys deleted entirely — absent, not nullish. */
   readonly omit?: readonly string[];
-  /** Keys defined as accessors that throw, like `network_config` (INV-15). */
+  /** Keys defined as accessors that throw, like `network_config`. */
   readonly throwOn?: readonly string[];
 }
 
@@ -273,7 +275,7 @@ export function configFixture(
 
 /**
  * The live `networks[name]` entry of a fixture config, for post-resolution
- * mutation tests (INV-9). Throws rather than returning undefined, so a fixture
+ * mutation tests. Throws rather than returning undefined, so a fixture
  * drift shows up as a fixture error instead of a vacuously passing assertion.
  */
 export function mutableNetworkEntry(

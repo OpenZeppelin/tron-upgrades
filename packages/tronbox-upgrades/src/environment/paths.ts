@@ -12,7 +12,7 @@ import type { InternalPathRecorder } from './handles';
 import type { AbsolutePath, ProjectPaths } from './types';
 
 /**
- * INV-2: the only place the `AbsolutePath` brand is minted. Refuses rather than
+ * The only place the `AbsolutePath` brand is minted. Refuses rather than
  * resolves — `path.resolve` against a cwd is unavailable in principle here,
  * because `build/components/Require.js:Require.file` chdirs to the migration's
  * directory for the file's top-level evaluation and restores it before the
@@ -96,7 +96,7 @@ export function projectPathValues(
       ) as Record<PathScalarField, AbsolutePath>,
     );
 
-    // INV-3: `build_info_directory` cannot legally escape the project, while
+    // `build_info_directory` cannot legally escape the project, while
     // `contracts_build_directory` can — `resolvePathInWorkingDirectory` returns
     // early for that one key when `_allowExternalContractsBuildDirectory` is
     // set, which is how `build/lib/commands/test.js` points the build tree at a
@@ -122,8 +122,8 @@ export function projectPathValues(
 /**
  * Total function of the validated scalars — every failure already happened in
  * {@link projectPathValues}. Constructing the slot from the *compared* values
- * is what makes INV-12 structural for this slot: when both lineages are present
- * and agree, there is no lineage object to prefer.
+ * is what makes the no-silent-preference rule structural for this slot: when
+ * both lineages are present and agree, there is no lineage object to prefer.
  */
 export function buildProjectPaths(values: PathScalarValues): ProjectPaths {
   return Object.freeze({
@@ -131,7 +131,7 @@ export function buildProjectPaths(values: PathScalarValues): ProjectPaths {
     contractsDirectory: values.contracts_directory,
     contractsBuildDirectory: values.contracts_build_directory,
     buildInfoDirectory: values.build_info_directory,
-    // INV-3: observed by containment, never inferred from the invoking command.
+    // Observed by containment, never inferred from the invoking command.
     contractsBuildDirectoryIsExternal: !isContainedIn(
       values.working_directory,
       values.contracts_build_directory,

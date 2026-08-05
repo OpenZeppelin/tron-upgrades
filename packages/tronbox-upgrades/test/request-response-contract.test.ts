@@ -34,7 +34,8 @@ import {
 import { environmentSources } from './helpers/source-scan';
 
 /**
- * Input/Output Contract — INV-1 … INV-9.
+ * Input/Output Contract — the invariants governing what `resolveEnvironment`
+ * returns and reports.
  *
  * Technique: entry-point integration. Every test drives `resolveEnvironment`
  * from a handle set and asserts both the returned shape and what the composite
@@ -55,7 +56,7 @@ function incompleteFrom(act: () => unknown): EnvironmentIncompleteError {
   return caught;
 }
 
-describe('INV-1: slot narrowing is total and exact', () => {
+describe('slot narrowing is total and exact', () => {
   it('returns an own value for every required slot and nothing outside R ∪ O', () => {
     const cases: readonly {
       readonly label: string;
@@ -153,9 +154,9 @@ describe('INV-1: slot narrowing is total and exact', () => {
 
   it('omits an optional slot that cannot be constructed rather than failing', () => {
     // A misconfigured network makes the `network` slot unconstructible. Declared
-    // optional, that must cost the caller nothing — INV-1 is what lets a
-    // consumer omit null checks, and a slot nobody required must not be able to
-    // fail a resolution.
+    // optional, that must cost the caller nothing — total slot narrowing is what
+    // lets a consumer omit null checks, and a slot nobody required must not be
+    // able to fail a resolution.
     const shape = migrateShapedHandles({ networks: {} });
     const env = resolveEnvironment(shape.handles, {
       require: ['chain'],
@@ -178,7 +179,7 @@ describe('INV-1: slot narrowing is total and exact', () => {
   });
 });
 
-describe('INV-2: AbsolutePath is mintable only by assertion, never by resolution', () => {
+describe('AbsolutePath is mintable only by assertion, never by resolution', () => {
   it('refuses a relative working_directory instead of resolving it', () => {
     const shape = migrateShapedHandles({ root: '../shared' });
     const error = incompleteFrom(() =>
@@ -227,7 +228,7 @@ describe('INV-2: AbsolutePath is mintable only by assertion, never by resolution
   });
 });
 
-describe('INV-3: derived paths are absolute and external-ness is observed', () => {
+describe('derived paths are absolute and external-ness is observed', () => {
   it('reports contractsBuildDirectoryIsExternal false for the default layout', () => {
     const shape = migrateShapedHandles();
     const env = resolveEnvironment(shape.handles, { require: ['paths'] });
@@ -306,7 +307,7 @@ describe('INV-3: derived paths are absolute and external-ness is observed', () =
   );
 });
 
-describe('INV-4: no declared slot field is ever undefined', () => {
+describe('no declared slot field is ever undefined', () => {
   it('normalizes an unconfigured txDefault to null, not to undefined', () => {
     // `deployParameters` declares `tokenValue: undefined`, `tokenId: undefined`
     // and `from: undefined` — not null — and `Config`'s getters forward that
@@ -395,7 +396,7 @@ describe('INV-4: no declared slot field is ever undefined', () => {
   });
 });
 
-describe('INV-5: ArtifactResolution is total and only `unique` names `contract`', () => {
+describe('ArtifactResolution is total and only `unique` names `contract`', () => {
   it('returns `unique` with a contract and a source path', () => {
     const shape = migrateShapedHandles();
     const env = resolveEnvironment(
@@ -480,7 +481,7 @@ describe('INV-5: ArtifactResolution is total and only `unique` names `contract`'
   });
 });
 
-describe('INV-6: network identity is three separate fields', () => {
+describe('network identity is three separate fields', () => {
   it.each([
     ['*', 'wildcard'],
     ['**', 'exact'],
@@ -538,10 +539,10 @@ describe('INV-6: network identity is three separate fields', () => {
 });
 
 // ---------------------------------------------------------------------------
-// INV-48 — added after the first pass
+// value normalization — added after the first pass
 // ---------------------------------------------------------------------------
 
-describe('INV-48: value normalization is a closed, enumerated two-entry list', () => {
+describe('value normalization is a closed, enumerated two-entry list', () => {
   /** Both `network_id` sites at once: the raw entry's, and the getter's. */
   function withNetworkId(entryId: unknown, getterId: unknown = entryId) {
     return migrateShapedHandles({
@@ -631,8 +632,9 @@ describe('INV-48: value normalization is a closed, enumerated two-entry list', (
 
   it("leaves '*' a wildcard, which the number branch cannot reach", () => {
     // Condition 4: the coercion runs only on `number` and no number is `'*'`, so
-    // INV-6's strict-equality wildcard derivation is structurally out of reach.
-    // Asserted rather than reasoned, because the failure mode would be silent.
+    // the network-identity slot's strict-equality wildcard derivation is
+    // structurally out of reach. Asserted rather than reasoned, because the
+    // failure mode would be silent.
     expect(networkFor('*').configuredId).toEqual({
       value: '*',
       syntax: 'wildcard',
@@ -676,9 +678,9 @@ describe('INV-48: value normalization is a closed, enumerated two-entry list', (
 
   it('reports no fictional disagreement when the two lineages differ only in type', () => {
     // The hazard that makes covering both sites mandatory rather than tidy. Both
-    // fields are INV-13 cross-check members, so one coerced and one raw would
-    // compare a number against a string across lineages and report an
-    // `inconsistent` that does not exist.
+    // fields are members of the cross-lineage comparison's closed field set, so
+    // one coerced and one raw would compare a number against a string across
+    // lineages and report an `inconsistent` that does not exist.
     const shape = testShapedHandles(
       { networkId: 1, networks: { development: networkEntry({ networkId: 1 }) } },
       { networkId: '1' },
@@ -731,10 +733,10 @@ describe('INV-48: value normalization is a closed, enumerated two-entry list', (
 
     // `String(…)` lives in exactly two modules, and they are different things —
     // worth separating, because conflating them is how the closed list would gain
-    // an entry unnoticed. `network.ts`'s is INV-48's normalization and reaches a
-    // *slot*; `errors.ts`'s is INV-13's allow-listed value rendering inside
-    // `formatValue` and reaches only a *message*, where no cross-lineage comparison
-    // can be corrupted by it.
+    // an entry unnoticed. `network.ts`'s is value normalization's coercion and
+    // reaches a *slot*; `errors.ts`'s is the cross-lineage comparison's
+    // allow-listed value rendering inside `formatValue` and reaches only a
+    // *message*, where no cross-lineage comparison can be corrupted by it.
     const stringUsers = new Set(
       environmentSources()
         .filter(source =>
@@ -755,7 +757,7 @@ describe('INV-48: value normalization is a closed, enumerated two-entry list', (
   });
 });
 
-describe('INV-7: addresses are tool-verbatim and the sender is always wrapped', () => {
+describe('addresses are tool-verbatim and the sender is always wrapped', () => {
   it.each([
     'TQ5NMqJjhpQGK7YJbESmqLZKmqSXvfRWMR',
     '41aaaabbbbccccddddeeeeffff0000111122223333',
@@ -798,7 +800,7 @@ describe('INV-7: addresses are tool-verbatim and the sender is always wrapped', 
   });
 });
 
-describe('INV-8: bare-name normalization is one function shared by both key spaces', () => {
+describe('bare-name normalization is one function shared by both key spaces', () => {
   it.each([
     ['Box', 'Box'],
     ['./Box', 'Box'],
@@ -854,7 +856,7 @@ describe('INV-8: bare-name normalization is one function shared by both key spac
   });
 });
 
-describe('INV-9: the composite is immutable and aliases nothing the host mutates', () => {
+describe('the composite is immutable and aliases nothing the host mutates', () => {
   it('is unaffected by a post-resolution mutation of the live network entry', () => {
     const shape = migrateShapedHandles({
       liveGetters: true,

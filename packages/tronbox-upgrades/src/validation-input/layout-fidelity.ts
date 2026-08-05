@@ -55,8 +55,8 @@ import type { SolcStandardOutput } from './solc-input';
  *    `dist/storage/index.js:getStorageUpgradeReport`'s only slot-absence branch
  *    asks `original.storage.some(item => item.slot === undefined)`. A purely
  *    namespaced contract has `storage: []`, so that branch never fires — while
- *    every member of every namespace carries `slot: undefined`, measured in both
- *    modes (`evidence/namespaced-without-second-compile.log`). Every OZ 5.x
+ *    every member of every namespace carries `slot: undefined`, as a captured
+ *    compile log confirms across both modes. Every OZ 5.x
  *    contract takes that path. {@link positionShortfall} asks the same question
  *    of `namespaces`, so the reduced fidelity is stated rather than implied.
  *
@@ -65,7 +65,7 @@ import type { SolcStandardOutput } from './solc-input';
  *    namespaced struct still surfaces as a name or type change and is refused;
  *    the divergence direction without positions is over-rejection, never silent
  *    acceptance. The note exists because a reduced-fidelity comparison must say
- *    so (SC-003), not because unsafe changes would otherwise pass.
+ *    so, not because unsafe changes would otherwise pass.
  * ============================================================================
  */
 

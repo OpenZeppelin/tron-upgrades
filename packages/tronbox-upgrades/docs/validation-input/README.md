@@ -8,13 +8,14 @@
 
 **This is not the package README.** It is internal documentation for the sub-features built on
 top of this module. `@openzeppelin/tronbox-upgrades` exposes no part of it to end users; the
-package's public entry point is SF-11's, and the user-facing README is assembled and proved
-followable by SF-12. See [`readme-contributions.md`](./readme-contributions.md) for the facts
-this module contributes to that README.
+package's public entry point belongs to packaging, and the user-facing README is assembled and
+proved followable by the consumer end-to-end harness. See
+[`readme-contributions.md`](./readme-contributions.md) for the facts this module contributes to
+that README.
 
 **Audience:** the sibling modules that consume a validation input — the deploy/upgrade
-operations (SF-4), artifact resolution policy (SF-5), the validation call itself (SF-6), and
-the result and output contract (SF-10).
+operations, artifact resolution policy, the validation call itself, and the result and output
+contract.
 
 ---
 
@@ -166,7 +167,7 @@ upgrades slip through — it is that those two shapes are refused *even when the
 fails in the correct direction.
 
 Measured over nine upgrade pairs, run through the same `upgrades-core` in both modes
-(`evidence/probe-ast-only-vs-slot-level.js`):
+(measured with a live AST-only-vs-slot-level compile probe):
 
 | | AST-only |
 |---|---|
@@ -208,8 +209,8 @@ can compile. The one base-slot change that IS expressible today, renaming an ERC
 `storageLayout` to its compiler `outputSelection`, which would make every build record carry
 positions and retire the fresh path's shortfall without a plugin change. The request ships with
 evidence already measured here: adding that one entry leaves `evm.bytecode.object`,
-`evm.deployedBytecode.object` and `metadata` byte-identical
-(`evidence/probe-recompile-fidelity.js` §1), so it cannot perturb existing builds. Nothing in
+`evm.deployedBytecode.object` and `metadata` byte-identical (measured with a live
+recompile-fidelity probe, part 1), so it cannot perturb existing builds. Nothing in
 this module is built against that future — if it lands, the ladder simply stops degrading.
 
 ---
@@ -240,11 +241,12 @@ unrepresentable rather than merely unobserved.
 
 **There is no predicate on which reports escalate.** The obvious gate — escalate only where
 every flagged operation is explicable by missing positions — was specified and then measured
-unimplementable (`evidence/probe-p4-gate-observability.js`). On the decisive pair, a genuinely
-safe intra-slot padding change and a genuine mid-layout insert produce reports identical in
-every field a gate could key on: one `insert` op each, the same `originalLabel: null`, the same
-absent positions, the same `changeUncertain: null`. The only difference is the name of the
-inserted variable, and no gate may be built on a user-chosen identifier.
+unimplementable (measured with a live gate-observability probe). On the decisive pair, a
+genuinely safe intra-slot padding change and a genuine mid-layout insert produce reports
+identical in every field a gate could key on: one `insert` op each, the same
+`originalLabel: null`, the same absent positions, the same `changeUncertain: null`. The only
+difference is the name of the inserted variable, and no gate may be built on a user-chosen
+identifier.
 
 What that costs is one compile before refusing a genuine incompatibility. What it buys is two
 things, and the second matters more than the extra accept:
@@ -314,7 +316,7 @@ perform in either mode.
 **The plugin states that shortfall itself.** Upstream's only slot-absence notice asks
 `original.storage.some(item => item.slot === undefined)` — and a purely namespaced contract has
 `storage: []`, so the branch never fires while every namespace member carries `slot: undefined`
-(`evidence/probe-namespaced-without-second-compile.js`, measured in both modes). So a
+(measured with a live namespaced-without-second-compile probe, in both modes). So a
 `namespaced-ast-only` degraded note is recorded on every path that finds a namespace.
 
 **What the note means, bounded by the upstream maintainer's ruling (2026-08-04): it is a
@@ -357,5 +359,5 @@ bug the fidelity detector was rewritten to remove.
 | [`api-reference.md`](./api-reference.md) | Every export, with full TypeScript signatures |
 | [`integration-guide.md`](./integration-guide.md) | Four end-to-end consumption patterns, and the mistakes to avoid |
 | [`safety.md`](./safety.md) | The two refused-though-safe shapes, what is not promised, and the one trap |
-| [`readme-contributions.md`](./readme-contributions.md) | User-observable facts this module contributes to the package README (SF-12 assembles) |
+| [`readme-contributions.md`](./readme-contributions.md) | User-observable facts this module contributes to the package README (the consumer end-to-end harness assembles) |
 | [`examples/`](./examples) | Type-checked example modules |

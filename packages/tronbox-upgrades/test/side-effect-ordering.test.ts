@@ -48,22 +48,28 @@ import {
 } from './helpers/source-scan';
 
 /**
- * Side-Effect Ordering & Observability — INV-30 … INV-36.
+ * Side-Effect Ordering & Observability — no network or chain read, confined
+ * disk I/O, no emission, exact read-path provenance, stated reduced-
+ * verification modes, the logger's guaranteed surface, and no partial index
+ * ever reported as indexed.
  *
- * SF-0 has almost no side effects to order, and that is the point: five of these
- * seven invariants are *absences* (no network, no chain read, no write, no
- * emission, no promise-adjacent scheduling), and an absence is only testable two
- * ways — drive the seam with a fixture that would fail loudly if the absence
- * were violated, and scan the source for the identifiers that could violate it.
- * Both techniques appear below, deliberately paired: the fixture proves today's
- * behaviour, the scan proves the next edit cannot quietly introduce it.
+ * The environment seam has almost no side effects to order, and that is the
+ * point: five of these seven invariants are *absences* (no network, no chain
+ * read, no write, no emission, no promise-adjacent scheduling), and an
+ * absence is only testable two ways — drive the seam with a fixture that
+ * would fail loudly if the absence were violated, and scan the source for
+ * the identifiers that could violate it. Both techniques appear below,
+ * deliberately paired: the fixture proves today's behaviour, the scan proves
+ * the next edit cannot quietly introduce it.
  *
- * The two invariants that *are* about observability — INV-33's `internalPathsRead`
- * and INV-34's two reduced-verification modes — get the sequence-interleaving
- * treatment in the shape that applies here. There is no concurrency to interleave,
- * so the equivalent is driving the same resolution through different *reachability*
- * shapes and asserting the reported state tracks what was actually read rather
- * than a static declaration.
+ * The two invariants that *are* about observability — `internalPathsRead`
+ * being exactly the set of internal paths a resolution read, and the two
+ * reduced-verification modes being stated rather than inferred — get the
+ * sequence-interleaving treatment in the shape that applies here. There is no
+ * concurrency to interleave, so the equivalent is driving the same
+ * resolution through different *reachability* shapes and asserting the
+ * reported state tracks what was actually read rather than a static
+ * declaration.
  */
 
 const ALL_SLOTS: readonly SlotName[] = slotNames;
@@ -100,10 +106,10 @@ function indexedReport(
 }
 
 // ---------------------------------------------------------------------------
-// INV-30
+// No network I/O and no chain read
 // ---------------------------------------------------------------------------
 
-describe('INV-30: SF-0 performs no network I/O and no chain read', () => {
+describe('the environment seam performs no network I/O and no chain read', () => {
   it('resolves every slot against a tronWrap whose every method throws', () => {
     // This is the invariant's own stated test, and it doubles as documentation:
     // the `chain` slot is a handle pass-through, not a client. If any part of the
@@ -144,10 +150,11 @@ describe('INV-30: SF-0 performs no network I/O and no chain read', () => {
   });
 
   it("leaves '*' unresolved rather than asking the chain what it means", () => {
-    // INV-6 owns the field shape; what this asserts is the *absence* of the
-    // resolution step. TronBox never resolves `'*'` either, so a seam that did
-    // would put chain-identity resolution in two places — SF-0's and SF-1's —
-    // which is how one wildcard becomes two different answers.
+    // The wildcard-handling rule owns the field shape; what this asserts is the
+    // *absence* of the resolution step. TronBox never resolves `'*'` either, so
+    // a seam that did would put chain-identity resolution in two places — the
+    // environment seam's and the chain layer's — which is how one wildcard
+    // becomes two different answers.
     const shape = migrateShapedHandles();
     const env = resolveEnvironment(
       handles({
@@ -206,15 +213,16 @@ describe('INV-30: SF-0 performs no network I/O and no chain read', () => {
 });
 
 // ---------------------------------------------------------------------------
-// INV-31
+// The disk-read discipline
 // ---------------------------------------------------------------------------
 
-describe('INV-31: disk reads only through the injected reader, only under buildInfoDirectory, and no writes', () => {
+describe('disk reads only through the injected reader, only under buildInfoDirectory, and no writes', () => {
   it('exposes exactly two methods, and the probe is typed to carry no content', () => {
     // Asserted as a count rather than argued in a comment.
     // The interface is the enforcement: `exists` returns `boolean`, so no byte of
     // the packaged artifact can flow out of the weaker capability even by mistake
-    // (which is what keeps INV-42 intact while INV-18 gains its third message).
+    // (which is what keeps the no-content-leak guarantee intact while the
+    // packaged-artifact diagnosis gains its third message).
     const ambiguitySource = environmentSources().find(
       source => source.relative === 'ambiguity.ts',
     );
@@ -256,9 +264,9 @@ describe('INV-31: disk reads only through the injected reader, only under buildI
   });
 
   it('never probes on the happy path, so a successful resolve does no I/O at all', () => {
-    // INV-45's zero-I/O claim survives the amendment: the probe runs *after* the
-    // host has already failed, so a resolution that succeeds never touches the
-    // filesystem through either method.
+    // The common path's zero-I/O guarantee survives the amendment: the probe
+    // runs *after* the host has already failed, so a resolution that succeeds
+    // never touches the filesystem through either method.
     const probe = existenceProbeReader(true);
     const shape = migrateShapedHandles(
       {},
@@ -275,10 +283,10 @@ describe('INV-31: disk reads only through the injected reader, only under buildI
   });
 
   it('never probes a path that failed containment, since containment is decided first', () => {
-    // INV-18's check order is load-bearing here, not stylistic. If existence were
-    // decided first, `../../../etc/shadow.json` would become a filesystem oracle
-    // for paths outside the project — the probe answers a question the seam should
-    // refuse to ask.
+    // The packaged-artifact diagnosis's check order is load-bearing here, not
+    // stylistic. If existence were decided first, `../../../etc/shadow.json`
+    // would become a filesystem oracle for paths outside the project — the
+    // probe answers a question the seam should refuse to ask.
     const probe = existenceProbeReader(true);
     const shape = migrateShapedHandles();
     const env = resolveEnvironment(
@@ -326,11 +334,11 @@ describe('INV-31: disk reads only through the injected reader, only under buildI
   });
 
   it("takes the plugin manifest as a static import, not as a second fs read", () => {
-    // INV-31 enumerates the manifest read as the one other read. It is a static
-    // module import resolved by the loader, so it is not a runtime `fs` call at
-    // all — which is stronger than the invariant claims and worth pinning, since
-    // rewriting it as `readFileSync` would make `errors.ts` a second fs importer
-    // and fail the assertion above.
+    // The disk-read discipline enumerates the manifest read as the one other
+    // read. It is a static module import resolved by the loader, so it is not
+    // a runtime `fs` call at all — which is stronger than the rule claims and
+    // worth pinning, since rewriting it as `readFileSync` would make
+    // `errors.ts` a second fs importer and fail the assertion above.
     const errorsSource = environmentSources().find(
       source => source.relative === 'errors.ts',
     );
@@ -344,9 +352,10 @@ describe('INV-31: disk reads only through the injected reader, only under buildI
   });
 
   it('names no filesystem write primitive anywhere in the seam', () => {
-    // A write would make SF-0 a state-holder and would put durable data in a
-    // directory that may be `contractsBuildDirectory` and therefore evaporate —
-    // SF-3's hazard, reintroduced by the module that exists to warn about it.
+    // A write would make the environment seam a state-holder and would put
+    // durable data in a directory that may be `contractsBuildDirectory` and
+    // therefore evaporate — the record layer's hazard, reintroduced by the
+    // module that exists to warn about it.
     const writes =
       /^(writeFile|writeFileSync|appendFile|appendFileSync|mkdir|mkdirSync|rm|rmSync|rmdir|rmdirSync|unlink|unlinkSync|rename|renameSync|copyFile|copyFileSync|createWriteStream|open|openSync|write|writeSync|truncate|truncateSync|chmod|chmodSync|utimes|utimesSync|symlink|symlinkSync|link|linkSync|mkdtemp|mkdtempSync)$/;
     for (const source of environmentSources()) {
@@ -419,8 +428,9 @@ describe('INV-31: disk reads only through the injected reader, only under buildI
   });
 
   it('accepts a file nested below buildInfoDirectory, since containment is the rule', () => {
-    // Containment, not "direct child". The rule INV-31 states is containment; the
-    // no-recursion rule is INV-37's and belongs to the default reader.
+    // Containment, not "direct child". The rule the disk-read discipline
+    // states is containment; the no-recursion rule belongs to bounded index
+    // I/O, and to the default reader.
     const report = buildArtifactAmbiguityIndex(
       projectPathsFixture(),
       filesReader([
@@ -468,10 +478,10 @@ describe('INV-31: disk reads only through the injected reader, only under buildI
 });
 
 // ---------------------------------------------------------------------------
-// INV-32
+// No emission
 // ---------------------------------------------------------------------------
 
-describe('INV-32: SF-0 emits nothing', () => {
+describe('the environment seam emits nothing', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -553,7 +563,8 @@ describe('INV-32: SF-0 emits nothing', () => {
   });
 
   it('calls no method on the logger anywhere in the seam', () => {
-    // The `output` slot is a capability handed to SF-10, not a channel SF-0 uses.
+    // The `output` slot is a capability handed to the option/result surface,
+    // not a channel the environment seam uses.
     // `output.ts` reads `logger.log` to prove it is callable and never calls it.
     for (const source of environmentSources()) {
       expect(
@@ -567,10 +578,10 @@ describe('INV-32: SF-0 emits nothing', () => {
 });
 
 // ---------------------------------------------------------------------------
-// INV-33
+// Exact read-path provenance
 // ---------------------------------------------------------------------------
 
-describe('INV-33: internalPathsRead is exactly the set of internal paths this resolution read', () => {
+describe('internalPathsRead is exactly the set of internal paths this resolution read', () => {
   it('reports the exact path set for a both-lineages paths-only resolution', () => {
     // Pinned exactly rather than by containment, because the failure mode this
     // invariant exists to catch is a *static* list — and a static list satisfies
@@ -700,10 +711,10 @@ describe('INV-33: internalPathsRead is exactly the set of internal paths this re
   });
 
   it("draws every recorded path's final segment from the seam's declared host-key surface", () => {
-    // The union bound. INV-28's test enumerates the literal host keys the seam
-    // reads; this asserts the runtime record stays inside that surface plus the
-    // three keys reached through a non-literal read and the configured network
-    // name, which is user data rather than a host key.
+    // The union bound. The internal-property-path scan enumerates the literal
+    // host keys the seam reads; this asserts the runtime record stays inside
+    // that surface plus the three keys reached through a non-literal read and
+    // the configured network name, which is user data rather than a host key.
     const declaredHostKeys = new Set([
       'log',
       'logger',
@@ -798,10 +809,10 @@ describe('INV-33: internalPathsRead is exactly the set of internal paths this re
 });
 
 // ---------------------------------------------------------------------------
-// INV-34
+// Stated, never inferred reduced-verification modes
 // ---------------------------------------------------------------------------
 
-describe('INV-34: both reduced-verification modes are stated, never inferred', () => {
+describe('both reduced-verification modes are stated, never inferred', () => {
   it('mode 1: names the available lineage when only the deployer is supplied', () => {
     const env = resolveEnvironment(deployerOnlyHandles().handles, {
       require: ['paths', 'network'],
@@ -838,8 +849,9 @@ describe('INV-34: both reduced-verification modes are stated, never inferred', (
   });
 
   it('omits crossCheckSkippedBecause entirely when the cross-check ran', () => {
-    // Absent, not `undefined` — INV-4's rule applied to this field. A consumer
-    // testing `'crossCheckSkippedBecause' in provenance` must get `false`.
+    // Absent, not `undefined` — the absent-field convention applied to this
+    // field. A consumer testing `'crossCheckSkippedBecause' in provenance`
+    // must get `false`.
     const env = resolveEnvironment(migrateShapedHandles().handles, {
       require: ['paths'],
     });
@@ -952,8 +964,8 @@ describe('INV-34: both reduced-verification modes are stated, never inferred', (
   ] as const)(
     'mode 2: reports %s as indeterminate with a reason naming the mechanism',
     (kind, reader, expected) => {
-      // Per SC-003 every degraded path has a test, and this is that obligation
-      // discharged: all three `IndeterminateReason` mechanisms, each named.
+      // Every degraded path has a test, and this is that obligation discharged:
+      // all three `IndeterminateReason` mechanisms, each named.
       const shape = migrateShapedHandles();
       const env = resolveEnvironment(
         shape.handles,
@@ -992,8 +1004,9 @@ describe('INV-34: both reduced-verification modes are stated, never inferred', (
   it('states artifactTreeIsExternal on the absent reason, since the two facts compose', () => {
     // `build/lib/commands/test.js` points the build tree at a temporary
     // directory, which is the column where build-info is never written AND every
-    // migration is replayed from zero on every run. SF-5's collision policy needs
-    // to observe that, so the reason carries it rather than leaving it derivable.
+    // migration is replayed from zero on every run. The proxy operations'
+    // collision policy needs to observe that, so the reason carries it rather
+    // than leaving it derivable.
     const shape = migrateShapedHandles({
       contractsBuildDirectory: '/tmp/tronbox-test-build/contracts',
     });
@@ -1035,10 +1048,10 @@ describe('INV-34: both reduced-verification modes are stated, never inferred', (
 });
 
 // ---------------------------------------------------------------------------
-// INV-35
+// The logger's guaranteed surface
 // ---------------------------------------------------------------------------
 
-describe('INV-35: the injected logger guaranteed surface is exactly log', () => {
+describe('the injected logger guaranteed surface is exactly log', () => {
   it('makes logger.warn a compile error, and a TypeError if it were written anyway', () => {
     // The type-level half is the `@ts-expect-error` directive: if `warn` were on
     // `TronBoxLogger` this file would fail `tsc -p tsconfig.test.json` with an
@@ -1049,7 +1062,7 @@ describe('INV-35: the injected logger guaranteed surface is exactly log', () => 
     const env = resolveEnvironment(shape.handles, { require: ['output'] });
     expect(
       () =>
-        // @ts-expect-error INV-35: `warn` is not declared on TronBoxLogger.
+        // @ts-expect-error `warn` is not declared on TronBoxLogger.
         env.output.logger.warn('an unsilenceable warning'),
     ).toThrow(TypeError);
   });
@@ -1075,8 +1088,8 @@ describe('INV-35: the injected logger guaranteed surface is exactly log', () => 
     // `build/index.js` passes `logger: console`, the one injection path that
     // carries `warn`/`error`. The handle is passed through by identity, so the
     // extra methods still exist at runtime — and remain unreachable through the
-    // type, which is exactly the discipline INV-35 asks for: probe at the call
-    // site, never assume from the type.
+    // type, which is exactly the discipline the guaranteed-surface rule asks
+    // for: probe at the call site, never assume from the type.
     const consoleLike = {
       log: (): void => undefined,
       warn: (): void => undefined,
@@ -1093,8 +1106,9 @@ describe('INV-35: the injected logger guaranteed surface is exactly log', () => 
       'logger',
       'origin',
     ]);
-    // A capability probe is how SF-10 may reach `warn`. Typed as `unknown` first,
-    // because that is the only honest shape for a member the seam does not declare.
+    // A capability probe is how the option/result surface may reach `warn`.
+    // Typed as `unknown` first, because that is the only honest shape for a
+    // member the seam does not declare.
     const probed: unknown = (env.output.logger as unknown as Record<
       string,
       unknown
@@ -1131,7 +1145,7 @@ describe('INV-35: the injected logger guaranteed surface is exactly log', () => 
     // an own-property check here would reject the un-quieted CLI's logger.
     class PrototypeLogger {
       log(): void {
-        // never called by the seam (INV-32)
+        // never called by the seam, which emits nothing
       }
     }
     const logger = new PrototypeLogger();
@@ -1165,17 +1179,20 @@ describe('INV-35: the injected logger guaranteed surface is exactly log', () => 
     // agrees (`absentIn` lists that context). The implementation nonetheless
     // resolves the slot there through the artifacts lineage.
     //
-    // **Routed and closed elsewhere, not SF-0's.** This was routed to SF-10,
-    // which resolved it *and corrected the premise this comment
-    // used to carry*: `origin` is not a usable visibility signal in either value,
-    // because `build/lib/commands/migrate.js:command.run` replaces the logger before
-    // `Config.detect` and `build/lib/test.js` passes `{ log(){} }` — so a discarding
-    // channel is the normal case in two of five contexts rather than an exception.
-    // SF-10 accommodates it by construction: degraded-mode statements ride the
-    // returned result as `DegradedNote` values, and the log is advisory only. What
-    // this test asserts is therefore SF-0's side alone — the slot resolves, and it
-    // states which lineage it came from. It deliberately makes no claim about
-    // visibility, which is SF-10's contract and is tested there.
+    // **Routed and closed elsewhere, not the environment seam's.** This was
+    // routed to the option/result surface, which resolved it *and corrected
+    // the premise this comment used to carry*: `origin` is not a usable
+    // visibility signal in either value, because
+    // `build/lib/commands/migrate.js:command.run` replaces the logger before
+    // `Config.detect` and `build/lib/test.js` passes `{ log(){} }` — so a
+    // discarding channel is the normal case in two of five contexts rather
+    // than an exception. The option/result surface accommodates it by
+    // construction: degraded-mode statements ride the returned result as
+    // `DegradedNote` values, and the log is advisory only. What this test
+    // asserts is therefore the environment seam's side alone — the slot
+    // resolves, and it states which lineage it came from. It deliberately
+    // makes no claim about visibility, which is the option/result surface's
+    // contract and is tested there.
     const shape = artifactsOnlyHandles();
     const env = resolveEnvironment(shape.handles, { require: ['output'] });
     expect(env.output.origin).toBe('config-lineage');
@@ -1223,10 +1240,10 @@ describe('INV-35: the injected logger guaranteed surface is exactly log', () => 
 });
 
 // ---------------------------------------------------------------------------
-// INV-36
+// No partial index ever reported as indexed
 // ---------------------------------------------------------------------------
 
-describe('INV-36: a partial index is never reported as indexed', () => {
+describe('a partial index is never reported as indexed', () => {
   it.each([0, 1, 2] as const)(
     'aborts into indeterminate when file %i of three lacks a contract map',
     position => {
@@ -1278,7 +1295,8 @@ describe('INV-36: a partial index is never reported as indexed', () => {
   it('never reports a colliding name as unique because the other file was unreadable', () => {
     // The false negative this invariant exists to prevent. `Box` collides across
     // the two files; if the unreadable one were skipped, `Box` would come back
-    // `unique` and SF-5 would proceed against the wrong contract with no signal.
+    // `unique` and the proxy operations would proceed against the wrong
+    // contract with no signal.
     const shape = migrateShapedHandles();
     const env = resolveEnvironment(
       shape.handles,

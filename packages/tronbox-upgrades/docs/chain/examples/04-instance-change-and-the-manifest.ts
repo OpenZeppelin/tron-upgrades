@@ -1,6 +1,6 @@
 /**
- * Instance identity: how SF-1 tells "the same chain, restarted" from "the same
- * chain" without ever classifying a network as a dev node.
+ * Instance identity: how the chain layer tells "the same chain, restarted"
+ * from "the same chain" without ever classifying a network as a dev node.
  *
  * The mechanism dissolves the classification rather than performing it
  * (`src/chain/instance.ts:1-18`). Chain id and genesis hash **survive** a TRE wipe;
@@ -114,8 +114,8 @@ export function describeComparison(result: InstanceComparison): string {
 // ---------------------------------------------------------------------------
 
 /**
- * SF-1 holds the comparison, so SF-1 owns the text; the record layer decides that
- * refusal is the policy and does the throwing
+ * The chain layer holds the comparison and therefore owns the text; the
+ * record layer decides that refusal is the policy and does the throwing
  * (`src/chain/errors.ts:415-457`).
  *
  * The message **discards nothing and names the remedy**, and the reason is the
@@ -125,8 +125,9 @@ export function describeComparison(result: InstanceComparison): string {
  * balancer serving two forks reports a change that is true about what it observed
  * but not about the user's intent.
  *
- * "Discards nothing" is **structural, not a promise**: SF-1 has no filesystem access
- * at all, so it is incapable of modifying the file this message names.
+ * "Discards nothing" is **structural, not a promise**: the chain layer has no
+ * filesystem access at all, so it is incapable of modifying the file this
+ * message names.
  */
 export function refuseOnInstanceChange(
   result: InstanceComparison,

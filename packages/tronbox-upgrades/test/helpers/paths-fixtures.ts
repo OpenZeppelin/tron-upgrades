@@ -31,7 +31,7 @@ export function pathScalarValues(
 /**
  * A validated `ProjectPaths`, built through the production projection rather
  * than assembled by hand — so `contractsBuildDirectoryIsExternal` is *observed*
- * here exactly as it is in production (INV-3).
+ * here exactly as it is in production.
  */
 export function projectPathsFixture(spec: ProjectPathsSpec = {}): ProjectPaths {
   return buildProjectPaths(pathScalarValues(spec));

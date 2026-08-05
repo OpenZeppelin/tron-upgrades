@@ -48,7 +48,7 @@ import type {
   UnsatisfiedSlot,
 } from './types';
 
-/** The one injected dependency (INV-43), reachable from the public entry point. */
+/** The one injected dependency, reachable from the public entry point. */
 export interface EnvironmentDependencies {
   readonly buildInfoReader?: BuildInfoReader;
 }
@@ -63,7 +63,7 @@ type MutableSlots = {
  * `values` is present only when the group was constructible from every
  * reachable lineage *and* those lineages agreed on every field in the group.
  * There is no member that carries both a disagreement and a usable value, which
- * is how INV-12's "no preference path" survives refactoring.
+ * is how the no-preference-path rule survives refactoring.
  */
 interface GroupOutcome<V> {
   readonly values?: V;
@@ -76,7 +76,7 @@ function dedupe(slots: readonly SlotName[]): readonly SlotName[] {
 }
 
 /**
- * INV-11: `absent` means no handle bearing on *any* requested slot was
+ * `absent` means no handle bearing on *any* requested slot was
  * supplied. Read from the slot table, so a table edit cannot leave this rule
  * describing a different matrix than the error messages do.
  */
@@ -119,14 +119,15 @@ function toUnsatisfied(
 /**
  * Projects one field group from every reachable lineage, then cross-checks.
  *
- * The ordering is INV-11's partition, enforced structurally rather than by a
- * rule at each throw site: every reachable lineage must *construct* before any
- * comparison runs, so `inconsistent` is unreachable while anything is still
- * unconstructible.
+ * The ordering follows a strict partition, enforced structurally rather than
+ * by a rule at each throw site: every reachable lineage must *construct*
+ * before any comparison runs, so `inconsistent` is unreachable while anything
+ * is still unconstructible.
  *
  * When both lineages are reachable, both must construct. Using the one that
- * worked would be a silent preference of exactly the kind INV-12 forbids, and
- * it would also be a third reduced-verification mode, which INV-34 caps at two.
+ * worked would be a silent preference of exactly the kind this seam forbids,
+ * and it would also be a third reduced-verification mode, when only two are
+ * allowed.
  */
 function resolveGroup<
   F extends ConfigScalarField,
@@ -222,10 +223,10 @@ function resolveGroup<
  * Resolve the TronBox environment for the current migration.
  *
  * Requested slots are non-optional in the return type; unrequested slots are
- * absent from it. There is no module-scope state (INV-20): the function is a
+ * absent from it. There is no module-scope state: the function is a
  * pure projection of the handles it is given plus the injected reader, so
  * cross-migration staleness is not a rule to remember but a state that cannot
- * be represented. Fully synchronous (INV-38) — it creates no promise, registers
+ * be represented. Fully synchronous — it creates no promise, registers
  * no callback, and starts no timer.
  *
  * @throws EnvironmentAbsentError       no handle bearing on any requested slot was supplied
@@ -250,7 +251,7 @@ export function resolveEnvironment<
   );
   const requested = Object.freeze([...required, ...optional]);
 
-  // INV-11: the only diagnosis that says "outside a TronBox migration context".
+  // The only diagnosis that says "outside a TronBox migration context".
   if (requested.length > 0 && !hasBearingHandle(rawHandles, requested)) {
     throw new EnvironmentAbsentError(requested);
   }
@@ -274,7 +275,7 @@ export function resolveEnvironment<
   /**
    * Records a slot's construction failure only when the caller *required* it.
    * An optional slot that cannot be built is simply absent, and
-   * `provenance.slots` states that — INV-1 makes an undeclared slot unable to
+   * `provenance.slots` states that — an undeclared slot must be unable to
    * affect the caller, so a slot nobody asked for must never fail a resolution.
    */
   function fail(slot: SlotName, entries: readonly UnsatisfiedSlot[]): void {
@@ -294,9 +295,9 @@ export function resolveEnvironment<
   }
 
   // ---- Lineage-derived groups ------------------------------------------------
-  // Scoped to the slots this resolution exposes, which is what makes INV-45's
-  // "cost is linear in the number of declared slots and the fixed cross-check
-  // field list" true, and what keeps `internalPathsRead` free of fields nothing
+  // Scoped to the slots this resolution exposes, which is what makes the
+  // claim "cost is linear in the number of declared slots and the fixed
+  // cross-check field list" true, and what keeps `internalPathsRead` free of fields nothing
   // needed. `artifacts` needs the paths group because the ambiguity index is
   // anchored on `buildInfoDirectory`.
   const pathsBackedSlots = (['paths', 'artifacts'] as const).filter(slot =>
@@ -364,8 +365,8 @@ export function resolveEnvironment<
   }
 
   // The settings object is cross-checked outside the field group, because a
-  // compared field is rendered verbatim on disagreement and INV-41 allows only
-  // scalars there. Sequenced after the group so the agreed `settingsSource`
+  // compared field is rendered verbatim on disagreement and only scalars are
+  // allowed there. Sequenced after the group so the agreed `settingsSource`
   // decides which key to read — the two lineages are already known to agree on it.
   if (requested.includes('compiler') && compilerGroup?.values !== undefined) {
     const settings = compareCompilerSettings(
@@ -404,7 +405,7 @@ export function resolveEnvironment<
   }
 
   // ---- chain --------------------------------------------------------------
-  // INV-27: both names accepted, normalized one-way to `tronWrap`, and a
+  // Both names accepted, normalized one-way to `tronWrap`, and a
   // genuine conflict is `inconsistent` rather than a preference. TronBox builds
   // the sandbox with `tronWeb: tronWrap`, so the misleading name is the host's.
   if (requested.includes('chain')) {
@@ -497,8 +498,9 @@ export function resolveEnvironment<
   }
 
   // ---- scheduling ---------------------------------------------------------
-  // INV-29's deliberate exception: the whole deployer, because SF-4 needs the
-  // queue. `then` lives on `Deployer.prototype`, so it is probed with `in`.
+  // The deliberate exception to the sealed-handle rule: the whole deployer,
+  // because the deploy seam needs the queue. `then` lives on
+  // `Deployer.prototype`, so it is probed with `in`.
   if (requested.includes('scheduling')) {
     const handle = rawHandles.deployer;
     if (!supplied(handle)) {
@@ -542,7 +544,7 @@ export function resolveEnvironment<
     if (output.ok) {
       slots.output = output.value;
     } else if ('noBearingHandle' in output) {
-      // D-1: an unsupplied handle gets the same `handle-missing` diagnosis every
+      // An unsupplied handle gets the same `handle-missing` diagnosis every
       // other slot gives it, minted from the slot table here rather than guessed
       // as a malformed property path in `output.ts`.
       fail('output', missingHandles('output', rawHandles));
@@ -552,8 +554,9 @@ export function resolveEnvironment<
   }
 
   // ---- cross-handle consistency -------------------------------------------
-  // INV-26, conditioned on both handles being present rather than on a deployer
-  // existing — which is what keeps SF-4's mocha-scope question open. When a
+  // The resolver-pairing check, conditioned on both handles being present
+  // rather than on a deployer existing — which is what keeps the deploy
+  // seam's mocha-scope question open. When a
   // lineage cannot be reached the check cannot run; any required slot depending
   // on that lineage has already failed above, and if none does then nothing
   // lineage-derived is exposed for a mispairing to corrupt.
@@ -578,7 +581,7 @@ export function resolveEnvironment<
     }
   }
 
-  // INV-11: `incomplete` strictly before `inconsistent`, so a disagreement can
+  // `incomplete` strictly before `inconsistent`, so a disagreement can
   // never be reported while a required capability is still unconstructible.
   if (unsatisfied.length > 0) {
     throw new EnvironmentIncompleteError(unsatisfied);
@@ -587,7 +590,7 @@ export function resolveEnvironment<
     throw new EnvironmentInconsistentError(inconsistencies);
   }
 
-  // INV-1: every required slot is an own property of the returned composite.
+  // Every required slot is an own property of the returned composite.
   // Nothing above should be able to reach here with a gap; this is the assertion
   // that makes "no required slot is `undefined` downstream" a checked fact
   // rather than a consequence of the branches being right.
@@ -622,7 +625,7 @@ export function resolveEnvironment<
     internalPathsRead: recorder.snapshot(),
   });
 
-  // INV-9: every slot holds copied-out scalars or a named host handle; nothing
+  // Every slot holds copied-out scalars or a named host handle; nothing
   // aliases `network_config`, `config.networks`, or a `Config`. Freezing is the
   // cheap half — the substantive guarantee is that there is nothing shared to
   // mutate.

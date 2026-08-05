@@ -1,6 +1,6 @@
 /**
  * The owned-promise bridge over TronBox's migration queue — the only module in
- * `src/deploy/**` that touches the host deployer (INV-19).
+ * `src/deploy/**` that touches the host deployer.
  *
  * ## Why the bridge exists, measured rather than assumed
  *
@@ -15,9 +15,9 @@
  * registered nothing else) and, on success, not until `start()` drives the
  * chain. A leaked suspended await, byte-identical across both supported minors.
  *
- * So no host queue value ever escapes this module (INV-1). Every operation gets
+ * So no host queue value ever escapes this module. Every operation gets
  * a promise this module allocates, settled exactly once from inside the queued
- * step, and the step returns to the host fulfilled in both cases (INV-3) — a
+ * step, and the step returns to the host fulfilled in both cases — a
  * failure inside the step rejects the operation's caller and never propagates
  * into the host chain, where it would reach the runner a second time *and*
  * leave the chain's final `then(this._done)` link rejected with no handler.
@@ -26,7 +26,7 @@
  * migration that queues an operation **without awaiting it** observes a host
  * chain that stays fulfilled, so the runner does not learn the step failed.
  * The remedy is to `await` the operation, and the limitation rides the result
- * surface (INV-9), not only this comment.
+ * surface, not only this comment.
  */
 
 import type { QueueHost, WriteBack } from './types';
@@ -40,7 +40,7 @@ import {
  * Queues `step` on the host and returns a promise this seam owns. The host's
  * return value is consumed here and never escapes. The step's failure settles
  * the returned promise and nothing else — the host chain sees a fulfilled step
- * either way (INV-3), which is what keeps one error from being delivered three
+ * either way, which is what keeps one error from being delivered three
  * times (caller, runner, unhandled-rejection handler).
  */
 export function runThroughQueue<T>(
@@ -65,7 +65,7 @@ export function runThroughQueue<T>(
       } catch (failure) {
         settleOnce(() => reject(failure));
       }
-      // Reached in both arms: the host chain continues fulfilled (INV-3).
+      // Reached in both arms: the host chain continues fulfilled.
     });
     /*
      * The skipped-step case, without which the promise above can settle zero
@@ -93,7 +93,7 @@ export function runThroughQueue<T>(
 }
 
 /**
- * INV-5's marshalling guard. The host's deploy action inspects the **final**
+ * The marshalling guard. The host's deploy action inspects the **final**
  * argument: a non-null, non-array object has `overwrite` destructured off it
  * and the remainder forwarded — the constructor receives a struct the caller
  * never wrote, and with `overwrite: false` the deployment is silently skipped.
@@ -110,7 +110,7 @@ export function assertNoCheatcodeCollision(args: readonly unknown[]): void {
 }
 
 /**
- * INV-11's staleness assertion: the transaction identity about to be reported
+ * The staleness assertion: the transaction identity about to be reported
  * must have been produced by *this* run. The host's `overwrite: false` skip
  * path returns the previously deployed instance, whose `transactionHash` is a
  * real hash from an earlier deployment — a stale truth. `assertNoCheatcodeCollision`

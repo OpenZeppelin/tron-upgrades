@@ -1,7 +1,7 @@
 /**
  * The host-object augmentation policy, and its one guarded helper.
  *
- * **The policy (INV-19):** *the plugin may define non-enumerable accessors on a
+ * **The policy:** *the plugin may define non-enumerable accessors on a
  * host object it has verified it does not share with the host's own cache. It may
  * never mutate a shared instance.*
  *
@@ -12,21 +12,24 @@
  * object is shared, the plugin **refuses and says why** — it never proceeds and
  * never falls back to mutating.
  *
- * **Why this lives in SF-10 with no SF-10 call site.** The result contract itself
- * has zero mutation sites: `limitations.ts` seals by proxying, so it satisfies the
- * policy by construction. But the policy applies package-wide, and SF-10 is the
- * dependency root every operation imports — SF-3 and SF-4 will mutate TronBox's
- * abstraction, because writing the address onto the cached class is *how* the
- * host's own artifact lookup finds a deployment afterwards. Handing SF-11 one
- * function to point a mechanical rule at (`Object.defineProperty`,
- * `Object.defineProperties`, `Object.setPrototypeOf`, `delete` and new-member
- * assignment on a host object are permitted only through {@link installGuarded}) is
- * what makes INV-19 enforceable rather than reviewed.
+ * **Why this lives in the option/result surface, with no call site of its own
+ * there.** The result contract itself has zero mutation sites: `limitations.ts`
+ * seals by proxying, so it satisfies the policy by construction. But the
+ * policy applies package-wide, and the option/result surface is the
+ * dependency root every operation imports — the record layer and the deploy
+ * seam will mutate TronBox's abstraction, because writing the address onto
+ * the cached class is *how* the host's own artifact lookup finds a
+ * deployment afterwards. Handing packaging one function to point a
+ * mechanical rule at (`Object.defineProperty`, `Object.defineProperties`,
+ * `Object.setPrototypeOf`, `delete` and new-member assignment on a host
+ * object are permitted only through {@link installGuarded}) is what makes
+ * the policy enforceable rather than reviewed.
  *
- * **Deviation 10, closed:** for one release this file and SF-0's
- * `src/environment/handles.ts` each declared a `HostInstanceSharedError` of its
- * own — one policy, one name, two homes, because each is a dependency root the
- * other must not import. The vocabulary now lives in `../host-sharing`, the one
+ * **Deviation 10, closed:** for one release this file and the environment
+ * seam's `src/environment/handles.ts` each declared a
+ * `HostInstanceSharedError` of its own — one policy, one name, two homes,
+ * because each is a dependency root the other must not import. The
+ * vocabulary now lives in `../host-sharing`, the one
  * shared leaf both roots may import, and this file re-exports it so its face is
  * unchanged.
  */

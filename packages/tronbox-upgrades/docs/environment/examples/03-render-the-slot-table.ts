@@ -1,7 +1,7 @@
 /**
  * Pattern 3 — render the invocation-context matrix instead of restating it.
  *
- * `slotRequirements` is the matrix as data (INV-14), and the seam's own
+ * `slotRequirements` is the matrix as data, and the seam's own
  * `EnvironmentIncompleteError` message renders from this same table. Hardcoding a
  * context list in your own diagnostic guarantees the two eventually contradict
  * each other.

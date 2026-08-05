@@ -2,14 +2,14 @@
  * The option-error hierarchy: one closed family, one class per distinguishable
  * cause.
  *
- * INV-8: all four extend `UpgradesOptionError` and each carries a `readonly code`
+ * All four extend `UpgradesOptionError` and each carries a `readonly code`
  * narrowed to a string literal, so a caller branches on `code` and nothing
  * requires parsing a message. The hazard is concrete — a caller who writes `catch
- * (e) { if (/unsafeAllow/.test(e.message)) … }` makes SC-006's *"each distinct
- * error path has a test asserting its message content"* the **caller's** coupling
- * rather than the plugin's contract.
+ * (e) { if (/unsafeAllow/.test(e.message)) … }` makes the actionable-diagnosis
+ * requirement's *"each distinct error path has a test asserting its message
+ * content"* the **caller's** coupling rather than the plugin's contract.
  *
- * INV-10: every message names the failing option, the received value, and either
+ * Every message names the failing option, the received value, and either
  * the accepted set or the correct alternative — and the same facts are present as
  * structured readonly fields, so nothing user-facing is available only by parsing
  * prose. Message form mirrors the one place in the upstream family that already
@@ -17,7 +17,7 @@
  */
 
 /**
- * INV-13: the character budget for a rendered `received` value.
+ * The character budget for a rendered `received` value.
  *
  * The error path must be at least as robust as the happy path. A `constructorArgs`
  * element containing a cyclic reference is a legal JS object graph built from legal
@@ -37,8 +37,8 @@ function truncate(text: string): string {
  * Renders a caller-supplied value for a message: a primitive verbatim and quoted,
  * a non-primitive as a bounded type-and-shape description.
  *
- * INV-13 / INV-39: never `JSON.stringify` of an arbitrary caller value, never a
- * deep walk, never more than the budget above. INV-41: no host-supplied object can
+ * Never `JSON.stringify` of an arbitrary caller value, never a
+ * deep walk, never more than the budget above. No host-supplied object can
  * be serialized here, because nothing beyond a type name and an array length is
  * ever read.
  *
@@ -49,7 +49,7 @@ function truncate(text: string): string {
 export function renderReceived(value: unknown): string {
   switch (typeof value) {
     case 'string':
-      // `JSON.stringify` of a string cannot throw and gives the quoting INV-10 wants.
+      // `JSON.stringify` of a string cannot throw and gives the quoting the message format wants.
       return truncate(JSON.stringify(value));
     case 'number':
       if (Object.is(value, -0)) {
@@ -79,7 +79,7 @@ export function renderReceived(value: unknown): string {
     } catch {
       // Reading `length` is a [[Get]], so a Proxy whose trap throws reaches here.
       // Reported rather than swallowed: the message still says what the value was,
-      // and INV-13 requires the renderer itself never to throw.
+      // and the renderer itself must never throw.
       return 'an array (length unavailable)';
     }
   }
@@ -90,11 +90,11 @@ function formatAccepted(accepted: readonly string[] | string): string {
   return typeof accepted === 'string' ? accepted : accepted.join(', ');
 }
 
-/** The one base SF-11 re-exports as this family's root (INV-8). */
+/** The one base packaging re-exports as this family's root. */
 export class UpgradesOptionError extends Error {}
 
 /**
- * A value outside its accepted set. Never coerced (INV-9).
+ * A value outside its accepted set. Never coerced.
  *
  * The concrete case this guards against:
  * `plugin-truffle/src/utils/deploy-impl.ts:deployImpl` tests only `=== 'always'`
@@ -112,7 +112,7 @@ export class OptionValueError extends UpgradesOptionError {
   /**
    * The operation whose per-operation narrowing rejected the value, or `null` when
    * the refusal is not operation-specific. Total rather than optional, so a caller
-   * never has to interpret absence (INV-5's rule applied to an error).
+   * never has to interpret absence.
    */
   readonly operation: string | null;
 
@@ -141,8 +141,9 @@ export class OptionValueError extends UpgradesOptionError {
 /**
  * A key the operation does not accept.
  *
- * Divergence D-2, and not an invention: `core/src/cli/validate.ts:validateOptions`
- * already rejects unknown keys with `Invalid options: …` — the same package, at its
+ * A recorded divergence from the parity target, and not an invention:
+ * `core/src/cli/validate.ts:validateOptions` already rejects unknown keys with
+ * `Invalid options: …` — the same package, at its
  * CLI entry point. This lifts that discipline onto the plugin API path, because a
  * silently ignored `unsafeAllowRename` typo is a safety flip that no amount of
  * output would have surfaced: the caller believes they enabled a rename allowance
@@ -169,8 +170,7 @@ export class UnknownOptionError extends UpgradesOptionError {
 }
 
 /**
- * Two options that express one allowance and disagree. Refused, not resolved
- * (INV-12).
+ * Two options that express one allowance and disagree. Refused, not resolved.
  *
  * **Verified present at `@openzeppelin/upgrades-core@1.46.0`**, the upstream
  * asymmetry that makes this necessary: `dist/validate/overrides.js:withValidationDefaults`
@@ -233,11 +233,11 @@ export interface TronOptionRefusal {
 
 /**
  * The registry of portable-surface options refused on TRON grounds. **Empty in
- * v1, and the emptiness is a finding rather than a gap** (INV-14).
+ * v1, and the emptiness is a finding rather than a gap.**
  *
  * Everything on this surface is source-level validation policy or timing, all of
  * which TRON honours. The first real instance is `txOverrides`'s EVM-only fields,
- * which is SF-4's surface — the Hardhat sibling already rejects them in
+ * which is the deploy seam's surface — the Hardhat sibling already rejects them in
  * `src/utils/options.ts:txOverridesOf`.
  *
  * `resolve.ts` walks this list on every resolution, so the mechanism is live

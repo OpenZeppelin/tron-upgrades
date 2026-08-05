@@ -8,15 +8,15 @@ import type { SolcStandardOutput } from './solc-input';
  * **Separate from `import-graph.ts` because the graph is a fact about the project
  * and the partition is a policy about how much of it to hand the compiler at
  * once.** The wasm's memory ceiling is what makes that a decision rather than a
- * detail: `evidence/probe-wasm-memory-ceiling.js` measured it moving with the
+ * detail: a live compile probe measured it moving with the
  * *user's* optimizer settings by better than 2× on a fixed generator (optimizer
  * off, last N that compiled 360; optimizer on, 160), so any numeric batch size
  * would be tuned against a ceiling the plugin does not control.
  *
  * **The unit is therefore semantic: one contract's transitive import closure, and
- * no batch size exists** (INV-35). `PartitionRecord` carries no count, so there is
+ * no batch size exists.** `PartitionRecord` carries no count, so there is
  * no field a threshold could be compared against, and `target` is **singular**, so
- * a multi-target partition is not representable (INV-38) — union-first is
+ * a multi-target partition is not representable — union-first is
  * specified and unbuilt, and that is deliberate rather than an oversight.
  */
 
@@ -24,7 +24,8 @@ export interface PartitionRecord {
   /**
    * The source key of the contract this partition was cut for.
    *
-   * **A source key, not a contract name, and INV-4 is what decides it:**
+   * **A source key, not a contract name, and the containment requirement is
+   * what decides it:**
    * *"`provenance.partition.closure` is non-empty and contains
    * `provenance.partition.target`"*, and `closure` is a set of source keys. The
    * original field comment read like a contract name; the containment assertion is the
@@ -38,16 +39,16 @@ export interface PartitionRecord {
 export interface Partition {
   readonly record: PartitionRecord;
   /**
-   * The sources solc receives, in the order `provenance.sourceKeys` reports
-   * (INV-4).
+   * The sources solc receives, in the order `provenance.sourceKeys` reports.
    *
    * **Sorted, which is a deliberate choice rather than inherited.** The host
    * hands solc its `required_sources` map in graph-walk order. Nothing measured
-   * says solc's output depends on the order of the `sources` map — F-6 measured
-   * that the *content* of a key changes every identity, and solc keys its own
-   * metadata `sources` map by name — so determinism is worth more here than
+   * says solc's output depends on the order of the `sources` map — measurement
+   * showed that the *content* of a key changes every identity, and solc keys its
+   * own metadata `sources` map by name — so determinism is worth more here than
    * mimicry: a sorted order makes two calls over an unchanged tree byte-identical
-   * inputs, which is what INV-21's referential transparency is asserted against.
+   * inputs, which is what the referential-transparency requirement is asserted
+   * against.
    */
   readonly sources: Readonly<Record<string, string>>;
 }
@@ -55,11 +56,12 @@ export interface Partition {
 /**
  * Cuts the partition, or raises.
  *
- * The two assertions are INV-4's, and the violation they prevent is the worst
- * outcome in this sub-feature rather than a tidiness failure: an empty closure
- * reaches solc, the output has no contracts, `detectFidelity` sees nothing missing
- * and reports `slot-level`, the layout handed to upgrades-core is empty, and F-4's
- * measured vacuous pass fires — `getStorageUpgradeErrors(EMPTY, real)` returns no
+ * The two assertions are the containment requirement's, and the violation they
+ * prevent is the worst outcome in this sub-feature rather than a tidiness
+ * failure: an empty closure reaches solc, the output has no contracts,
+ * `detectFidelity` sees nothing missing and reports `slot-level`, the layout
+ * handed to upgrades-core is empty, and the vacuous-pass hazard measured
+ * earlier fires — `getStorageUpgradeErrors(EMPTY, real)` returns no
  * errors, so every variable in the new contract is classified as a safe append.
  */
 export function cutPartition(
@@ -93,14 +95,14 @@ export function cutPartition(
 
 /**
  * The memo key: the **sorted** source-key set, the settings, and the compiler's
- * long version (INV-22).
+ * long version.
  *
- * All three are needed and the second is the one that is easy to leave out. F-6
- * measured that `optimizer` *is* in solc metadata, so a memo keyed on sources
- * alone would hand a contract compiled under one optimizer profile the output of
- * another — surfacing as spurious staleness at best and a wrong-layout pass at
- * worst. The long version is in the key for F-7's reason: two compiler families
- * answer to the same version number.
+ * All three are needed and the second is the one that is easy to leave out.
+ * Measurement showed that `optimizer` *is* in solc metadata, so a memo keyed on
+ * sources alone would hand a contract compiled under one optimizer profile the
+ * output of another — surfacing as spurious staleness at best and a
+ * wrong-layout pass at worst. The long version is in the key for the reason
+ * already given: two compiler families answer to the same version number.
  *
  * Settings are serialized with `JSON.stringify`, so two structurally equal
  * settings objects with different key order key differently. That direction is
@@ -122,19 +124,21 @@ export function partitionIdentity(
 /**
  * A compile memo for the life of one call.
  *
- * **Call-scoped, and what that costs is stated rather than glossed.** INV-21
- * forbids module-level mutable state — a module-level cache of compiler identity
- * across calls is a correctness bug, not a speed-up — and INV-21's own allowance
- * is for *"the memo's own documented, call-scoped binding"*. But
+ * **Call-scoped, and what that costs is stated rather than glossed.** The
+ * referential-transparency requirement forbids module-level mutable state — a
+ * module-level cache of compiler identity across calls is a correctness bug,
+ * not a speed-up — and its own allowance is for *"the memo's own documented,
+ * call-scoped binding"*. But
  * `deriveValidationInput` derives exactly **one** contract per call, so a
  * call-scoped memo holds at most one entry and its *hit* path is unreachable
  * through the shipped API. The lookup runs on every compile; the hit does not.
  *
  * That is a gap between two specified requirements rather than a shortcut here: the
  * partitioning requirement describes the memo as amortising *"within one process"*,
- * INV-45 states it as *"within one call"*, and INV-22's and INV-38's tests speak of
- * *"two targets requested in one call"* — a request shape `ValidationInputRequest`
- * does not have. It is reported at close, with the two ways out named. The
+ * a narrower invariant states it as *"within one call"*, and two other invariants'
+ * tests speak of *"two targets requested in one call"* — a request shape
+ * `ValidationInputRequest` does not have. It is reported at close, with the two
+ * ways out named. The
  * mechanism ships because it is exactly the seam union-first needs, and because it
  * is directly testable at this module's own boundary.
  */

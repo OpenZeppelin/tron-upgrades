@@ -2,8 +2,8 @@
   "_comment": [
     "The nine upgrade pairs, extracted so they have ONE home.",
     "",
-    "Provenance: evidence/probe-ast-only-vs-slot-level.js CASES (all nine) and",
-    "evidence/probe-p4-gate-observability.js CASES (the two safe ones, SAFE-gap and",
+    "Provenance: measured with two live compile probes — the ast-only-versus-slot-level",
+    "probe (all nine) and the gate-observability probe (the two safe ones, SAFE-gap and",
     "SAFE-pad, which appear in both probes verbatim). Both probes carry them as",
     "inline object literals with no exports, so the two safe pairs had already been",
     "copied once before this file existed; this file is what stops a third copy.",
@@ -11,7 +11,7 @@
     "It is JSON rather than TypeScript on purpose: the fixture generator that",
     "compiles these against the real TVM wasm is a plain script and cannot import a",
     ".ts module, so a TypeScript home would have reintroduced the duplication it is",
-    "here to remove. test/helpers/sf-2-ladder.ts types it; the generator reads it raw.",
+    "here to remove. test/helpers/ladder-fixtures.ts types it; the generator reads it raw.",
     "",
     "`astOnly` and `slotLevel` are the verdicts measured under TVM solc 0.8.26 and",
     "@openzeppelin/upgrades-core 1.46.0. They are NOT transcription to be trusted:",
@@ -167,7 +167,7 @@
   "measuredArithmetic": {
     "_comment": [
       "The per-fixture arithmetic measured against real layouts under TVM solc",
-      "0.8.26, from evidence/probe-p4-gate-observability.js section 2 and its log.",
+      "0.8.26, captured from a live run of the gate-observability probe.",
       "Recorded here because it is what makes the two safe pairs the RIGHT fixtures",
       "rather than merely gap-shaped and padding-shaped ones, and because it was",
       "measured once and then existed only inside a probe."

@@ -1,11 +1,11 @@
 /**
  * `upgradeProxy` — the ordered pipeline over the operation toolkit, with the
  * orderings the sibling adaptation measured and this sub-feature's invariants
- * pin: the beacon check before kind processing (INV-4), the current layout
- * keyed by chain-read address (INV-7), the already-current no-op recognized
- * canonically (INV-10), the authority resolved and the dispatch planned BEFORE
- * the new implementation deploys (INV-2), one queued step (INV-13), and the
- * trust-but-verify slot re-read after the upgrade call (INV-3).
+ * pin: the beacon check before kind processing, the current layout
+ * keyed by chain-read address, the already-current no-op recognized
+ * canonically, the authority resolved and the dispatch planned BEFORE
+ * the new implementation deploys, one queued step, and the
+ * trust-but-verify slot re-read after the upgrade call.
  */
 
 import { Interface } from 'ethers';
@@ -89,7 +89,7 @@ export async function runUpgradeProxy(
   const name = nameOf(contract);
   const proxyAddress = canonicalizeAddress(proxy);
 
-  // 1 — validation first (INV-1, INV-18), and the linked-library gate with it.
+  // 1 — validation first, and the linked-library gate with it.
   const validated = await toolkit.validateImplementation(name, resolved);
   const bytecodeSource = contract as {
     unlinked_binary?: string;
@@ -100,12 +100,12 @@ export async function runUpgradeProxy(
     resolved.unsafeAllowLinkedLibraries,
   );
 
-  // 2 — only now may the missing deployer refuse (INV-18).
+  // 2 — only now may the missing deployer refuse.
   const deployer = toolkit.requireDeployer();
 
   // 3 — the slots, in ONE non-raising read (the per-slot readers raise on an
   //     empty slot — measured live). The beacon check comes BEFORE kind
-  //     processing (INV-4): upstream's kind machinery defaults a record-less
+  //     processing: upstream's kind machinery defaults a record-less
   //     proxy to 'transparent', so a beacon proxy that reaches it gets a
   //     transparent-path upgrade attempt.
   const readers = toolkit.chain.read;
@@ -126,11 +126,11 @@ export async function runUpgradeProxy(
   // 4 — the kind, from the engine's own machinery with the record cross-check.
   const kind = await toolkit.processProxyKind(proxyAddress, validated, resolved);
 
-  // 5 — chain first for current state (INV-7): the 1967 slot is the only truth
+  // 5 — chain first for current state: the 1967 slot is the only truth
   //     about what runs now; the manifest supplies the layout FOR that address.
   const currentImplementation = slots.implementation;
 
-  // 6 — the already-current no-op, recognized canonically (INV-10).
+  // 6 — the already-current no-op, recognized canonically.
   const targetByRecord = toolkit.priorDeployedAddress(contract);
   if (
     targetByRecord !== null &&
@@ -149,11 +149,12 @@ export async function runUpgradeProxy(
   }
 
   // 7 — storage compatibility against the stored layout for the LIVE
-  //     implementation (INV-7), before any spend (INV-1's spirit, scenario 2).
+  //     implementation, before any spend, in keeping with validate-first
+  //     (scenario 2).
   const currentLayout = await toolkit.storedLayoutFor(currentImplementation);
   await toolkit.assertStorageCompatible(currentLayout, validated, resolved);
 
-  // 8 — authority and dispatch BEFORE the new implementation deploys (INV-2):
+  // 8 — authority and dispatch BEFORE the new implementation deploys:
   //     a mis-routed proxy fails without leaving an orphan implementation.
   const abi = (contract as { abi?: readonly unknown[] }).abi ?? [];
   const callData = encodeCall(abi, resolved.call);
@@ -174,7 +175,7 @@ export async function runUpgradeProxy(
   });
 
   // 9 — ONE queued step: deploy the implementation, send the dispatched call,
-  //     confirm, and re-read the slot (INV-13, INV-3).
+  //     confirm, and re-read the slot.
   const outcome = await toolkit.queue(deployer, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
@@ -199,7 +200,7 @@ export async function runUpgradeProxy(
       throw new ConfirmationIndeterminateError(verdict);
     }
 
-    // Trust, but verify (INV-3): the slot must now hold the new address —
+    // Trust, but verify: the slot must now hold the new address —
     // compared canonically, never by spelling.
     const observed = await readers.readImplementationAddress(proxyAddress);
     if (!isAlreadyCurrent(observed, implementationAddress)) {
@@ -213,7 +214,7 @@ export async function runUpgradeProxy(
     return { writeBack, implementationAddress };
   });
 
-  // 10 — record only when no record existed (INV-15).
+  // 10 — record only when no record existed.
   const existing = await toolkit.session.getProxyRecord(proxyAddress);
   if (existing === undefined) {
     await toolkit.recordProxy(proxyAddress, kind);

@@ -9,7 +9,7 @@ import type {
  * The portable option surface, composed from `@openzeppelin/upgrades-core`'s
  * public types.
  *
- * INV-1: every member upstream already declares is reached by **extension**, never
+ * Every member upstream already declares is reached by **extension**, never
  * by local re-declaration, and no closed set is widened. The failure mode this
  * avoids is concrete and in this repo's own family: the Hardhat TRON sibling's
  * `src/utils/options.ts:ValidationOptions` is a bare local interface with four
@@ -19,7 +19,7 @@ import type {
  * **silently swallowed before it reaches the engine** — a safety opt-out the
  * caller believes they set.
  *
- * INV-43: `src/options/**` imports only `@openzeppelin/upgrades-core`. Nothing
+ * `src/options/**` imports only `@openzeppelin/upgrades-core`. Nothing
  * from the seam, nothing from another sub-feature.
  */
 
@@ -48,7 +48,7 @@ export type RedeployMode = 'always' | 'never' | 'onchange';
  * The runtime enumeration, needed because rejecting a value requires naming the
  * accepted ones (scenario 2) and types do not survive compilation.
  *
- * INV-2, both directions: `satisfies` rejects a member upstream does not have, and
+ * Both directions: `satisfies` rejects a member upstream does not have, and
  * `_UnsafeAllowKindsComplete` below rejects a member upstream added. An
  * `upgrades-core` bump that changes the set is a **compile error**, not a silent
  * narrowing — which matters because the set grew from 9 members at the
@@ -56,7 +56,7 @@ export type RedeployMode = 'always' | 'never' | 'onchange';
  * literally would reject five values the installed engine accepts, which is why
  * "mirror the parity target exactly" is qualified here: the option *shape* is
  * mirrored from the parity target, the closed *value set* comes from the installed
- * engine (divergence D-8).
+ * engine — a recorded divergence from the parity target.
  *
  * **Verified present at `@openzeppelin/upgrades-core@1.46.0`**: exactly these 14,
  * in this order, matching `dist/validate/run.js:errorKinds`. The deep import that
@@ -112,11 +112,12 @@ type _RedeployModesComplete = NoMissingMembers<
 
 /**
  * Mirrors `plugin-truffle/src/utils/options.ts:StandaloneOptions`, less its
- * deployer member, which is deployment-shaped and therefore SF-4's (INV-47).
+ * deployer member, which is deployment-shaped and therefore the deploy seam's.
  *
  * Fields are deliberately **not** `readonly`: `unsafeAllow` and the rest arrive
  * through upstream's own interfaces, and re-declaring them to add `readonly` is
- * precisely the local-narrowing mistake INV-1 exists to prevent. The mutation
+ * precisely the local-narrowing mistake the extension-only requirement exists
+ * to prevent. The mutation
  * hazard those types carry is neutralized at the one place that reaches upstream —
  * see `resolve.ts:engineValidationOptions`.
  */
@@ -151,10 +152,11 @@ export type DeployImplementationOptions = StandaloneOptions;
 export type DeployBeaconOptions = StandaloneOptions;
 export type UpgradeBeaconOptions = UpgradeOptions;
 /**
- * Includes `DeployOpts` where the parity target omits it (divergence D-4). That
- * omission is an upstream inconsistency — the Hardhat plugin's equivalent does
- * include it — harmless in Truffle where the fields are inert, but on TRON it
- * would leave one operation with no confirmation control (divergence D-1).
+ * **A recorded divergence from the parity target:** this includes `DeployOpts`
+ * where the parity target omits it. That omission is an upstream inconsistency
+ * — the Hardhat plugin's equivalent does include it — harmless in Truffle
+ * where the fields are inert, but on TRON it would leave one operation with no
+ * confirmation control, which is itself a second recorded divergence.
  */
 export type DeployBeaconProxyOptions = ProxyKindOption &
   InitializerOption &
@@ -166,7 +168,7 @@ export type ValidateUpgradeOptions = ValidationOptions;
 /**
  * Options after resolution.
  *
- * INV-3: every field is **required**, so "defaults were applied" is a type-level
+ * Every field is **required**, so "defaults were applied" is a type-level
  * fact and no downstream module writes `?? default` a second time. The object and
  * both its arrays are frozen, and no field is ever assigned an explicit
  * `undefined` — under this package's `exactOptionalPropertyTypes: true` that would
@@ -198,14 +200,15 @@ export interface ResolvedUpgradeOptions {
   /**
    * Milliseconds. `0` means wait indefinitely, per `dist/deployment.d.ts:DeployOpts`.
    *
-   * Divergence D-1: the parity target's own comment says these are *"not used for
-   * Truffle, but include these anyways"*. On TRON confirmation is real, so the
-   * value acquires meaning — a wrong value here is a real confirmation-policy
-   * change rather than a dead field. Shape and default are mirrored exactly; the
-   * confirmation policy itself is SF-4's.
+   * **A recorded divergence from the parity target:** its own comment says
+   * these are *"not used for Truffle, but include these anyways"*. On TRON
+   * confirmation is real, so the value acquires meaning — a wrong value here
+   * is a real confirmation-policy change rather than a dead field. Shape and
+   * default are mirrored exactly; the confirmation policy itself is the
+   * deploy seam's.
    */
   readonly timeout: number;
-  /** Milliseconds. See divergence D-1 on {@link timeout}. */
+  /** Milliseconds. See the recorded divergence on {@link timeout}. */
   readonly pollingInterval: number;
 }
 

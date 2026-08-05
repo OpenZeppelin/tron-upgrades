@@ -18,11 +18,11 @@ import type { SolcStandardInput, SolcStandardOutput } from './solc-input';
  * `WebAssembly.RuntimeError` invalidates the module, because emscripten's abort
  * poisons it. A handle that can be poisoned must not have its loading in one
  * module and its disposal in another, or a caught ceiling on contract A silently
- * becomes a spurious ceiling on contracts B..Z. The evidence that this is real
- * rather than theoretical is `evidence/probe-wasm-memory-ceiling.js`'s own design:
+ * becomes a spurious ceiling on contracts B..Z. What shows this is real
+ * rather than theoretical is a live compile probe's own design:
  * one fresh child process per trial.
  *
- * **The host is reproduced, never called** (SF-0's INV-49, INV-25). TronBox's own
+ * **The host is reproduced, never called.** TronBox's own
  * `getWrapper` has three `process.exit(1)` sites — an invalid version string, a
  * version above its ceiling, and a download failure (clone
  * `src/components/TronSolc.js:84`, `:92`, `:118` at `v4.9.0`) — so routing
@@ -33,7 +33,7 @@ import type { SolcStandardInput, SolcStandardOutput } from './solc-input';
  */
 
 /**
- * The declared range, declared **once** (INV-16). Both the gate and the message
+ * The declared range, declared **once**. Both the gate and the message
  * read it, so the range cannot drift out of sync with the check.
  *
  * **The floor is a plugin claim, not a compiler capability.** `0.5.13` is the
@@ -43,10 +43,10 @@ import type { SolcStandardInput, SolcStandardOutput } from './solc-input';
  * would publish a support claim nothing measured: no probe ran upgrades-core
  * against sub-0.8 compiler output, `@openzeppelin/contracts-upgradeable` has
  * required `^0.8.0` since v4.0, and 12 of the registry's 35 builds are in this
- * range. `0.8.0` also subsumes the mechanical boundary, so F-5's silent-omission
- * hazard — a sub-0.5.13 compiler accepting a `storageLayout` request with zero
- * diagnostics and simply omitting the key — is unreachable from inside the
- * declared range.
+ * range. `0.8.0` also subsumes the mechanical boundary, so the silent-omission
+ * hazard measured directly — a sub-0.5.13 compiler accepting a `storageLayout`
+ * request with zero diagnostics and simply omitting the key — is unreachable
+ * from inside the declared range.
  *
  * **The ceiling is the host's**: clone `src/components/TronSolc.js:9` is
  * `const maxVersion = '0.8.26'` and `:87-93` exits above it, verified at `v4.9.0`
@@ -59,26 +59,26 @@ export const SUPPORTED_SOLC = { min: '0.8.0', max: '0.8.26' } as const;
 
 /** Which compiler this validation ran, and how it was reached. */
 export interface CompilerIdentity {
-  /** F-7. Carried for the remedy, not for the comparison (C3). */
+  /** Carried for the remedy, never for the comparison. */
   readonly family: 'tvm' | 'evm';
   /** The triple the config resolved to. Used to *locate*, never to compare. */
   readonly requestedVersion: string;
-  /** What `version()` returned. INV-5: this is what cause 3 compares. */
+  /** What `version()` returned. This is what cause 3 compares. */
   readonly longVersion: string;
   readonly soljsonPath: string;
 }
 
 /**
- * A loaded compiler, single-use-after-failure (INV-24).
+ * A loaded compiler, single-use-after-failure.
  *
  * `compile` is synchronous, and that is structural rather than incidental:
  * `solidity_compile` is a synchronous `cwrap` that blocks the event loop for its
  * whole duration, so `Promise.race` and `AbortSignal` cannot bound it. A
  * `Promise`-returning signature here would imply a wall-clock bound that v1 does
- * not have and cannot have without a worker thread or child process (INV-36).
+ * not have and cannot have without a worker thread or child process.
  *
- * There is no import-callback parameter, which is where INV-27's *"every source
- * is supplied up front"* lives: the host passes none either
+ * There is no import-callback parameter, which is where the requirement that
+ * *"every source is supplied up front"* lives: the host passes none either
  * (clone `src/components/TronSolc.js:55` is `compile(input, null, null)`), so an
  * unresolved import has to be decided before this is called or it surfaces as a
  * `ParserError` about the plugin's own input assembly.
@@ -130,7 +130,7 @@ function isVersionTriple(version: string): boolean {
 }
 
 /**
- * The gate (INV-15). A version, never a probe.
+ * The gate. A version, never a probe.
  *
  * A version that is not a triple is out of range too — it is not a version the
  * host would accept either, and the remedy is the same one: name a version inside
@@ -155,12 +155,13 @@ export function isSupportedSolcVersion(version: string): boolean {
  * loads it.
  *
  * **That split is what makes the load auditable.** {@link loadCompiler} constructs a
- * resolver with `createRequire`, which is invisible to the specifier scan INV-49
- * rests on — so *"where can that resolver point"* has to be answerable mechanically
- * rather than by review. Two halves answer it, and only together: the parameter's
- * `AbsolutePath` brand, which INV-2 makes mintable only inside
- * `src/environment/**`, so a literal specifier, a computed string or a bare package
- * name is a type error **at every call site**; and the type-checked assertion over
+ * resolver with `createRequire`, which is invisible to the specifier scan the
+ * host-import boundary rests on — so *"where can that resolver point"* has to be
+ * answerable mechanically rather than by review. Two halves answer it, and only
+ * together: the parameter's `AbsolutePath` brand, mintable only inside
+ * `src/environment/**` by construction, so a literal specifier, a computed
+ * string or a bare package name is a type error **at every call site**; and the
+ * type-checked assertion over
  * this module's own body, which is what rules out the resolver being handed something
  * unbranded *inside* it. See {@link loadCompiler} for the assertions by name.
  */
@@ -224,7 +225,7 @@ function wrapSoljson(soljson: SoljsonModule, soljsonPath: string): CompilerHandl
   const longVersion = String(version());
 
   /**
-   * INV-24: set in the `catch` *before* re-raising, so no later call can reach
+   * Set in the `catch` *before* re-raising, so no later call can reach
    * the wasm. Loud on reuse, because silence is the failure.
    */
   let retiredBy: string | undefined;
@@ -283,16 +284,17 @@ function parseSolcOutput(raw: unknown, soljsonPath: string): SolcStandardOutput 
 
 /**
  * The production loader. `createRequire` against a seam-resolved absolute path, with
- * zero host imports — the route `evidence/probe-recompile-fidelity.js` demonstrates.
+ * zero host imports — the route a live recompile-fidelity probe demonstrates.
  *
- * **This is the only `createRequire` in `src/`, and the only file INV-49's ban on the
- * primitive exempts.** The exemption is paid for rather than granted — but what pays
- * for it is not this signature. `AbsolutePath` constrains every **caller**: a package
- * name, a relative path or a bare `string` is a compile error at the call site. It
- * constrains this *body* not at all, because `runtimeRequire` is a general CommonJS
- * resolver in scope here, and a second line invoking it with anything at all would
+ * **This is the only `createRequire` in `src/`, and the only file the
+ * host-import boundary's ban on the primitive exempts.** The exemption is paid
+ * for rather than granted — but what pays for it is not this signature.
+ * `AbsolutePath` constrains every **caller**: a package name, a relative path
+ * or a bare `string` is a compile error at the call site. It constrains this
+ * *body* not at all, because `runtimeRequire` is a general CommonJS resolver
+ * in scope here, and a second line invoking it with anything at all would
  * type-check. So the bound is asserted rather than assumed, in
- * `test/inv-49-host-import-boundary.test.ts`:
+ * `test/host-import-boundary.test.ts`:
  *
  * - "bounds where the one permitted constructed require can point"
  *   pins the `createRequire` argument, the invoked binding, the host-naming string
@@ -309,7 +311,7 @@ function parseSolcOutput(raw: unknown, soljsonPath: string): SolcStandardOutput 
  * and the citation replaced here was neither — it named a block that did not exist,
  * and the wrap is why no grep caught that.
  *
- * Constructed inside the call rather than at module scope (INV-44), so the whole
+ * Constructed inside the call rather than at module scope, so the whole
  * pipeline is drivable against fakes with no `~/.tronbox` populated: nine of the
  * eleven causes have nothing to do with the compiler, and the two that do — the
  * ceiling and the failed recompile — still need it *injected* rather than real.
@@ -337,7 +339,7 @@ export interface CompilerOpenRequest {
    *
    * A thunk rather than a string so it is read only on the path that needs it —
    * which is *after* the range gate, so an out-of-range project touches no machine
-   * state at all. The seam cannot read it (INV-43 / INV-44 / INV-47), and this module
+   * state at all. The seam cannot read it, and this module
    * must not either, so it arrives on the dependency surface beside `exists` and
    * `load`; `pipeline.ts` defaults it to `os.homedir`.
    */
@@ -347,7 +349,7 @@ export interface CompilerOpenRequest {
 /**
  * Causes 1, 2 and 3, in the order their detectability allows.
  *
- * The **range gate runs before anything is loaded** (INV-15), and the order is
+ * The **range gate runs before anything is loaded**, and the order is
  * not cosmetic: an out-of-range project must refuse with the range named rather
  * than with whatever the load says, and it must refuse even when no compiler is
  * on disk at all — telling a user on `0.7.6` that a compiler is missing would
@@ -424,7 +426,7 @@ export function openCompiler(request: CompilerOpenRequest): CompilerOpenResult {
   }
 
   /**
-   * INV-5, narrowed on purpose. The assertion is on the value *we* produced —
+   * Narrowed on purpose. The assertion is on the value *we* produced —
    * a loaded compiler that answers without `+commit.` means this wrapper called
    * the wrong entry point, which is a plugin bug. It is deliberately **not**
    * applied to `artifactLongVersion`: that value comes off the user's artifact,

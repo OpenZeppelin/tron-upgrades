@@ -1,17 +1,17 @@
 /**
- * SF-3's additions to the plugin's error family.
+ * The record layer's additions to the plugin's error family.
  *
  * **This module imports nothing.** That is deliberate and it is what makes
  * `address.ts` — the module whose failure mode is a wrong record key — reachable
  * from a test with no fixture, no network and no host: `address.ts` imports
  * `tronweb`, `ethers` and this file, and this file's own closure is empty, so the
  * transitive closure of the highest-consequence module in the sub-feature is
- * exactly two third-party packages (INV-25, INV-47).
+ * exactly two third-party packages.
  *
  * Family membership here is *stylistic*, not by inheritance, following
  * `src/chain/errors.ts`: a `code` field, a **closed** `because` union, and one
  * table-driven renderer per class, so a new cause is a compile error at the table
- * rather than a message that quietly falls through to a generic remedy (INV-18).
+ * rather than a message that quietly falls through to a generic remedy.
  *
  * **No two causes share a remedy string.** That is the point of having causes: the
  * remedy is what tells the user which situation they are in, and two of
@@ -124,7 +124,7 @@ function renderLocationFailure(
  *
  * Covers all four states in which the *assignment* succeeds while the location is
  * still wrong, which is why the plugin asserts the **outcome** — the manifest path
- * the engine produced — rather than the assignment (INV-30, INV-31).
+ * the engine produced — rather than the assignment.
  */
 export class RecordLocationUnusableError extends Error {
   readonly code = 'TRON_RECORD_LOCATION_UNUSABLE' as const;
@@ -204,8 +204,8 @@ export class AddressNotCanonicalizableError extends Error {
 
   constructor(
     /**
-     * The caller's value in full, and the only field anywhere that carries it
-     * (INV-45). An address is public by construction and a redacted one makes the
+     * The caller's value in full, and the only field anywhere that carries it.
+     * An address is public by construction and a redacted one makes the
      * diagnosis useless; what must never appear beside it is a contract name, a
      * source path or a host handle.
      */

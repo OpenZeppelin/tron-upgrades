@@ -50,7 +50,7 @@ export type NetworkScalarValuesCoverage = AssertTrue<
 >;
 
 /**
- * INV-16: the selected network is validated against the `networks` map itself,
+ * The selected network is validated against the `networks` map itself,
  * before any derived getter is read.
  *
  * This is the trap the check closes, verified on 4.9.0 and 4.8.0. In
@@ -131,7 +131,7 @@ function failMissingNetworkId(name: string): never {
 }
 
 /**
- * INV-48: the seam's only value normalization, and this function *is* the closed
+ * The seam's only value normalization, and this function *is* the closed
  * list — two call sites, both `network_id`, both in
  * {@link projectNetworkValues}. Adding an entry means showing that the host
  * treats both forms as the same value, which is a citation rather than an
@@ -155,7 +155,7 @@ function failMissingNetworkId(name: string): never {
  * 3. **No other type is coercible** — not `bigint`, not `boolean`, not a
  *    `toString` carrier. Each keeps `requireString`'s named refusal.
  * 4. **`'*'` is neither consumed nor produced.** The branch runs only on
- *    `number` and no number is `'*'`, so INV-6's strict-equality wildcard
+ *    `number` and no number is `'*'`, so the strict-equality wildcard
  *    derivation is structurally out of reach.
  */
 function normalizeNetworkId(
@@ -174,14 +174,14 @@ function normalizeNetworkId(
 /**
  * Reads and validates every network scalar off one lineage. Returns the
  * compared value set, never a slot — {@link buildNetworkEnvironment} builds the
- * slot from the agreed values so no lineage's object is preferred (INV-12).
+ * slot from the agreed values so no lineage's object is preferred.
  */
 export function projectNetworkValues(
   lineage: ConfigLineage,
   recorder: InternalPathRecorder,
 ): NetworkScalarValues | ConfigReadFailure {
   try {
-    // INV-16, first condition: a non-empty selected network name.
+    // First condition of the network-validation check: a non-empty selected network name.
     //
     // The nullish case gets its own diagnosis because the seam cannot see what
     // the user wrote. `Config.prototype.addProp`'s getter is
@@ -200,7 +200,7 @@ export function projectNetworkValues(
     }
     const name = requireNonEmptyString(rawName, 'network');
 
-    // INV-16, second condition — before any derived getter is read.
+    // Second condition of the network-validation check — before any derived getter is read.
     const entry = assertSelectedNetworkIsConfigured(lineage, name, recorder);
 
     const entryPath = `${lineage.prefix}.networks.${name}`;
@@ -214,10 +214,10 @@ export function projectNetworkValues(
     if (!configuredIdRead.ok) {
       return failMissingNetworkId(name);
     }
-    // INV-48, site 1 of 2. Both sites go through the one helper: this one runs
+    // Value-normalization site 1 of 2. Both sites go through the one helper: this one runs
     // first and throws, so normalizing only here would relocate the refusal to
     // `artifactNetworkId` rather than resolve it. And a permanent divergence
-    // would be worse than either, because both fields are INV-13 cross-check
+    // would be worse than either, because both fields are cross-check
     // members — one coerced and one raw compares a number against a string
     // across lineages and reports a fictional `inconsistent`.
     const configuredNetworkId = normalizeNetworkId(
@@ -226,7 +226,7 @@ export function projectNetworkValues(
       name,
     );
 
-    // INV-40: presence only. The value is tested in place and never bound to a
+    // Presence only. The value is tested in place and never bound to a
     // variable that outlives the check. `Config`'s own top-level `privateKey`
     // getter is hardcoded to return `null`, so it is useless as a presence
     // check — the real key lives on the network entry.
@@ -248,10 +248,11 @@ export function projectNetworkValues(
     // Only now the derived getters. These are what the tool *resolved*, so they
     // come from the getters rather than from the raw entry — `feeLimit` reads
     // `network_config.feeLimit || network_config.fee_limit`, and that resolution
-    // is the fact SF-4 needs. Note the getters' `||` chains treat a configured
-    // `0` as absent: with `callValue: 0` merged in from `deployParameters`,
-    // `config.callValue` reads `undefined`, hence `null` here.
-    // INV-48, site 2 of 2 — the same helper, so the two sites cannot drift.
+    // is the fact the deploy seam needs. Note the getters' `||` chains treat a
+    // configured `0` as absent: with `callValue: 0` merged in from
+    // `deployParameters`, `config.callValue` reads `undefined`, hence `null`
+    // here.
+    // Value-normalization site 2 of 2 — the same helper, so the two sites cannot drift.
     const artifactNetworkId = normalizeNetworkId(
       readLineageProperty(lineage, 'network_id', recorder),
       'network_id',
@@ -303,7 +304,7 @@ export function projectNetworkValues(
 }
 
 /**
- * Total function of the validated scalars. INV-6: `syntax` is derived by strict
+ * Total function of the validated scalars. `syntax` is derived by strict
  * equality against `'*'`, never by a truthiness or regex test, so `'**'` and
  * `'*3'` are `'exact'`.
  */
@@ -328,7 +329,7 @@ export function buildNetworkEnvironment(
       tokenValue: values.tokenValue,
       tokenId: values.tokenId,
     }),
-    // INV-7: wrapped, so the caveat cannot be skipped at a call site. The
+    // Wrapped, so the caveat cannot be skipped at a call site. The
     // effective sender is chosen at send time — `TronWrap._getAccounts`
     // replaces `_accounts` wholesale on a TRE node while resetting
     // `privateKeyByAccount` — so an authority preflight against this value can
