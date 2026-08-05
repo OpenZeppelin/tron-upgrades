@@ -22,3 +22,6 @@ packages/hardhat-tron-upgrades/examples/*/.testnet-key
 
 .DS_Store
 *.log
+
+# Local working directory
+/artifacts/
