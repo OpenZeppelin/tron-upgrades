@@ -255,16 +255,14 @@ describe('publication hygiene: every reference resolves inside the published rep
     expect(manifest.files.filter(entry => !accounted.includes(entry))).toEqual([]);
 
     /*
-     * LICENSE exists and ships: MIT, matching the manifest's declared license
-     * and the sibling plugins' file verbatim. It is in the scanned set (the
-     * root-file clause in `collect`). README.md is declared and does not exist —
-     * recorded rather than authored, because it is a release decision, not a
-     * hygiene fix. That pin is deliberate: the day the file appears it must join
-     * the scanned set, and this assertion failing is what forces that revisit
-     * instead of the file shipping unscanned.
+     * LICENSE and README.md both exist and ship: LICENSE is MIT, matching the
+     * manifest's declared license and the sibling plugins' file verbatim;
+     * README.md was authored from the approved release draft, its quickstart
+     * quoting the live-run evidence. Both are in the scanned set (the root-file
+     * clause in `collect`), so every ban above ranges over them.
      */
     expect(fs.existsSync(path.join(packageRoot, 'LICENSE'))).toBe(true);
-    expect(fs.existsSync(path.join(packageRoot, 'README.md'))).toBe(false);
+    expect(fs.existsSync(path.join(packageRoot, 'README.md'))).toBe(true);
   });
 
   it('introduces no ninth private identifier scheme', () => {
