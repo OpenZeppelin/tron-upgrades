@@ -9,10 +9,13 @@ import type {
 } from '../src/proxy/toolkit';
 import {
   BeaconProxyRefusedError,
+  InitializerDataRequiredError,
   NotTransparentProxyError,
   StaleProxyRecordError,
   UpgradeVerificationFailedError,
 } from '../src/proxy/errors';
+import { PROXY_CONTRACT_NAMES } from '../src/proxy/artifacts';
+import { OptionValueError } from '../src/options';
 import { CheatcodeSlotCollisionError, DeployerAbsentError } from '../src/deploy';
 import { canonicalizeAddress, toBase58 } from '../src/record';
 import { toTronHex } from '../src/record/address';
@@ -31,6 +34,12 @@ import type { ContractAbstraction } from '../src/environment';
 const IMPL_OWNER = '0xabCDEF1234567890ABcDEF1234567890aBCDeF12';
 const PROXY_ADDR = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const NEW_IMPL = 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb';
+// A different implementation than `NEW_IMPL`, standing in for "what the proxy
+// currently runs" in the upgrade tests that need the two distinguished.
+const OTHER_IMPL = 'TQ5NMqJjhpQGK7YJbESmqLZKmqSXvfRWMR';
+// A real, distinct base58 address for `initialOwner` — already used in that
+// exact role in `test/surface-request-response-contract.test.ts`.
+const OWNER_BASE58 = 'TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh';
 const TX_HASH = 'aa'.repeat(32);
 
 interface FakeSpec {
@@ -45,6 +54,13 @@ interface FakeSpec {
   readonly observedAfterUpgrade?: string;
   readonly existingProxyRecord?: boolean;
   readonly constructorArgs?: readonly unknown[];
+  /**
+   * Overrides merged over the `ResolvedForProxyOps` defaults below. The
+   * defaults fix every field to its "caller said nothing" value, which is
+   * exactly wrong for the kind/initializer/initialOwner/call semantics this
+   * override exists to exercise.
+   */
+  readonly resolved?: Partial<ResolvedForProxyOps>;
 }
 
 interface Fake {
@@ -52,12 +68,31 @@ interface Fake {
   readonly log: readonly string[];
   readonly notes: readonly string[];
   readonly warns: readonly string[];
+  /**
+   * The proxy's OWN constructor args — captured from the second `hostDeploy`
+   * call (the proxy's; the first is the implementation's), never confused
+   * with `resolved.constructorArgs`, which belongs to the implementation.
+   * `undefined` until a proxy deploy actually runs.
+   */
+  readonly proxyConstructorArgs?: readonly unknown[] | undefined;
+  /**
+   * The dispatched upgrade call's data, captured from `sendUpgradeCall`'s
+   * request. `undefined` until an upgrade actually dispatches a call.
+   */
+  readonly upgradeCallData?: string | undefined;
 }
 
 const RESULT_ABI = [
   {
     type: 'function',
     name: 'initialize',
+    inputs: [{ name: 'value', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'migrate',
     inputs: [{ name: 'value', type: 'uint256' }],
     outputs: [],
     stateMutability: 'nonpayable',
@@ -80,6 +115,11 @@ function buildFake(spec: FakeSpec = {}): Fake {
   const log: string[] = [];
   const notes: string[] = [];
   const warns: string[] = [];
+  // Set by `hostDeploy`/`sendUpgradeCall` below; read back through the
+  // getters on the returned `Fake` so callers see the latest value without
+  // this function reassigning a field the `Fake` interface declares readonly.
+  let proxyConstructorArgs: readonly unknown[] | undefined;
+  let upgradeCallData: string | undefined;
 
   const writeBack = { address: toTronHex(canonicalizeAddress(PROXY_ADDR)), transactionHash: TX_HASH };
   const currentImpl =
@@ -222,10 +262,19 @@ function buildFake(spec: FakeSpec = {}): Fake {
       return toTronHex(canonicalizeAddress(NEW_IMPL));
     },
 
-    async hostDeploy(abstraction) {
-      log.push(
-        `hostDeploy:${String((abstraction as { contractName?: unknown }).contractName)}`,
+    async hostDeploy(abstraction, args) {
+      const contractName = String(
+        (abstraction as { contractName?: unknown }).contractName,
       );
+      log.push(`hostDeploy:${contractName}`);
+      // The proxy's own deploy — never the implementation's, which shares
+      // this same seam but under the contract's own name (e.g. `Box`).
+      if (
+        contractName === PROXY_CONTRACT_NAMES.transparent ||
+        contractName === PROXY_CONTRACT_NAMES.trc1967
+      ) {
+        proxyConstructorArgs = args;
+      }
       return writeBack;
     },
 
@@ -267,6 +316,7 @@ function buildFake(spec: FakeSpec = {}): Fake {
 
     async sendUpgradeCall(request) {
       log.push(`sendUpgradeCall:${request.route}:${request.call}`);
+      upgradeCallData = request.data;
       return writeBack;
     },
 
@@ -285,9 +335,21 @@ function buildFake(spec: FakeSpec = {}): Fake {
     initialOwner: undefined,
     call: undefined,
     engineOptions: {},
+    ...spec.resolved,
   };
 
-  return { context: { toolkit, resolved }, log, notes, warns };
+  return {
+    context: { toolkit, resolved },
+    log,
+    notes,
+    warns,
+    get proxyConstructorArgs() {
+      return proxyConstructorArgs;
+    },
+    get upgradeCallData() {
+      return upgradeCallData;
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +450,37 @@ describe('deployProxy — the order is the contract', () => {
     const fake = buildFake();
     await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
     expect(fake.warns).toContain('sender comparison skipped');
+  });
+
+  it('kind:uups selects the TRC1967 artifact, not transparent', async () => {
+    const fake = buildFake({ resolved: { kind: 'uups', initializer: 'initialize' } });
+    await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
+    expect(fake.log).toContain('proxyArtifact:TRC1967Proxy');
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
+      'hostDeploy:Box',
+      'hostDeploy:TRC1967Proxy',
+    ]);
+  });
+
+  it('kind:beacon is refused by name, never silently downgraded to transparent', async () => {
+    const fake = buildFake({ resolved: { kind: 'beacon' } });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toThrow(OptionValueError);
+  });
+
+  it('initializer:false is refused by name — the ported proxy rejects empty init data', async () => {
+    const fake = buildFake({ resolved: { initializer: false } });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toThrow(InitializerDataRequiredError);
+  });
+
+  it('initialOwner reaches the transparent proxy constructor args', async () => {
+    const fake = buildFake({ resolved: { initialOwner: OWNER_BASE58 } });
+    await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
+    // buildFake's hostDeploy log/capture records proxy constructor args.
+    expect(fake.proxyConstructorArgs?.[1]).toBe(canonicalizeAddress(OWNER_BASE58));
   });
 });
 
@@ -491,5 +584,16 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     const fake = buildFake({ interfaceVersion: undefined });
     await runUpgradeProxy(fake.context, PROXY_ADDR, newImpl());
     expect(fake.log).toContain('sendUpgradeCall:admin-v4:upgrade');
+  });
+
+  it('a supplied call is encoded and dispatched on upgrade', async () => {
+    const fake = buildFake({
+      resolved: { call: { fn: 'migrate', args: [7] } },
+      currentImplementation: OTHER_IMPL,
+    });
+    await runUpgradeProxy(fake.context, PROXY_ADDR, newImpl());
+    // Captures encodeCall's output through the fake's dispatch — proving
+    // `resolved.call` (Task 1-2's B1 fix) reaches the existing site.
+    expect(fake.upgradeCallData).not.toBeUndefined();
   });
 });

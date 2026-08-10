@@ -154,6 +154,42 @@ export class EmptyInitializerRefusedError extends ProxyOperationRefusedError {
 }
 
 /**
+ * `resolveInitializer` resolved the operation's `initializer`/argument
+ * combination to `{ kind: 'none' }`: either `initializer: false` was passed
+ * explicitly, or no arguments and no `initializer` name were given for it to
+ * fall back on. Both leave the deploy with no initialization data — and
+ * unlike upstream's `ERC1967Proxy`, the ported TRC1967Proxy and
+ * TransparentUpgradeableProxy REJECT an empty init-data constructor argument
+ * (a deliberate parity break, safer than upstream). Refusing here, before any
+ * spend, turns that guaranteed on-chain revert into a named pre-flight error
+ * that states its own remedy — rather than the two mistakes surfacing later,
+ * unexplained, as `encodeInitializer`'s `EmptyInitializerRefusedError`.
+ */
+export class InitializerDataRequiredError extends ProxyOperationRefusedError {
+  readonly code = 'initializer-data-required';
+  constructor(
+    readonly contractName: string,
+    readonly because: 'initializer-false' | 'no-arguments',
+  ) {
+    super(
+      because === 'initializer-false'
+        ? `\`initializer: false\` is not supported for ${contractName}: the ` +
+          `ported TRC1967Proxy and TransparentUpgradeableProxy reject empty ` +
+          `initialization data — a deliberate parity break, safer than ` +
+          `upstream's ERC1967Proxy. An uninitialized proxy cannot be ` +
+          `deployed on TRON; add an initializer function instead.`
+        : `${contractName} was deployed with no arguments and no ` +
+          `\`initializer\` option: the ported TRC1967Proxy and ` +
+          `TransparentUpgradeableProxy reject empty initialization data — a ` +
+          `deliberate parity break, safer than upstream's ERC1967Proxy — so ` +
+          `an uninitialized deploy is not supported on TRON. Add an ` +
+          `initializer function.`,
+    );
+    this.name = 'InitializerDataRequiredError';
+  }
+}
+
+/**
  * A prior deployment's record cannot vouch for this replay: the
  * artifact remembers an address, and the record layer reports it stale,
  * unrecorded, or never seen. Redeploying beside it would leave two proxies

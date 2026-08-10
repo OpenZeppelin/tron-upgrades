@@ -22,7 +22,11 @@ import {
 import { transactionIdentity, operationNotes } from '../results/types';
 import type { DeployedProxy } from '../results/types';
 import { PROXY_CONTRACT_NAMES } from './artifacts';
-import { ProxyAdminAsOwnerError, StaleProxyRecordError } from './errors';
+import {
+  InitializerDataRequiredError,
+  ProxyAdminAsOwnerError,
+  StaleProxyRecordError,
+} from './errors';
 import { decideDeployReplay } from './replay';
 import {
   createOperationToolkit,
@@ -116,9 +120,48 @@ export async function runDeployProxy(
 
   // 5 — pre-queue refusals that need no chain.
   assertNoCheatcodeCollision(resolved.constructorArgs);
-  const kind = resolved.kind === 'uups' ? 'uups' : 'transparent';
+
+  // The two option-resolution helpers load ONLY here, behind a dynamic
+  // import of the SAME specifier `toolkit.ts` already uses: `../options/
+  // resolve` holds the package's one static engine value-import, so
+  // `test/entry-point-closure.test.ts` forbids it from this module's own
+  // static closure, and `test/record-structure.test.ts` pins the entry's
+  // whole deferred-edge set by exact specifier — a second, differently-
+  // spelled dynamic import of the same file (e.g. the `../options` face)
+  // would add a distinct edge and fail that pin for no behavioural reason.
+  // `resolved` already carries the caller's raw `kind`/`initializer` (Task
+  // 1-2's B1 fix) — this call interprets them, it does not re-resolve them.
+  const { requireProxyKind, resolveInitializer } = await import(
+    '../options/resolve'
+  );
+
+  // Never silently downgraded: a caller who names a kind this operation does
+  // not support gets a named refusal, not a transparent proxy contradicting
+  // what they asked for. `kind: undefined` (nothing supplied) is the one
+  // value this narrowing does not see — `deployProxy` still defaults it.
+  if (resolved.kind !== undefined) {
+    requireProxyKind(resolved.kind, ['transparent', 'uups'], 'deployProxy');
+  }
+  const kind = resolved.kind ?? 'transparent';
+
+  // The ported TRC1967Proxy/TransparentUpgradeableProxy reject empty
+  // initialization data — safer than upstream's ERC1967Proxy, and a
+  // deliberate parity break. An `{ kind: 'none' }` resolution — `initializer:
+  // false`, or no arguments and no `initializer` name — is refused BY NAME
+  // here, before any spend, rather than left to revert on-chain against the
+  // ported proxy.
+  const initializerResolution = resolveInitializer(resolved.initializer, args.length);
+  if (initializerResolution.kind === 'none') {
+    throw new InitializerDataRequiredError(
+      name,
+      resolved.initializer === false ? 'initializer-false' : 'no-arguments',
+    );
+  }
   const abi = (contract as { abi?: readonly unknown[] }).abi ?? [];
-  const initData = encodeInitializer(abi, kind, args, resolved.initializer);
+  // The RESOLUTION's own function name is what gets encoded — never a second,
+  // independent derivation of "what initializer name applies here" that
+  // could drift from the one `resolveInitializer` just computed.
+  const initData = encodeInitializer(abi, kind, args, initializerResolution.fn);
 
   // 6 — the sender, resolved once, threaded to preflight and comparison.
   const sender = toolkit.resolveSender();
