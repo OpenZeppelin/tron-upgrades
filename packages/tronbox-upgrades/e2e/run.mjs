@@ -13,9 +13,11 @@
  *      the tarball.
  *   4. compile — `tronbox compile`. The wasm compiler can hang: bounded
  *      trials with a timeout each; a killed trial is retried, not diagnosed.
- *   5. migrate — five migrations: proxy deploy + upgrade, the standalone
- *      validate/prepare pair, the authority transfer, the beacon trio, and
- *      adoption from a set-aside record.
+ *   5. migrate — six migrations: proxy deploy + upgrade, the standalone
+ *      validate/prepare pair, the authority transfer, the beacon trio,
+ *      adoption from a set-aside record, and the non-default option surface
+ *      (kind: 'uups', an inferred-kind upgrade, call, initialOwner, and the
+ *      initializer:false refusal).
  *   6. verify — independent reads against the node itself; the migrations'
  *      own asserts are trusted only after the chain agrees.
  *   7. replay — the SAME migrations again: reruns must reuse, declare their
@@ -88,15 +90,56 @@ function run(command, args, { cwd, timeoutMs, allowFailure = false } = {}) {
   return { status: result.status, output: out, stdout };
 }
 
+/**
+ * Network-level failures retry; an ANSWERED request never does. The long
+ * `spawnSync` steps block the event loop for minutes, the node closes the
+ * idle keep-alive socket meanwhile, and the next fetch that reuses the dead
+ * pooled connection dies with `TypeError: fetch failed` — measured twice at
+ * the first post-migrate read. A fresh attempt opens a fresh connection.
+ */
 async function post(endpoint, body) {
-  const response = await fetch(`${HOST}${endpoint}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body ?? {}),
-    signal: AbortSignal.timeout(10_000),
-  });
-  return response.json();
+  let lastFailure;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch(`${HOST}${endpoint}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body ?? {}),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return await response.json();
+    } catch (failure) {
+      lastFailure = failure;
+      if (attempt < 3) {
+        say(`${endpoint} did not answer (attempt ${attempt}); retrying`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  }
+  throw lastFailure;
 }
+
+/** JSON-RPC against the node's own endpoint — the same one the plugin derives. */
+async function rpc(method, params) {
+  const body = await post('/jsonrpc', {
+    jsonrpc: '2.0',
+    id: 1,
+    method,
+    params,
+  });
+  if (body?.error || typeof body?.result !== 'string') {
+    die(`${method} answered no result: ${JSON.stringify(body)}`);
+  }
+  return body.result;
+}
+
+// The two 1967 slots the option assertions read. Independent of the plugin
+// on purpose: these are the standard's constants, restated here so the check
+// cannot inherit a plugin-side mistake.
+const IMPLEMENTATION_SLOT =
+  '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
+const ADMIN_SLOT =
+  '0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103';
 
 function parseReport(output) {
   const report = {};
@@ -125,6 +168,21 @@ function nodeEval(workdir, code) {
 
 const TRONWEB_PRELUDE =
   "const m = require('tronweb'); const TronWeb = m.TronWeb || m.default || m;";
+
+/** 40 lowercase hex chars, whatever spelling a report used for the address. */
+function bareAddress(workdir, address) {
+  const direct = bareHex(address);
+  if (direct) return direct;
+  const converted = nodeEval(
+    workdir,
+    `${TRONWEB_PRELUDE} console.log(TronWeb.address.toHex('${address}'));`,
+  )
+    .split('\n')
+    .pop();
+  const hex = bareHex(converted);
+  if (!hex) die(`cannot canonicalize the address ${address}`);
+  return hex;
+}
 
 async function main() {
   // 1 — preflight
@@ -274,6 +332,14 @@ async function main() {
     'm4.valueAfter',
     'm5.kind',
     'm5.address',
+    'm6.uupsProxy',
+    'm6.uupsImpl',
+    'm6.uupsValueAfter',
+    'm6.callProxy',
+    'm6.callValue',
+    'm6.ownedProxy',
+    'm6.ownedOwner',
+    'm6.refusalCode',
   ];
   for (const key of required) {
     if (!(key in report1)) die(`first run reported no ${key}`);
@@ -320,6 +386,110 @@ async function main() {
     die('the deployment record does not name the proxy');
   }
 
+  // 6b — the non-default option semantics, verified against the node's own
+  // slots: the migration's asserts are trusted only after the chain agrees.
+  const zeroWord = value => BigInt(value) === 0n;
+
+  // kind: 'uups' — the admin slot must be EMPTY and the implementation slot
+  // must name the (kind-inferred) upgrade's implementation. A silently
+  // transparent deploy fails both reads.
+  const uupsHex = bareAddress(workdir, report1['m6.uupsProxy']);
+  const uupsAdmin = await rpc('eth_getStorageAt', [
+    `0x${uupsHex}`,
+    ADMIN_SLOT,
+    'latest',
+  ]);
+  if (!zeroWord(uupsAdmin)) {
+    die(`kind:'uups' produced a proxy with a non-empty 1967 admin slot: ${uupsAdmin}`);
+  }
+  const uupsImplWord = await rpc('eth_getStorageAt', [
+    `0x${uupsHex}`,
+    IMPLEMENTATION_SLOT,
+    'latest',
+  ]);
+  const uupsImplHex = bareAddress(workdir, report1['m6.uupsImpl']);
+  if (!uupsImplWord.toLowerCase().endsWith(uupsImplHex)) {
+    die(
+      `the uups implementation slot holds ${uupsImplWord}; the kind-omitted ` +
+        `upgrade reported ${report1['m6.uupsImpl']}`,
+    );
+  }
+  const uupsValue = await post('/wallet/triggerconstantcontract', {
+    owner_address: senderHex,
+    contract_address: `41${uupsHex}`,
+    function_selector: 'value()',
+  });
+  if (
+    BigInt(`0x${uupsValue.constant_result[0]}`) !==
+    BigInt(report1['m6.uupsValueAfter'])
+  ) {
+    die('the chain disagrees with the migration about the uups proxy value');
+  }
+  say(
+    `chain agrees: uups proxy ${report1['m6.uupsProxy']} — empty admin slot, ` +
+      `implementation ${report1['m6.uupsImpl']}`,
+  );
+
+  // call: { fn: 'store', args: [99] } — retrieve() must answer 99 through
+  // the transparent proxy, whose admin slot must be set.
+  const callHex = bareAddress(workdir, report1['m6.callProxy']);
+  const callAdmin = await rpc('eth_getStorageAt', [
+    `0x${callHex}`,
+    ADMIN_SLOT,
+    'latest',
+  ]);
+  if (zeroWord(callAdmin)) {
+    die('the call-option proxy has an empty 1967 admin slot — not transparent');
+  }
+  const retrieved = await post('/wallet/triggerconstantcontract', {
+    owner_address: senderHex,
+    contract_address: `41${callHex}`,
+    function_selector: 'retrieve()',
+  });
+  if (BigInt(`0x${retrieved.constant_result[0]}`) !== 99n) {
+    die(
+      `the post-upgrade call did not land: retrieve() answers ` +
+        `${BigInt(`0x${retrieved.constant_result[0]}`)} instead of 99`,
+    );
+  }
+  say('chain agrees: the upgrade-borne store(99) landed');
+
+  // initialOwner — the 1967 admin slot names the ProxyAdmin, whose owner()
+  // must be exactly the requested address, not the deploying account.
+  const ownedHex = bareAddress(workdir, report1['m6.ownedProxy']);
+  const ownedAdmin = await rpc('eth_getStorageAt', [
+    `0x${ownedHex}`,
+    ADMIN_SLOT,
+    'latest',
+  ]);
+  if (zeroWord(ownedAdmin)) {
+    die('the initialOwner proxy has an empty 1967 admin slot — not transparent');
+  }
+  const adminHex = ownedAdmin.slice(-40).toLowerCase();
+  const ownerAnswer = await post('/wallet/triggerconstantcontract', {
+    owner_address: senderHex,
+    contract_address: `41${adminHex}`,
+    function_selector: 'owner()',
+  });
+  const ownerHex = (ownerAnswer.constant_result?.[0] ?? '')
+    .slice(-40)
+    .toLowerCase();
+  const expectedOwner = bareAddress(workdir, report1['m6.ownedOwner']);
+  if (ownerHex !== expectedOwner) {
+    die(
+      `initialOwner did not land: the ProxyAdmin's owner is ${ownerHex}, ` +
+        `the caller asked for ${expectedOwner}`,
+    );
+  }
+  say('chain agrees: the ProxyAdmin owner is the requested initialOwner');
+
+  if (report1['m6.refusalCode'] !== 'initializer-data-required') {
+    die(
+      `initializer:false expected the initializer-data-required refusal, ` +
+        `saw ${report1['m6.refusalCode']}`,
+    );
+  }
+
   // 7 — replay: the same migrations again
   const second = run(tronbox, ['migrate', '--network', 'development'], {
     cwd: workdir,
@@ -334,7 +504,16 @@ async function main() {
     const r = bareHex(right) ?? right;
     return l.toLowerCase() === r.toLowerCase();
   };
-  const stable = ['m1.proxy', 'm1.impl', 'm2.prepared', 'm2.impl'];
+  const stable = [
+    'm1.proxy',
+    'm1.impl',
+    'm2.prepared',
+    'm2.impl',
+    'm6.uupsProxy',
+    'm6.uupsImpl',
+    'm6.callProxy',
+    'm6.ownedProxy',
+  ];
   for (const key of stable) {
     if (!sameAccount(report1[key], report2[key])) {
       die(`replay changed ${key}: ${report1[key]} -> ${report2[key]}`);
@@ -342,6 +521,18 @@ async function main() {
   }
   if (report2['m3.alreadyHeld'] !== 'true') {
     die(`replayed transfer expected alreadyHeld=true, saw ${report2['m3.alreadyHeld']}`);
+  }
+  // The refusal is pre-spend against a never-deployed artifact, so it must
+  // replay identically; the upgrade-borne 99 must survive the replayed
+  // no-op upgrade, which sends no call.
+  if (report2['m6.refusalCode'] !== 'initializer-data-required') {
+    die(
+      `replayed initializer:false expected the same refusal, ` +
+        `saw ${report2['m6.refusalCode']}`,
+    );
+  }
+  if (report2['m6.callValue'] !== '99') {
+    die(`replay lost the upgrade-borne store(99): ${report2['m6.callValue']}`);
   }
   if (BigInt(report2['m1.valueBefore']) !== BigInt(report1['m1.valueAfter'])) {
     die('replay lost the proxy state between runs');

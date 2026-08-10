@@ -38,4 +38,29 @@ contract('validation without a deployer', () => {
       },
     );
   });
+
+  // The option resolver runs for real here — no deployer needed — so a key
+  // the operation does not accept, or a value outside its accepted set, must
+  // refuse by name instead of being silently dropped (the failure mode the
+  // resolver exists to prevent).
+  it('refuses a key this operation does not accept, naming the accepted set', async () => {
+    await assert.rejects(
+      () => validateImplementation(Box, { artifacts, initializer: false }),
+      error =>
+        error &&
+        error.code === 'OPTION_UNKNOWN' &&
+        /initializer/.test(String(error.message)) &&
+        /accepts/.test(String(error.message)),
+    );
+  });
+
+  it('refuses an unsafeAllow member outside the accepted set, never ignoring it', async () => {
+    await assert.rejects(
+      () => validateImplementation(Box, { artifacts, unsafeAllow: ['not-a-kind'] }),
+      error =>
+        error &&
+        error.code === 'OPTION_VALUE_INVALID' &&
+        /unsafeAllow/.test(String(error.message)),
+    );
+  });
 });

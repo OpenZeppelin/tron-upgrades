@@ -64,6 +64,57 @@ jobs:
       - run: npm run test:examples --workspace=@openzeppelin/hardhat-tron-upgrades
         timeout-minutes: 30
 
+  tronbox-e2e:
+    name: TronBox consumer (packed tarball) E2E
+    runs-on: ubuntu-latest
+    # Same ordering rationale as the hardhat consumer job: the packed-tarball
+    # run only spends time once the library itself is known good.
+    needs: test
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build --workspaces --if-present
+
+      # The harness needs a LIVE node before it starts (it packs, scaffolds a
+      # consumer, compiles, migrates twice, verifies against the node, and
+      # runs the consumer's tests), so TRE starts here rather than inside it.
+      - name: Start TRE
+        run: docker run -d --name tre -p 9090:9090 -e "defaultBalance=100000" tronbox/tre:2.0.0
+
+      # TRE generates a fresh account set on every boot and prints the keys
+      # to its own log, so the funded key is read from there — waiting both
+      # for the node to answer and for the accounts to exist.
+      - name: Wait for TRE and read a funded key
+        run: |
+          for i in $(seq 1 90); do
+            KEY=$(docker logs tre 2>&1 | awk '/Private Keys/{flag=1;next}/HD Wallet/{flag=0}flag && /^\(0\)/{print $2}')
+            if [ -n "$KEY" ] && curl -sf -X POST http://127.0.0.1:9090/wallet/getnowblock | grep -q blockID; then
+              echo "TRE is up"
+              echo "E2E_PRIVATE_KEY=$KEY" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::TRE never answered on :9090 with funded accounts"
+          docker logs tre
+          exit 1
+
+      - run: npm run test:e2e --workspace=@openzeppelin/tronbox-upgrades
+        timeout-minutes: 30
+        env:
+          E2E_FULL_HOST: http://127.0.0.1:9090
+
+      - name: TRE logs on failure
+        if: failure()
+        run: docker logs tre
+
   pack:
     name: Package contents
     runs-on: ubuntu-latest
@@ -100,3 +151,32 @@ jobs:
           fi
 
           echo "Package manifest OK: ships dist/ + README.md, no test/tsconfig/src sources"
+
+      - name: Assert tronbox-upgrades ships dist + README + contracts only
+        run: |
+          npm pack --dry-run --json --workspace=@openzeppelin/tronbox-upgrades > tronbox-pack-manifest.json
+          cat tronbox-pack-manifest.json
+
+          PATHS=$(jq -r '.[0].files[].path' tronbox-pack-manifest.json)
+
+          echo "$PATHS" | grep -q '^dist/' || {
+            echo "::error::tronbox-upgrades tarball does not ship dist/"
+            exit 1
+          }
+          echo "$PATHS" | grep -q '^README.md$' || {
+            echo "::error::tronbox-upgrades tarball does not ship README.md"
+            exit 1
+          }
+          echo "$PATHS" | grep -q '^contracts/Proxies.sol$' || {
+            echo "::error::tronbox-upgrades tarball does not ship contracts/Proxies.sol"
+            exit 1
+          }
+
+          DISALLOWED=$(echo "$PATHS" | grep -E '^test/|^e2e/|^docs/|tsconfig|^src/' || true)
+          if [ -n "$DISALLOWED" ]; then
+            echo "::error::tronbox-upgrades tarball ships test/e2e/docs/tsconfig/src files:"
+            echo "$DISALLOWED"
+            exit 1
+          fi
+
+          echo "tronbox-upgrades manifest OK: ships dist/ + README.md + contracts/, no test/e2e/docs/tsconfig/src files"
