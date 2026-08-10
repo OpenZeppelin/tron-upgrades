@@ -56,6 +56,13 @@ interface FakeSpec {
   readonly existingProxyRecord?: boolean;
   readonly constructorArgs?: readonly unknown[];
   /**
+   * Makes the fake's `validateImplementation` throw instead of returning a
+   * validation result — the refusal both operations' step 1 can take, and
+   * the one this suite uses to pin that the refusal blocks every side
+   * effect after it, not merely the ones the runner happens to reach first.
+   */
+  readonly validateThrows?: Error;
+  /**
    * Overrides merged over the `ResolvedForProxyOps` defaults below. The
    * defaults fix every field to its "caller said nothing" value, which is
    * exactly wrong for the kind/initializer/initialOwner/call semantics this
@@ -213,6 +220,9 @@ function buildFake(spec: FakeSpec = {}): Fake {
 
     async validateImplementation(name) {
       log.push('validate');
+      if (spec.validateThrows) {
+        throw spec.validateThrows;
+      }
       return {
         name,
         input: {} as never,
@@ -483,6 +493,19 @@ describe('deployProxy — the order is the contract', () => {
     // buildFake's hostDeploy log/capture records proxy constructor args.
     expect(fake.proxyConstructorArgs?.[1]).toBe(canonicalizeAddress(OWNER_BASE58));
   });
+
+  it('a validation refusal sends nothing and writes no record', async () => {
+    const fake = buildFake({ validateThrows: new Error('not upgrade-safe') });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toThrow('not upgrade-safe');
+    // The full absence set, not merely the deploy: nothing queued, no
+    // implementation or proxy host-deployed, and no record written —
+    // exactly what a refusal at step 1 must leave untouched.
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('queue');
+    expect(fake.log).not.toContain('recordProxy');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -602,5 +625,19 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
       new Interface(RESULT_ABI as never).encodeFunctionData('migrate', [7]),
     );
     expect(fake.upgradeCallData).not.toBe('0x');
+  });
+
+  it('a validation refusal dispatches nothing and writes no record', async () => {
+    const fake = buildFake({ validateThrows: new Error('not upgrade-safe') });
+    await expect(
+      runUpgradeProxy(fake.context, PROXY_ADDR, newImpl()),
+    ).rejects.toThrow('not upgrade-safe');
+    // The full absence set: no implementation deploy, no queue, no
+    // dispatched upgrade call, and no record — a refusal at step 1 leaves
+    // no half-queued operation behind.
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('queue');
+    expect(fake.log.some(e => e.startsWith('sendUpgradeCall:'))).toBe(false);
+    expect(fake.log).not.toContain('recordProxy');
   });
 });
