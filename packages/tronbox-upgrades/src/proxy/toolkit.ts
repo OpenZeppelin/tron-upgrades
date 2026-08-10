@@ -52,6 +52,7 @@ import {
 import { Interface } from 'ethers';
 import { requireProxyArtifact } from './artifacts';
 import { EmptyInitializerRefusedError } from './errors';
+import type { UpgradeOptions } from '../options/types';
 
 /** The subset of a resolved options object the operations read here. */
 export interface ResolvedForProxyOps {
@@ -431,25 +432,33 @@ export async function createOperationToolkit(request: {
   const validationInput = await import('../validation-input');
   const engine = await import('@openzeppelin/upgrades-core');
 
-  const resolvedRaw = optionsModule.resolveUpgradeOptions(
-    request.rawOptions as never,
+  const resolvedOptions = optionsModule.resolveUpgradeOptions(
+    // The one assertion on this seam, documented here: `rawOptions` is the
+    // migration's own object, typed as an index-signature bag because a
+    // JavaScript caller can pass any key with any value, so it cannot satisfy
+    // the resolver's typed parameter structurally. The resolver validates
+    // every accepted key and value at runtime before anything reads them —
+    // the assertion claims nothing the next call does not immediately check —
+    // and the parameter stays `UpgradeOptions` so typed API callers keep
+    // their compile-time refusals (`{ kind: 'diamond' }` does not compile).
+    request.rawOptions as UpgradeOptions,
     request.acceptedOptions,
-  ) as unknown as Record<string, unknown>;
+  );
   const resolved: ResolvedForProxyOps = {
-    kind: resolvedRaw['kind'] as ResolvedForProxyOps['kind'],
-    initializer: resolvedRaw['initializer'] as ResolvedForProxyOps['initializer'],
-    constructorArgs:
-      (resolvedRaw['constructorArgs'] as readonly unknown[] | undefined) ?? [],
-    redeployImplementation:
-      (resolvedRaw['redeployImplementation'] as ResolvedForProxyOps['redeployImplementation']) ??
-      'onchange',
-    unsafeAllowLinkedLibraries: resolvedRaw['unsafeAllowLinkedLibraries'] === true,
-    unsafeSkipProxyAdminCheck: resolvedRaw['unsafeSkipProxyAdminCheck'] === true,
-    initialOwner: resolvedRaw['initialOwner'] as string | undefined,
-    call: resolvedRaw['call'] as ResolvedForProxyOps['call'],
-    engineOptions: optionsModule.engineValidationOptions(
-      resolvedRaw as never,
-    ) as unknown as Record<string, unknown>,
+    kind: resolvedOptions.kind,
+    initializer: resolvedOptions.initializer,
+    constructorArgs: resolvedOptions.constructorArgs,
+    redeployImplementation: resolvedOptions.redeployImplementation,
+    // One level DOWN from the rest, deliberately: the flag lives on the
+    // upstream-shaped validation object, where `withValidationDefaults`
+    // derives it from an `unsafeAllow` grant. Reading it at the top level is
+    // exactly the mistake the old cast-based mapping made (B1).
+    unsafeAllowLinkedLibraries:
+      resolvedOptions.validation.unsafeAllowLinkedLibraries,
+    unsafeSkipProxyAdminCheck: resolvedOptions.unsafeSkipProxyAdminCheck,
+    initialOwner: resolvedOptions.initialOwner,
+    call: resolvedOptions.call,
+    engineOptions: optionsModule.engineValidationOptions(resolvedOptions),
   };
 
   const requireChain = (): ChainAccess => {
@@ -691,10 +700,31 @@ export async function createOperationToolkit(request: {
     },
 
     async processProxyKind(proxyAddress, validated, resolvedOptions) {
+      /*
+       * Built without ever writing an own `kind: undefined` key — the exact
+       * hazard `options/resolve.ts:buildResolved` documents. Two branches,
+       * both load-bearing:
+       *
+       * - A caller-supplied kind overrides whatever the engine options carry.
+       * - An omitted kind must reach the engine as an ABSENT key, so the key
+       *   is deleted rather than spread through: `withValidationDefaults`
+       *   stamps `kind: opts.kind ?? 'transparent'` onto every engine-options
+       *   object (`dist/validate/overrides.js`), and upstream's
+       *   `processProxyKind` infers the kind from the implementation only
+       *   when `opts.kind === undefined` — spreading the defaulted
+       *   `'transparent'` verbatim would silently disable that inference for
+       *   every caller who never chose a kind. The parity target hands
+       *   upstream the caller's RAW options, where an omitted kind is
+       *   genuinely absent; absence is what preserves its semantics here.
+       */
       const kindOptions: Record<string, unknown> = {
         ...resolvedOptions.engineOptions,
-        kind: resolvedOptions.kind,
       };
+      if (resolvedOptions.kind !== undefined) {
+        kindOptions['kind'] = resolvedOptions.kind;
+      } else {
+        delete kindOptions['kind'];
+      }
       await engine.processProxyKind(
         requireChain().provider as never,
         proxyAddress,
