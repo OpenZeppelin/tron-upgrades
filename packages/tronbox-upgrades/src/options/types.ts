@@ -168,12 +168,28 @@ export type ValidateUpgradeOptions = ValidationOptions;
 /**
  * Options after resolution.
  *
- * Every field is **required**, so "defaults were applied" is a type-level
- * fact and no downstream module writes `?? default` a second time. The object and
- * both its arrays are frozen, and no field is ever assigned an explicit
- * `undefined` — under this package's `exactOptionalPropertyTypes: true` that would
- * be a compile error anyway (verified by compilation: `const a: ValidationOptions = {
- * kind: undefined }` fails with **TS2375**).
+ * Every field is **required** — an own key is always present on the frozen
+ * result, so "resolution ran" is a type-level fact and no downstream module
+ * has to guard a field's mere presence. `validation`, `constructorArgs`,
+ * `redeployImplementation`, `timeout` and `pollingInterval` also carry a
+ * **defined** value on every input, because each has a resolver-owned
+ * default; no field in this group is ever assigned an explicit `undefined`
+ * — under this package's `exactOptionalPropertyTypes: true` that would be a
+ * compile error anyway (verified by compilation: `const a: ValidationOptions
+ * = { kind: undefined }` fails with **TS2375**).
+ *
+ * `kind`, `initializer`, `call` and `initialOwner` are the recorded
+ * exception: each carries `undefined` when the caller supplied nothing,
+ * because these are operation-level passthroughs the resolver applies no
+ * default to — the operation that consumes them owns the default (or has
+ * none), so a resolver-level default here would be a second, possibly
+ * diverging opinion. `unsafeSkipProxyAdminCheck` is the exception's own
+ * exception: it belongs to that group in kind, but its default (`false`,
+ * the safe posture) is unambiguous, so it is always defined. All five are
+ * declared required rather than optional to match
+ * `proxy/toolkit.ts:ResolvedForProxyOps`, the shape the operations actually
+ * read: required-but-possibly-`undefined` states that resolution ran and
+ * looked, where `?` would only state that it never looked at all.
  *
  * The hazard this shape removes: a downstream
  * operation reading `resolved.timeout` as possibly-undefined and re-applying its
@@ -210,6 +226,57 @@ export interface ResolvedUpgradeOptions {
   readonly timeout: number;
   /** Milliseconds. See the recorded divergence on {@link timeout}. */
   readonly pollingInterval: number;
+  /**
+   * The proxy kind the caller supplied, verbatim — `undefined` when omitted.
+   * Sourced from the same `readProxyKind` call that feeds
+   * `validation.kind`'s input, so the two cannot disagree when the caller
+   * sets it; they differ only on the default, because
+   * `withValidationDefaults` defaults `validation.kind` to `'transparent'`
+   * while this field stays `undefined` when nothing was supplied — one
+   * source, surfaced twice, not two parses that could drift apart. Mirrors
+   * `proxy/toolkit.ts:ResolvedForProxyOps.kind`, which is where the
+   * operations read it.
+   */
+  readonly kind: 'transparent' | 'uups' | 'beacon' | undefined;
+  /**
+   * The `initializer` rule's raw input: a function name to call, `false`
+   * for no initialization, or `undefined` when the caller left it unset.
+   * Deciding what an absent value means for a given argument count is
+   * `resolve.ts:resolveInitializer`'s job, not resolution's — this field is
+   * that function's own input type, carried through unresolved. Mirrors
+   * `proxy/toolkit.ts:ResolvedForProxyOps.initializer`.
+   */
+  readonly initializer: string | false | undefined;
+  /**
+   * The `upgradeProxy` dispatch the caller requested: a function name (or
+   * raw calldata, still a string), a `{ fn, args }` pair, or `undefined`
+   * for none. `args`, when present, is frozen — the same one-level-copy
+   * discipline as {@link constructorArgs} and for the same reason: an
+   * element is arbitrary caller data and must never be deep-walked.
+   * `deployProxy` does not accept the `call` key, so this is `undefined` on
+   * every deploy-shaped resolution; only an operation whose accepted list
+   * includes `'call'` can ever populate it. Mirrors
+   * `proxy/toolkit.ts:ResolvedForProxyOps.call`.
+   */
+  readonly call:
+    | string
+    | { readonly fn: string; readonly args?: readonly unknown[] }
+    | undefined;
+  /**
+   * The transparent-proxy admin owner the caller requested, exactly as
+   * supplied — `undefined` when omitted. Never canonicalized here:
+   * canonicalization is chain-specific and this surface stays chain-agnostic,
+   * so `proxy/deploy-proxy.ts` canonicalizes the value itself before use.
+   * Mirrors `proxy/toolkit.ts:ResolvedForProxyOps.initialOwner`.
+   */
+  readonly initialOwner: string | undefined;
+  /**
+   * Skips the ProxyAdmin-as-owner probe `proxy/deploy-proxy.ts` otherwise
+   * runs before spending. Defaults to `false` — the safe posture — so a
+   * caller who never set this keeps the check. Mirrors
+   * `proxy/toolkit.ts:ResolvedForProxyOps.unsafeSkipProxyAdminCheck`.
+   */
+  readonly unsafeSkipProxyAdminCheck: boolean;
 }
 
 /** The outcome of the `initializer` rule. Never a nullable function name. */

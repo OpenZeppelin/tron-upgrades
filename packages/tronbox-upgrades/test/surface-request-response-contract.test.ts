@@ -12,6 +12,7 @@ import type {
   OutputChannelSlot,
 } from '../src/environment/types';
 import {
+  OptionValueError,
   UnknownOptionError,
   proxyKinds,
   redeployModes,
@@ -32,6 +33,7 @@ import {
   type ValidateImplementationOptions,
   type ValidateUpgradeOptions,
 } from '../src/options';
+import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
 import type { HostChannelFacts } from '../src/output';
 import {
   TransactionHashUnavailableError,
@@ -392,17 +394,32 @@ describe('the closed value sets are derived from the installed engine and comple
 // ResolvedUpgradeOptions totality
 // ---------------------------------------------------------------------------
 
-describe('ResolvedUpgradeOptions is total, frozen, and never holds undefined', () => {
-  it('returns every field present with a defined value on the empty input', () => {
+describe('ResolvedUpgradeOptions is total, frozen, and never holds an undefined value it did not declare', () => {
+  it('returns every declared field as an own key, undefined only for the four operation-level passthroughs', () => {
     const resolved = resolveUpgradeOptions(undefined, UPGRADE_OPTION_KEYS);
     expect(Object.keys(resolved).sort()).toEqual([
+      'call',
       'constructorArgs',
+      'initialOwner',
+      'initializer',
+      'kind',
       'pollingInterval',
       'redeployImplementation',
       'timeout',
+      'unsafeSkipProxyAdminCheck',
       'validation',
     ]);
+    // `kind`, `initializer`, `call` and `initialOwner` are the recorded
+    // exception `types.ts:ResolvedUpgradeOptions` documents: each is an
+    // operation-level passthrough with no resolver-owned default, so its
+    // value is legitimately `undefined` on the empty input while the key
+    // itself stays present — declared required rather than optional.
+    const passthroughs = new Set(['kind', 'initializer', 'call', 'initialOwner']);
     for (const [key, value] of Object.entries(resolved)) {
+      if (passthroughs.has(key)) {
+        expect(value, `resolved.${key} should be undefined when unset`).toBeUndefined();
+        continue;
+      }
       expect(value, `resolved.${key} must never be undefined`).not.toBeUndefined();
     }
   });
@@ -476,6 +493,55 @@ describe('ResolvedUpgradeOptions is total, frozen, and never holds undefined', (
     const roundTrip: Required<ResolvedUpgradeOptions> = totality;
     const backAgain: ResolvedUpgradeOptions = roundTrip;
     expect(backAgain.redeployImplementation).toBe('onchange');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B1: the six dead options — kind, initializer, call, initialOwner,
+// unsafeSkipProxyAdminCheck (constructorArgs already resolves)
+// ---------------------------------------------------------------------------
+
+describe('resolved options carry the operation-level fields (B1)', () => {
+  // `call` is not in `deployProxy`'s own accepted list — `upgradeProxy`'s is —
+  // so the fixture adds it explicitly rather than reaching for a whole-surface
+  // key list that would mask a per-operation acceptance bug.
+  const accepted = [...DEPLOY_PROXY_ACCEPTED_OPTIONS, 'call'];
+
+  it('surfaces kind at the top level and inside validation, consistently', () => {
+    const resolved = resolveUpgradeOptions({ kind: 'uups' }, accepted);
+    expect(resolved.kind).toBe('uups');
+    expect(resolved.validation.kind).toBe('uups');
+  });
+
+  it('refuses a kind outside the closed set, never coerces', () => {
+    expect(() =>
+      resolveUpgradeOptions({ kind: 'diamond' } as never, accepted),
+    ).toThrow(OptionValueError);
+  });
+
+  it('surfaces initializer, call, initialOwner and unsafeSkipProxyAdminCheck', () => {
+    const resolved = resolveUpgradeOptions(
+      {
+        initializer: 'setUp',
+        call: { fn: 'migrate', args: [1] },
+        initialOwner: 'TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh',
+        unsafeSkipProxyAdminCheck: true,
+      } as never,
+      accepted,
+    );
+    expect(resolved.initializer).toBe('setUp');
+    expect(resolved.call).toEqual({ fn: 'migrate', args: [1] });
+    expect(resolved.initialOwner).toBe('TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh');
+    expect(resolved.unsafeSkipProxyAdminCheck).toBe(true);
+  });
+
+  it('defaults: kind/initializer/call/initialOwner undefined, skip-check false', () => {
+    const resolved = resolveUpgradeOptions(undefined, accepted);
+    expect(resolved.kind).toBeUndefined();
+    expect(resolved.initializer).toBeUndefined();
+    expect(resolved.call).toBeUndefined();
+    expect(resolved.initialOwner).toBeUndefined();
+    expect(resolved.unsafeSkipProxyAdminCheck).toBe(false);
   });
 });
 

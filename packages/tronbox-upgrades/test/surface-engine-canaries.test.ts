@@ -398,10 +398,15 @@ describe('the defaults table is pinned by a two-sided canary', () => {
     // `useDeployedImplementation` collapses into `redeployImplementation` and never
     // surfaces on the resolved value, so exactly one field expresses the policy.
     expect(Object.keys(resolved).sort()).toEqual([
+      'call',
       'constructorArgs',
+      'initialOwner',
+      'initializer',
+      'kind',
       'pollingInterval',
       'redeployImplementation',
       'timeout',
+      'unsafeSkipProxyAdminCheck',
       'validation',
     ]);
   });

@@ -238,6 +238,59 @@ function validateInitializer(value: unknown): string | false {
   return value;
 }
 
+/**
+ * The `upgradeProxy` dispatch shape: a function name (or raw calldata, still a
+ * string — `upgrade-proxy.ts:encodeCall` tells the two apart by a `0x` prefix,
+ * which is that module's concern, not this one's), or a `{ fn, args }` pair.
+ *
+ * `args` is copied one level and frozen, the same discipline as
+ * {@link readConstructorArgs} and for the same reason: an argument is
+ * arbitrary caller data that must never be deep-walked.
+ */
+function readCallOption(
+  supplied: SuppliedOptions,
+): string | { fn: string; args?: readonly unknown[] } | undefined {
+  const value = read(supplied, 'call');
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  const accepted = 'a function name, or { fn: string; args?: unknown[] }';
+  if (typeof value !== 'object' || value === null) {
+    throw new OptionValueError('call', value, accepted);
+  }
+  const fn = (value as { fn?: unknown }).fn;
+  if (typeof fn !== 'string') {
+    throw new OptionValueError('call', value, accepted);
+  }
+  const args = (value as { args?: unknown }).args;
+  if (args === undefined) {
+    return { fn };
+  }
+  if (!Array.isArray(args)) {
+    throw new OptionValueError('call', value, accepted);
+  }
+  return { fn, args: Object.freeze([...args]) };
+}
+
+/**
+ * The transparent-proxy admin owner: a plain string, never canonicalized here
+ * — see `types.ts:ResolvedUpgradeOptions.initialOwner` for why canonicalization
+ * stays the deploy operation's own obligation.
+ */
+function readInitialOwner(supplied: SuppliedOptions): string | undefined {
+  const value = read(supplied, 'initialOwner');
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new OptionValueError('initialOwner', value, 'a TRON address, as a string');
+  }
+  return value;
+}
+
 /** One pair of options that express a single allowance and can disagree. */
 interface Contradiction {
   readonly options: readonly string[];
@@ -357,6 +410,7 @@ const checkSteps: readonly CheckStep[] = Object.freeze([
       readBooleanOption(supplied, 'unsafeAllowRenames');
       readBooleanOption(supplied, 'unsafeSkipStorageCheck');
       readBooleanOption(supplied, 'useDeployedImplementation');
+      readBooleanOption(supplied, 'unsafeSkipProxyAdminCheck');
     },
   },
   {
@@ -385,6 +439,8 @@ const checkSteps: readonly CheckStep[] = Object.freeze([
     check: supplied => {
       readConstructorArgs(supplied);
       readInitializerOption(supplied);
+      readCallOption(supplied);
+      readInitialOwner(supplied);
     },
   },
 ]);
@@ -453,6 +509,17 @@ function buildResolved(supplied: SuppliedOptions): ResolvedUpgradeOptions {
     redeployImplementation: resolveRedeployMode(supplied),
     timeout: timeout ?? pluginOptionDefaults.timeout,
     pollingInterval: pollingInterval ?? pluginOptionDefaults.pollingInterval,
+    // The six dead options (B1), minus `constructorArgs` above: each read once
+    // here from the same reader the check steps already ran, and handed to the
+    // operations toolkit verbatim — `kind` is the exact value that fed
+    // `validationInput.kind` above, one source surfaced twice, never a second
+    // parse that could disagree with the first.
+    kind,
+    initializer: readInitializerOption(supplied),
+    call: readCallOption(supplied),
+    initialOwner: readInitialOwner(supplied),
+    unsafeSkipProxyAdminCheck:
+      readBooleanOption(supplied, 'unsafeSkipProxyAdminCheck') ?? false,
   });
 }
 
