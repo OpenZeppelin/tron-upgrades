@@ -1,3 +1,4 @@
+import { Interface } from 'ethers';
 import { describe, expect, it } from 'vitest';
 
 import { runDeployProxy } from '../src/proxy/deploy-proxy';
@@ -592,8 +593,14 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
       currentImplementation: OTHER_IMPL,
     });
     await runUpgradeProxy(fake.context, PROXY_ADDR, newImpl());
-    // Captures encodeCall's output through the fake's dispatch — proving
-    // `resolved.call` (Task 1-2's B1 fix) reaches the existing site.
-    expect(fake.upgradeCallData).not.toBeUndefined();
+    // The EXACT encoding, computed the same way `upgrade-proxy.ts:encodeCall`
+    // does over the same ABI — not merely "is defined". `plan.carriesData ?
+    // callData : '0x'` is a defined string on every dispatch, so a weaker
+    // assertion (`not.toBeUndefined()`) would pass identically even if
+    // `resolved.call` were dropped and `'0x'` sent instead.
+    expect(fake.upgradeCallData).toBe(
+      new Interface(RESULT_ABI as never).encodeFunctionData('migrate', [7]),
+    );
+    expect(fake.upgradeCallData).not.toBe('0x');
   });
 });
