@@ -245,7 +245,12 @@ function validateInitializer(value: unknown): string | false {
  *
  * `args` is copied one level and frozen, the same discipline as
  * {@link readConstructorArgs} and for the same reason: an argument is
- * arbitrary caller data that must never be deep-walked.
+ * arbitrary caller data that must never be deep-walked. The `{ fn, args }`
+ * object itself is frozen too, on **both** return paths — it is the one
+ * nested value `buildResolved` hands back that is not upstream-owned and not
+ * a bare array, and the outer `Object.freeze` on the resolved result is
+ * shallow, so leaving this one unfrozen would be the one nested value a
+ * caller could still mutate through a `readonly`-typed field.
  */
 function readCallOption(
   supplied: SuppliedOptions,
@@ -267,12 +272,12 @@ function readCallOption(
   }
   const args = (value as { args?: unknown }).args;
   if (args === undefined) {
-    return { fn };
+    return Object.freeze({ fn });
   }
   if (!Array.isArray(args)) {
     throw new OptionValueError('call', value, accepted);
   }
-  return { fn, args: Object.freeze([...args]) };
+  return Object.freeze({ fn, args: Object.freeze([...args]) });
 }
 
 /**

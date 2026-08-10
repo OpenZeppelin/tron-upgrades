@@ -441,15 +441,34 @@ describe('ResolvedUpgradeOptions is total, frozen, and never holds an undefined 
     expect(resolved.validation.kind).toBe('uups');
   });
 
-  it('freezes the result and both arrays, and refuses a mutation attempt', () => {
-    const resolved = resolveUpgradeOptions(
-      { constructorArgs: [1, 2], unsafeAllow: ['constructor'] },
-      UPGRADE_OPTION_KEYS,
-    );
+  it('freezes the result, its arrays and the call object, refusing every mutation attempt', () => {
+    // `call` is `UpgradeProxyOptions`'s own member (via `CallOption`), not
+    // plain `UpgradeOptions`'s — the natural type for a caller who supplies it.
+    const options: UpgradeProxyOptions = {
+      constructorArgs: [1, 2],
+      unsafeAllow: ['constructor'],
+      call: { fn: 'migrate', args: [7] },
+    };
+    const resolved = resolveUpgradeOptions(options, [
+      ...UPGRADE_OPTION_KEYS,
+      'call',
+    ]);
     expect(Object.isFrozen(resolved)).toBe(true);
     expect(Object.isFrozen(resolved.constructorArgs)).toBe(true);
     expect(Object.isFrozen(resolved.validation)).toBe(true);
     expect(Object.isFrozen(resolved.validation.unsafeAllow)).toBe(true);
+
+    /*
+     * `call` is the one nested value the resolved object hands back that is
+     * neither upstream-owned (like `validation`) nor a bare array (like
+     * `constructorArgs`) — a plain object, which the outer `Object.freeze` on
+     * the resolved result does not reach because that freeze is shallow. It
+     * gets the same outbound freeze as everything else: the `{ fn, args }`
+     * object itself, and its own `args` array.
+     */
+    const call = resolved.call as { readonly fn: string; readonly args?: readonly unknown[] };
+    expect(Object.isFrozen(call)).toBe(true);
+    expect(Object.isFrozen(call.args)).toBe(true);
 
     /*
      * Probed through `Reflect` so the attempt needs no cast: `Reflect.set`
@@ -459,17 +478,23 @@ describe('ResolvedUpgradeOptions is total, frozen, and never holds an undefined 
      * `resolved.validation.unsafeAllow` throws".
      */
     expect(Reflect.set(resolved, 'timeout', 1)).toBe(false);
+    expect(Reflect.set(call, 'fn', 'drainFunds')).toBe(false);
     expect(() =>
       Reflect.apply(Array.prototype.push, resolved.constructorArgs, [3]),
     ).toThrow(TypeError);
     expect(() =>
       Reflect.apply(Array.prototype.push, resolved.validation.unsafeAllow, ['constructor']),
     ).toThrow(TypeError);
+    expect(() =>
+      Reflect.apply(Array.prototype.push, call.args as unknown[], [9]),
+    ).toThrow(TypeError);
     // A copy is of course writable — the freeze is on the plugin's array, not on
     // the caller's ability to work with the values.
     expect(() => [...resolved.constructorArgs].push(3)).not.toThrow();
     expect(resolved.timeout).toBe(60_000);
     expect(resolved.constructorArgs).toEqual([1, 2]);
+    expect(call.fn).toBe('migrate');
+    expect(call.args).toEqual([7]);
   });
 
   it('makes an explicit undefined a compile error under exactOptionalPropertyTypes', () => {
