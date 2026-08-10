@@ -308,10 +308,13 @@ export interface ValidationInputDependencies {
   readonly exists?: (candidate: string) => boolean;
   /**
    * The build-record reader, which is the seam's own — one directory listing plus
-   * at most one read-and-parse per `*.output.json` entry, and the paired
-   * compiler-*input* file never read. Injected for the same reason as `exists`:
-   * the three-way `absent` / `unreadable` / `files` result has to be drivable
-   * without arranging a corrupt build tree on a real disk.
+   * at most one read-and-parse per `*.output.json` entry, plus an existence
+   * probe and, when the pair is present, one read-and-parse of its paired
+   * compiler-*input* file (see `environment/ambiguity.ts`'s `BuildInfoFile` for
+   * the full contract, including why a missing or corrupt pair is not an error
+   * there). Injected for the same reason as `exists`: the three-way `absent` /
+   * `unreadable` / `files` result has to be drivable without arranging a
+   * corrupt build tree on a real disk.
    */
   readonly readBuildInfo?: BuildInfoReader['read'];
   /**

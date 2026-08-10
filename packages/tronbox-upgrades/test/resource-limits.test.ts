@@ -108,14 +108,15 @@ describe('index I/O is bounded and non-recursive', () => {
     expect(reader.callCount).toBe(1);
   });
 
-  it('never reads the paired compiler-input file', () => {
-    // `<hash>.json` is the compiler *input* — typically the larger of the pair and
-    // useless to the index, since `<hash>.output.json` is raw solc standard-JSON
-    // output already carrying `contracts[sourcePath][contractName]`. The input file
-    // here holds invalid JSON, so a reader that touched it would abort the index
-    // into `indeterminate` naming it; a correct reader never sees it.
+  it('a corrupt paired compiler-input file does not abort the index', () => {
+    // `<hash>.json` is the compiler *input* — typically the larger of the pair.
+    // The reader now reads it (see the three `BuildInfoFile.inputFile`/`input`
+    // states pinned below), but a failure there is not an index-level error:
+    // only `<hash>.output.json` failures produce `indeterminate`. The input file
+    // here holds invalid JSON, so a reader that treated its failure like an
+    // output failure would abort the index into `indeterminate` naming it.
     const dir = makeTempDir('input-pair');
-    fs.writeFileSync(path.join(dir, 'abc123.json'), 'not json — never read');
+    fs.writeFileSync(path.join(dir, 'abc123.json'), 'not json at all');
     fs.writeFileSync(
       path.join(dir, 'abc123.output.json'),
       JSON.stringify({ contracts: { 'contracts/Box.sol': { Box: {} } } }),
@@ -132,6 +133,72 @@ describe('index I/O is bounded and non-recursive', () => {
     expect(index.report.indexedFrom).toEqual([
       path.join(dir, 'abc123.output.json'),
     ]);
+  });
+
+  describe('the paired <hash>.json compiler input, on BuildInfoFile', () => {
+    // Three states, pinned directly on the reader's own result rather than
+    // through the ambiguity index — the index never surfaces `inputFile`/
+    // `input` at all (`ArtifactCandidate` carries only `buildInfoFile`), so
+    // these have to read `fileSystemBuildInfoReader.read(...)` themselves.
+
+    it('parses the pair and sets inputFile when it is present alongside the output', () => {
+      const dir = makeTempDir('input-pair-present');
+      const inputPath = path.join(dir, 'abc.json');
+      const outputPath = path.join(dir, 'abc.output.json');
+      const inputPayload = { language: 'Solidity', sources: {} };
+      fs.writeFileSync(inputPath, JSON.stringify(inputPayload));
+      fs.writeFileSync(
+        outputPath,
+        JSON.stringify({ contracts: { 'contracts/Box.sol': { Box: {} } } }),
+      );
+
+      const result = fileSystemBuildInfoReader.read(absolute(dir));
+      expect(result.status).toBe('files');
+      if (result.status !== 'files') {
+        throw new Error('unreachable');
+      }
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].inputFile).toBe(inputPath);
+      expect(result.files[0].input).toEqual(inputPayload);
+    });
+
+    it('leaves inputFile and input undefined when the pair is absent', () => {
+      const dir = makeTempDir('input-pair-absent');
+      fs.writeFileSync(
+        path.join(dir, 'abc.output.json'),
+        JSON.stringify({ contracts: { 'contracts/Box.sol': { Box: {} } } }),
+      );
+
+      const result = fileSystemBuildInfoReader.read(absolute(dir));
+      expect(result.status).toBe('files');
+      if (result.status !== 'files') {
+        throw new Error('unreachable');
+      }
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].inputFile).toBeUndefined();
+      expect(result.files[0].input).toBeUndefined();
+    });
+
+    it('sets inputFile but leaves input undefined when the pair exists and does not parse', () => {
+      const dir = makeTempDir('input-pair-corrupt');
+      const inputPath = path.join(dir, 'abc.json');
+      fs.writeFileSync(inputPath, 'not json at all');
+      fs.writeFileSync(
+        path.join(dir, 'abc.output.json'),
+        JSON.stringify({ contracts: { 'contracts/Box.sol': { Box: {} } } }),
+      );
+
+      const result = fileSystemBuildInfoReader.read(absolute(dir));
+      expect(result.status).toBe('files');
+      if (result.status !== 'files') {
+        throw new Error('unreachable');
+      }
+      expect(result.files).toHaveLength(1);
+      // Present-but-corrupt is distinguished from absent by `inputFile` alone:
+      // both leave `input` undefined, but only this state names the file.
+      expect(result.files[0].inputFile).toBe(inputPath);
+      expect(result.files[0].input).toBeUndefined();
+    });
   });
 
   it('does not descend into a subdirectory of buildInfoDirectory', () => {

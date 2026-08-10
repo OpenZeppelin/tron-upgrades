@@ -980,6 +980,10 @@ export function buildInfoReader(
     files: records.map(record => ({
       file: absolute(record.file),
       output: record.output,
+      // No ladder fixture built over this reader exercises the paired
+      // compiler-input file.
+      inputFile: undefined,
+      input: undefined,
     })),
   });
 }

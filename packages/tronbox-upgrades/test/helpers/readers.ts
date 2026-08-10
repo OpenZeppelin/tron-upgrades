@@ -216,6 +216,10 @@ export function filesReader(
         ),
         output:
           'output' in spec ? spec.output : contractsOutput(spec.contracts ?? []),
+        // These fixtures drive `read()` directly; none exercises the paired
+        // compiler-input file, so both new fields stay at their "absent" value.
+        inputFile: undefined,
+        input: undefined,
       })),
     }),
     exists: DECLINES_EXISTENCE,
@@ -234,6 +238,10 @@ export function inMemoryReader(
       const files = [...store.entries()].map(([name, output]) => ({
         file: absolute(path.join(buildInfoDirectory, name)),
         output,
+        // No fixture built over this in-memory store exercises the paired
+        // compiler-input file.
+        inputFile: undefined,
+        input: undefined,
       }));
       return files.length === 0
         ? { status: 'absent' }

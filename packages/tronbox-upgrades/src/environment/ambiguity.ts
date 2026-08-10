@@ -13,6 +13,30 @@ export interface BuildInfoFile {
   readonly file: AbsolutePath;
   /** Parsed solc standard-JSON output. Never retained beyond index construction. */
   readonly output: unknown;
+  /**
+   * The paired `<hash>.json` compiler *input* TronBox writes next to
+   * `<hash>.output.json` (derived by stripping the `.output` suffix —
+   * `abc.output.json`'s pair is `abc.json`). `undefined` when the pair does
+   * not exist *or* exists and fails to parse; those two causes collapse to
+   * the same value here on purpose; see {@link input}'s doc comment for how a
+   * caller tells them apart.
+   *
+   * Absence or corruption of the pair is never an error at this layer — only
+   * a `*.output.json` failure produces `status: 'unreadable'`. The ambiguity
+   * index has no use for the pair and does not propagate it; it exists on
+   * this type for the Foundry-model validation pipeline's fresh-compile path,
+   * which turns a missing or corrupt pair into its own refusal reason rather
+   * than this reader throwing on its behalf.
+   */
+  readonly inputFile: AbsolutePath | undefined;
+  /**
+   * The parsed pair, or `undefined`. Reading `input` alone cannot distinguish
+   * "the pair does not exist" from "the pair exists and is not valid JSON" —
+   * both are `undefined` — but {@link inputFile} can: it is `undefined` only
+   * in the first case, so a caller checks it, not `input`, to name the file
+   * in a "could not parse" message.
+   */
+  readonly input: unknown | undefined;
 }
 
 export type BuildInfoReadResult =
@@ -84,13 +108,37 @@ function isObjectRecord(
 }
 
 /**
- * Exactly one directory listing plus at most one read-and-parse per
- * `*.output.json` entry directly within it. The paired `<hash>.json` compiler
- * *input* file is never read — it is typically the larger of the pair and the
- * index does not need it, because `<hash>.output.json` is raw solc
- * standard-JSON output and already retains
- * `contracts[sourcePath][contractName]`. `isFile()` also excludes symlinks, so
- * there is no traversal out of the directory.
+ * Exactly one directory listing. For each `*.output.json` entry directly
+ * within it: one read-and-parse of the output, plus one existence probe and,
+ * when the probe finds the pair, one read-and-parse of its paired
+ * `<hash>.json` compiler *input* — see {@link BuildInfoFile.inputFile}.
+ *
+ * The pair was never read before this addition, and the ambiguity index
+ * built from this function's result still has no use for it:
+ * `<hash>.output.json` is raw solc standard-JSON output and already retains
+ * `contracts[sourcePath][contractName]`, and `ArtifactCandidate` carries only
+ * `buildInfoFile`, never `inputFile`. It is read anyway because this is
+ * already the one place that walks `buildInfoDirectory` and already holds
+ * each `<hash>` stem, and the Foundry-model validation pipeline — which
+ * builds its solc request from the recorded compiler *input* instead of
+ * re-invoking `solc` — needs exactly this pairing. That consumer decides what
+ * a missing or corrupt pair means; this function only surfaces it, and does
+ * not throw or return `status: 'unreadable'` for either case.
+ *
+ * Parsed eagerly, matching the output loop, even though the input file is
+ * typically the *larger* of the pair: a lazy-loading wrapper is not what
+ * {@link BuildInfoFile}'s two new fields ask for, and one eager-parse policy
+ * shared by both loops is worth more than the memory a second, lazier one
+ * would save. Revisit if a real build tree makes this loop's memory footprint
+ * a problem — YAGNI until then.
+ *
+ * `isFile()` still excludes a symlinked `*.output.json` entry from the
+ * directory listing, so there is still no traversal out of the directory via
+ * the *output* side of the pair. The input side is opened at a path this
+ * function derives, not at an entry the listing produced, so that exclusion
+ * does not reach it — but it sits inside the same trust boundary as the
+ * output file next to it: whoever can plant a symlinked `<hash>.json` in
+ * `buildInfoDirectory` can already plant a forged `<hash>.output.json` there.
  */
 function defaultRead(buildInfoDirectory: AbsolutePath): BuildInfoReadResult {
   let entries: fs.Dirent[];
@@ -142,7 +190,31 @@ function defaultRead(buildInfoDirectory: AbsolutePath): BuildInfoReadResult {
       });
     }
 
-    files.push(Object.freeze({ file, output }));
+    // The paired compiler-*input* file, `<hash>.json` for this entry's
+    // `<hash>.output.json`. Absent or unparseable is not this function's
+    // error to raise — see `BuildInfoFile.inputFile`'s doc comment — so
+    // failure here can only narrow `input` to `undefined`, never abort the
+    // loop the way an output failure does above.
+    const inputName = `${entry.name.slice(0, -'.output.json'.length)}.json`;
+    const candidateInputPath = path.join(buildInfoDirectory, inputName);
+    let inputFile: AbsolutePath | undefined;
+    let input: unknown;
+    if (fs.existsSync(candidateInputPath)) {
+      inputFile = assertAbsolutePath(
+        candidateInputPath,
+        `build-info input pair for ${entry.name}`,
+      );
+      try {
+        input = JSON.parse(fs.readFileSync(inputFile, 'utf8')) as unknown;
+      } catch {
+        input = undefined;
+      }
+    } else {
+      inputFile = undefined;
+      input = undefined;
+    }
+
+    files.push(Object.freeze({ file, output, inputFile, input }));
   }
 
   return Object.freeze({ status: 'files', files: Object.freeze(files) });
