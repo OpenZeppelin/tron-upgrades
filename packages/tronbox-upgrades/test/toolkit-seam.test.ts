@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createOperationToolkit } from '../src/proxy/toolkit';
 import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
 import { UPGRADE_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/upgrade-proxy';
+import { LinkVerificationFailedError } from '../src/deploy';
 import { migrateShapedHandles } from './helpers/handles';
 
 /*
@@ -69,5 +70,45 @@ describe('the toolkit reads the resolver output at the right level (B1)', () => 
     // `resolved.validation.unsafeAllowLinkedLibraries`, where upstream's
     // `withValidationDefaults` derives it from the `unsafeAllow` grant.
     expect(context.resolved.unsafeAllowLinkedLibraries).toBe(true);
+  });
+});
+
+/*
+ * `hostDeploy` is the single seam every operation's deploy funnels through
+ * (deploy-proxy, upgrade-proxy, beacon, standalone all call
+ * `toolkit.hostDeploy` and nothing else `.new()`s an abstraction) — so it is
+ * where `assertFullyLinked` belongs, verifying the bytecode about to deploy
+ * carries no unresolved library placeholder even when
+ * `unsafeAllowLinkedLibraries` opted the deploy in at entry.
+ *
+ * The REAL toolkit is built here, through `createOperationToolkit` in
+ * `validate-only` mode — never a fake `hostDeploy` — because a fake toolkit's
+ * `hostDeploy` is exactly the thing under test and would make this
+ * tautological. `validate-only` is the vehicle: `hostDeploy` touches no chain
+ * before `.new()`, so it is fully reachable without a live network.
+ */
+describe('hostDeploy verifies linking before it deploys (review §3 M4)', () => {
+  it('refuses bytecode with an unresolved placeholder even under the linking opt-out, before any deploy attempt', async () => {
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: shape.handles,
+      rawOptions: { unsafeAllow: ['external-library-linking'] },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    // `binary` is the field the host's own `Contract.new()` deploys
+    // (`tx_params.data = self.binary`) — the library-linked form computed
+    // from `bytecode` and the host's `links` map, not `bytecode` itself.
+    const abstraction = {
+      contractName: 'Lib',
+      binary: '0x60__$deadbeefdeadbeefdeadbeefdeadbeefde$__',
+      new: async (): Promise<never> => {
+        throw new Error('must not be reached');
+      },
+    };
+    await expect(
+      context.toolkit.hostDeploy(abstraction as never, []),
+    ).rejects.toThrow(LinkVerificationFailedError);
   });
 });

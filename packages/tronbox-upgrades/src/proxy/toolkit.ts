@@ -39,6 +39,7 @@ import {
 import type { ProxyRecordVerdict, RecordSession } from '../record';
 import type { ValidationInput } from '../validation-input';
 import {
+  assertFullyLinked,
   confirmTransaction,
   resolveEffectiveSender,
   runThroughQueue,
@@ -658,6 +659,18 @@ export async function createOperationToolkit(request: {
             `abstraction has no deployable surface in this context`,
         );
       }
+      // The seam's half of the joint obligation with `refuseUnlessLinkingAllowed`
+      // (the entry gate an `unsafeAllowLinkedLibraries` opt-out passes through):
+      // `binary` is the exact field the host's own `Contract.new()` deploys —
+      // `tx_params.data = self.binary`, the linked form the host computes from
+      // `bytecode` and its own `links` map — never `bytecode` itself, which is
+      // the pre-link form. Checked here, immediately before the call that sends
+      // it on-chain, so no path to a deploy can skip it.
+      const deployableBytecode =
+        (abstraction as { binary?: string }).binary ??
+        (abstraction as { bytecode?: string }).bytecode ??
+        '';
+      assertFullyLinked(deployableBytecode);
       const instance = (await deployable.new(...args)) as {
         address?: unknown;
         transactionHash?: unknown;

@@ -91,9 +91,16 @@ export function refuseUnlessLinkingAllowed(
 /**
  * After the host's linking flow, the bytecode about to deploy must
  * carry no unresolved placeholder. Verified on the bytecode, never inferred
- * from the linker returning — link silence is not consent. This is also the
- * seam's half of the joint obligation that the expert opt-out never approves
- * one artifact and deploys another: what deploys is the *linked* form, proven.
+ * from the linker returning — link silence is not consent.
+ *
+ * This closes the joint obligation with {@link refuseUnlessLinkingAllowed}:
+ * that function is the *entry* gate — the expert opt-out
+ * (`unsafeAllow: ['external-library-linking']`) that lets a linked
+ * implementation past refusal in the first place. This is the *exit* proof —
+ * wired into `OperationToolkit.hostDeploy` (`src/proxy/toolkit.ts`),
+ * immediately before the bytecode is handed to the host's deploy call, so the
+ * opt-out can approve an artifact only if what actually deploys is the fully
+ * linked form of it, never an unresolved one that slipped through.
  */
 export function assertFullyLinked(deployableBytecode: string): void {
   const remaining = linkedLibraryNames(deployableBytecode);
