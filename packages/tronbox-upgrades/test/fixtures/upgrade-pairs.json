@@ -15,9 +15,10 @@
     "",
     "`astOnly` and `slotLevel` are the verdicts measured under TVM solc 0.8.26 and",
     "@openzeppelin/upgrades-core 1.46.0. They are NOT transcription to be trusted:",
-    "test/sf-2-real-compiler.test.ts recompiles the decisive pairs and re-derives the",
-    "verdicts, so a wrong row here fails there. `slotLevel.kinds` is recorded only",
-    "where the measurement captured it in full."
+    "test/fixtures/generate-ladder-corpus.js recompiles every pair against the real",
+    "TVM wasm, and its own header records why the result is reproducible rather than",
+    "a fresh roll each time. `slotLevel.kinds` is recorded only where the",
+    "measurement captured it in full."
   ],
   "compiler": {
     "longVersion": "0.8.26+commit.733b4d28.Emscripten.clang",

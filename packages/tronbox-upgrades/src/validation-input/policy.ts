@@ -10,7 +10,8 @@ import { unreachableCause, type Cause } from './causes';
  * flipping it must be a one-value change plus a message, not a redesign."*
  *
  * Three properties hold it, and all three are properties of the *source* rather
- * than of behaviour, which is why they are pinned by scan and not by comment:
+ * than of behaviour, which is why each is checkable by reading this directory
+ * rather than by trusting a comment elsewhere:
  *
  * - **Exactly one importer** — `pipeline.ts` — and exactly one call site.
  *   A second call site elsewhere makes the flip two edits in two files,
@@ -21,9 +22,10 @@ import { unreachableCause, type Cause } from './causes';
  * - **Not injectable.** A swappable table restores per-call-site
  *   variation through the back door: one operation passes a lenient table "just
  *   for this check" and the single-policy-point guarantee becomes nominal.
- *   `ValidationInputDependencies` has no `policy` member. The flip test
- *   substitutes this module at its boundary in a fixture, which is a test
- *   affordance and not an API.
+ *   `ValidationInputDependencies` has no `policy` member. A test that needs a
+ *   different disposition substitutes this module at its boundary in a
+ *   fixture, which is a test affordance and not an API — the same technique
+ *   `pipeline.ts` documents at its own reference to this module.
  *
  * **What v1 decides: refuse, on all seven.** Under the Foundry model every
  * cause is decided *before* a validation input exists — the record either

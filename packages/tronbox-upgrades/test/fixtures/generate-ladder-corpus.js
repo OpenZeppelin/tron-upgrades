@@ -13,9 +13,10 @@
  * duration and emits nothing while it does, so putting 26 of them in the fast suite
  * would make every run pay for a fixture that never changes.
  *
- * So the compiles happen here, once, and the suite reads the result.
- * `test/sf-2-real-compiler.test.ts` recompiles the decisive pairs live and compares,
- * which is what keeps a stale corpus from silently becoming the thing under test.
+ * So the compiles happen here, once, and the suite reads the result. Keeping the
+ * corpus honest is a matter of re-running this script whenever the pairs or the
+ * compiler pin change — its own determinism (below) is what makes a stale-versus-
+ * fresh diff meaningful rather than noise.
  *
  *   node test/fixtures/generate-ladder-corpus.js
  *

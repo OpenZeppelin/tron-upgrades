@@ -50,9 +50,10 @@ import { testDir } from './locate';
  * So the pairs are in `test/fixtures/upgrade-pairs.json` (one home, readable by both
  * this module and the plain-JS generator that compiles them) and their solc output is
  * in `test/fixtures/ladder-corpus.json`, generated once by
- * `test/fixtures/generate-ladder-corpus.js`. `test/sf-2-real-compiler.test.ts`
- * recompiles the decisive pairs and compares, so a stale corpus cannot quietly
- * become the thing under test.
+ * `test/fixtures/generate-ladder-corpus.js` and checked in. Keeping the corpus honest
+ * is a matter of re-running that script whenever the pairs or the compiler pin change
+ * — its own header explains why the result is deterministic rather than a fresh roll
+ * each time.
  */
 
 const fixturesDir = path.join(testDir, 'fixtures');
@@ -126,8 +127,9 @@ export interface UpgradePairsFixture {
  * One cast from `unknown`, at the boundary where a JSON document this suite wrote
  * becomes a typed value — the idiom `pipeline.ts` uses on the host's build record,
  * for the same reason: the alternative is `as unknown as`, which asserts twice.
- * Everything the cast claims is either checked immediately below or asserted by
- * `sf-2-ladder-fixtures.test.ts`, which is where the shape is the subject.
+ * The cast's only defense is the top-level key check immediately below; nothing
+ * here verifies the shape of `pairs`, `measuredArithmetic` or `standalone` beyond
+ * what the TypeScript type says they are.
  */
 function readFixture<T>(file: string, expectKeys: readonly string[]): T {
   const parsed: unknown = JSON.parse(
