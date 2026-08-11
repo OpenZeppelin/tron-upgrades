@@ -518,7 +518,7 @@ describe('linking refuses by default and never trusts silence', () => {
 
 describe('eight refusals with distinct codes and messages, one internal error outside the family', () => {
   const specimens: readonly DeploymentRefusedError[] = [
-    new DeployerAbsentError('tronbox test'),
+    new DeployerAbsentError('scheduling'),
     new TransactionRevertedError({
       kind: 'reverted',
       transactionHash: HASH,
@@ -538,6 +538,12 @@ describe('eight refusals with distinct codes and messages, one internal error ou
     new StaleTransactionIdentityError(HASH),
     new CheatcodeSlotCollisionError(),
   ];
+
+  it('names the missing handle without guessing the invocation context', () => {
+    const error = new DeployerAbsentError('scheduling');
+    expect(error.message).toContain('scheduling handle');
+    expect(error.message).not.toContain('tronbox test');
+  });
 
   it('every refusal is an Error in the family, with a distinct code and a distinct message', () => {
     for (const specimen of specimens) {

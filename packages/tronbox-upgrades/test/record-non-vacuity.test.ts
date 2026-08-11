@@ -69,6 +69,9 @@ import {
   type FingerprintUnreadableCause,
 } from '../src/record/errors';
 import {
+  RecordFingerprintUnreadableError as RootRecordFingerprintUnreadableError,
+} from '../src';
+import {
   FINGERPRINT_SCHEMA,
   type FingerprintFile,
   type FingerprintRead,
@@ -1055,6 +1058,9 @@ describe('the session gate refuses a corrupt fingerprint before any write, namin
         (cause: unknown) => cause,
       );
       expect(failure).toBeInstanceOf(RecordFingerprintUnreadableError);
+      expect((failure as Error).constructor).toBe(
+        RootRecordFingerprintUnreadableError,
+      );
       const refusal = failure as RecordFingerprintUnreadableError;
       expect(refusal.because).toBe('not-json');
       expect(refusal.file).toBe(SIDECAR_FILE);

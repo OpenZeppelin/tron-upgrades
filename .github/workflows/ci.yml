@@ -102,7 +102,7 @@ jobs:
             fi
             sleep 2
           done
-          echo "::error::TRE never answered on :9090 with funded accounts"
+          echo "::error::TRE never answered on :9090, or its funded-key log format changed and key extraction found nothing"
           docker logs tre
           exit 1
 

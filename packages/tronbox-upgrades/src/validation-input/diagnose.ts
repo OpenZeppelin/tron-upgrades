@@ -180,9 +180,15 @@ export function diagnose(cause: Cause): Diagnosis {
           `compiled artifact that is about to be deployed, so validating from ` +
           `them would check the wrong program.`,
         `Run \`tronbox compile --all\` and retry: the \`--all\` flag forces ` +
-          `recompilation of unchanged sources, so the remedy always works — ` +
-          `the regenerated build record and artifact describe the same ` +
-          `compile.`,
+          `recompilation of unchanged sources, so stale build records are ` +
+          `regenerated from the same compile as the artifact.` +
+          (cause.rejected.some(
+            rejection => rejection.reason === 'nothing-to-compare',
+          )
+            ? ` If the target is an abstract contract or interface, select a ` +
+              `concrete deployable contract instead: recompilation cannot ` +
+              `create deployed bytecode for it.`
+            : ''),
       );
 
     case 'library-name-unsupported':

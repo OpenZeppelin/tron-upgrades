@@ -657,7 +657,7 @@ export async function createOperationToolkit(request: {
     requireDeployer() {
       const scheduling = env.scheduling;
       if (scheduling === undefined) {
-        throw new DeployerAbsentError('tronbox test');
+        throw new DeployerAbsentError('scheduling');
       }
       return scheduling.deployer as QueueHost;
     },
@@ -752,75 +752,83 @@ export async function createOperationToolkit(request: {
       return deployment.address;
     },
 
-    async hostDeploy(abstraction, args) {
-      const deployable = abstraction as {
-        new?: (...deployArgs: unknown[]) => Promise<unknown>;
-        address?: unknown;
-        transactionHash?: unknown;
-      };
-      if (typeof deployable.new !== 'function') {
-        throw new Error(
-          `the ${String((abstraction as { contractName?: unknown }).contractName)} ` +
-            `abstraction has no deployable surface in this context`,
-        );
-      }
-      // The seam's half of the joint obligation with `refuseUnlessLinkingAllowed`
-      // (the entry gate an `unsafeAllowLinkedLibraries` opt-out passes through):
-      // `binary` is the exact field the host's own `Contract.new()` deploys —
-      // `tx_params.data = self.binary`, the linked form the host computes from
-      // `bytecode` and its own `links` map — never `bytecode` itself, which is
-      // the pre-link form. Checked here, immediately before the call that sends
-      // it on-chain, so no path to a deploy can skip it.
-      const deployableBytecode =
-        (abstraction as { binary?: string }).binary ??
-        (abstraction as { bytecode?: string }).bytecode ??
-        '';
-      assertFullyLinked(deployableBytecode);
-      // The single choke point for the cheatcode-collision guard (review
-      // M1): every operation's deploy funnels through this call — `deploy-
-      // proxy.ts` also runs it pre-queue as a fail-fast for its own
-      // implementation deploy, but `upgradeProxy`, `deployBeacon`,
-      // `upgradeBeacon`, `deployImplementation` and `prepareUpgrade` had no
-      // guard of their own before this one, since their constructor args
-      // reach the host only from inside a queued step. The guard refuses
-      // BOTH a trailing plain object and a trailing `null` — a trailing
-      // `null` is not a safe pass-through either, verified per installed
-      // TronBox minor in `assertNoCheatcodeCollision`'s doc comment. Args
-      // this seam builds itself never reach here as a trailing `null`:
-      // `deployBeacon`'s owner is the one plugin-built LAST argument that
-      // could be null, and it is refused pre-flight, before the queue, by
-      // `BeaconInitialOwnerRequiredError` — every other plugin-built last
-      // argument is an encoded call/address string. That is a claim about
-      // the last position only, which is all this guard can see: the
-      // transparent proxy's `initialOwner` is a second plugin-built
-      // nullable, but it rides in the MIDDLE of the constructor args, so
-      // an unconfigured sender with no `initialOwner` sails past this
-      // guard and fails later, client-side, in the host's ABI encoder.
-      assertNoCheatcodeCollision(args);
-      const instance = (await deployable.new(...args)) as {
-        address?: unknown;
-        transactionHash?: unknown;
-      };
-      const address = instance?.address;
-      const transactionHash = instance?.transactionHash;
-      if (typeof address !== 'string' || typeof transactionHash !== 'string') {
-        throw new Error(
-          'the host deploy resolved without an address and transaction hash',
-        );
-      }
-      /*
-       * The write-back the host's own deploy action performs, mirrored here
-       * because this seam deploys through `.new` directly: assigning the
-       * class's `address` is what CREATES the artifact's per-network entry
-       * (the setter writes `_json.networks[network_id]`), which is both the
-       * replay memory `decideDeployReplay` reads and what the host persists
-       * back into the artifact after the migration. Reading the class getter
-       * before this assignment throws — measured on the first live run.
-       */
-      deployable.address = address;
-      deployable.transactionHash = transactionHash;
-      return { address, transactionHash };
-    },
+    hostDeploy:
+      mode === 'validate-only'
+        ? notInThisMode('hostDeploy')
+        : async (abstraction, args) => {
+            const deployable = abstraction as {
+              new?: (...deployArgs: unknown[]) => Promise<unknown>;
+              address?: unknown;
+              transactionHash?: unknown;
+            };
+            if (typeof deployable.new !== 'function') {
+              throw new Error(
+                `the ${String((abstraction as { contractName?: unknown }).contractName)} ` +
+                  `abstraction has no deployable surface in this context`,
+              );
+            }
+            // The seam's half of the joint obligation with `refuseUnlessLinkingAllowed`
+            // (the entry gate an `unsafeAllowLinkedLibraries` opt-out passes through):
+            // `binary` is the exact field the host's own `Contract.new()` deploys —
+            // `tx_params.data = self.binary`, the linked form the host computes from
+            // `bytecode` and its own `links` map — never `bytecode` itself, which is
+            // the pre-link form. Checked here, immediately before the call that sends
+            // it on-chain, so no path to a deploy can skip it.
+            const deployableBytecode =
+              (abstraction as { binary?: string }).binary ??
+              (abstraction as { bytecode?: string }).bytecode ??
+              // Deliberate passthrough: the fully-linked guard detects unresolved
+              // placeholders; an abstraction with no bytecode exposes none to reject.
+              '';
+            assertFullyLinked(deployableBytecode);
+            // The single choke point for the cheatcode-collision guard (review
+            // M1): every operation's deploy funnels through this call — `deploy-
+            // proxy.ts` also runs it pre-queue as a fail-fast for its own
+            // implementation deploy, but `upgradeProxy`, `deployBeacon`,
+            // `upgradeBeacon`, `deployImplementation` and `prepareUpgrade` had no
+            // guard of their own before this one, since their constructor args
+            // reach the host only from inside a queued step. The guard refuses
+            // BOTH a trailing plain object and a trailing `null` — a trailing
+            // `null` is not a safe pass-through either, verified per installed
+            // TronBox minor in `assertNoCheatcodeCollision`'s doc comment. Args
+            // this seam builds itself never reach here as a trailing `null`:
+            // `deployBeacon`'s owner is the one plugin-built LAST argument that
+            // could be null, and it is refused pre-flight, before the queue, by
+            // `BeaconInitialOwnerRequiredError` — every other plugin-built last
+            // argument is an encoded call/address string. That is a claim about
+            // the last position only, which is all this guard can see: the
+            // transparent proxy's `initialOwner` is a second plugin-built
+            // nullable, but it rides in the MIDDLE of the constructor args, so
+            // an unconfigured sender with no `initialOwner` sails past this
+            // guard and fails later, client-side, in the host's ABI encoder.
+            assertNoCheatcodeCollision(args);
+            const instance = (await deployable.new(...args)) as {
+              address?: unknown;
+              transactionHash?: unknown;
+            };
+            const address = instance?.address;
+            const transactionHash = instance?.transactionHash;
+            if (
+              typeof address !== 'string' ||
+              typeof transactionHash !== 'string'
+            ) {
+              throw new Error(
+                'the host deploy resolved without an address and transaction hash',
+              );
+            }
+            /*
+             * The write-back the host's own deploy action performs, mirrored here
+             * because this seam deploys through `.new` directly: assigning the
+             * class's `address` is what CREATES the artifact's per-network entry
+             * (the setter writes `_json.networks[network_id]`), which is both the
+             * replay memory `decideDeployReplay` reads and what the host persists
+             * back into the artifact after the migration. Reading the class getter
+             * before this assignment throws — measured on the first live run.
+             */
+            deployable.address = address;
+            deployable.transactionHash = transactionHash;
+            return { address, transactionHash };
+          },
 
     confirm: transactionHash => confirmTransaction(transactionHash, wait),
 
@@ -906,47 +914,53 @@ export async function createOperationToolkit(request: {
       }
     },
 
-    async callThroughFacade(request) {
-      const facade = requireProxyArtifact(env.artifacts, request.facadeName);
-      const attachable = facade as {
-        at?: (address: string) => Promise<unknown> | unknown;
-      };
-      if (typeof attachable.at !== 'function') {
-        throw new Error(
-          `the ${request.facadeName} abstraction has no attachable surface in this context`,
-        );
-      }
-      const instance = (await attachable.at(request.at)) as Record<
-        string,
-        (...callArgs: unknown[]) => Promise<unknown>
-      >;
-      const method = instance[request.method];
-      if (typeof method !== 'function') {
-        throw new Error(
-          `${request.facadeName} at ${request.at} exposes no ${request.method} method`,
-        );
-      }
-      const result: unknown = await method(...request.args);
-      // Measured: the host's send path resolves the transaction id as a
-      // string (`transaction.transaction.txID`). The object arms cover the
-      // polling configurations that resolve a receipt-shaped value instead.
-      const transactionHash =
-        typeof result === 'string'
-          ? result
-          : typeof (result as { txID?: unknown })?.txID === 'string'
-            ? ((result as { txID: string }).txID)
-            : typeof (result as { transactionHash?: unknown })?.transactionHash ===
-                'string'
-              ? ((result as { transactionHash: string }).transactionHash)
-              : null;
-      if (transactionHash === null) {
-        throw new Error(
-          `the ${request.method} call returned no recognisable transaction id; ` +
-            `refusing to report a state change it cannot confirm`,
-        );
-      }
-      return { address: request.at, transactionHash };
-    },
+    callThroughFacade:
+      mode === 'validate-only'
+        ? notInThisMode('callThroughFacade')
+        : async request => {
+            const facade = requireProxyArtifact(
+              env.artifacts,
+              request.facadeName,
+            );
+            const attachable = facade as {
+              at?: (address: string) => Promise<unknown> | unknown;
+            };
+            if (typeof attachable.at !== 'function') {
+              throw new Error(
+                `the ${request.facadeName} abstraction has no attachable surface in this context`,
+              );
+            }
+            const instance = (await attachable.at(request.at)) as Record<
+              string,
+              (...callArgs: unknown[]) => Promise<unknown>
+            >;
+            const method = instance[request.method];
+            if (typeof method !== 'function') {
+              throw new Error(
+                `${request.facadeName} at ${request.at} exposes no ${request.method} method`,
+              );
+            }
+            const result: unknown = await method(...request.args);
+            // Measured: the host's send path resolves the transaction id as a
+            // string (`transaction.transaction.txID`). The object arms cover the
+            // polling configurations that resolve a receipt-shaped value instead.
+            const transactionHash =
+              typeof result === 'string'
+                ? result
+                : typeof (result as { txID?: unknown })?.txID === 'string'
+                  ? ((result as { txID: string }).txID)
+                  : typeof (result as { transactionHash?: unknown })
+                        ?.transactionHash === 'string'
+                    ? ((result as { transactionHash: string }).transactionHash)
+                    : null;
+            if (transactionHash === null) {
+              throw new Error(
+                `the ${request.method} call returned no recognisable transaction id; ` +
+                  `refusing to report a state change it cannot confirm`,
+              );
+            }
+            return { address: request.at, transactionHash };
+          },
 
     proxySlots: address => requireChain().read.readProxySlots(address),
 

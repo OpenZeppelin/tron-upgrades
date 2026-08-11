@@ -26,10 +26,10 @@ export abstract class DeploymentRefusedError extends Error {
  */
 export class DeployerAbsentError extends DeploymentRefusedError {
   readonly code = 'deployer-absent';
-  constructor(readonly context: string) {
+  constructor(readonly missingHandle: 'deployer' | 'scheduling') {
     super(
-      `This operation sends a transaction, and the ${context} context provides ` +
-        `no deployer to send it through. Run it from a migration ` +
+      `This operation sends a transaction, but the ${missingHandle} handle is ` +
+        `missing, so there is no deployer to send it through. Run it from a migration ` +
         `(\`tronbox migrate\`), where TronBox constructs the deployer. ` +
         `Validation does not require one and has already run if requested.`,
     );

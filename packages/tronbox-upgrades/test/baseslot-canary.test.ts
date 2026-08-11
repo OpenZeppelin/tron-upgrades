@@ -21,9 +21,9 @@ import {
  * `unfoldStorageLayout`, the function every without-storage-layouts consumer
  * reads layouts through, rebuilds the layout WITHOUT `baseSlot` in both of its
  * branches. `undefined === undefined` passes, so a base-slot change is
- * silently accepted on exactly the path this plugin validates on. Filed
- * upstream as https://github.com/OpenZeppelin/openzeppelin-upgrades/issues/1296
- * — the fix lands there, and this file is what notices when it does.
+ * silently accepted on exactly the path this plugin validates on. The upstream
+ * fix must preserve `baseSlot` through `unfoldStorageLayout`; this file notices
+ * when that mechanism changes.
  *
  * Why this plugin is not exposed TODAY, and the two facts that keep it so:
  *
@@ -79,10 +79,9 @@ describe('the upstream defect, pinned at the installed engine', () => {
     const end = query.indexOf('function', start + 'function '.length);
     const body = query.slice(start, end === -1 ? undefined : end);
     // The rebuilt layout omits baseSlot in both branches. The day this fails,
-    // the upstream fix has landed (tracked as
-    // https://github.com/OpenZeppelin/openzeppelin-upgrades/issues/1296):
-    // retire the docs limitation note and re-run the persisted repro to
-    // confirm, rather than deleting this test.
+    // `unfoldStorageLayout` has begun preserving the field: retire the docs
+    // limitation note and re-run the persisted repro to confirm, rather than
+    // deleting this test.
     expect(body).not.toContain('baseSlot');
   });
 });

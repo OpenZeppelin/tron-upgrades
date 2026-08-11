@@ -18,6 +18,7 @@ import {
 } from '../deploy';
 import { NothingToAdoptError } from '../adopt/errors';
 import { transactionIdentity, operationNotes } from '../results/types';
+import { sealUnavailable } from '../results/limitations';
 import type { UpgradedProxy } from '../results/types';
 import { planUpgradeDispatch } from './dispatch';
 import {
@@ -30,7 +31,6 @@ import {
   createOperationToolkit,
   handlesFrom,
   HANDLE_OPTION_KEYS,
-  encodeInitializer,
   type OperationContext,
   type RawOperationOptions,
 } from './toolkit';
@@ -211,7 +211,9 @@ export async function runUpgradeProxy(
   }
 
   return Object.freeze({
-    contract: await toolkit.contractAt(contract, proxyAddress),
+    contract: sealUnavailable(
+      await toolkit.contractAt(contract, proxyAddress),
+    ),
     address: proxyAddress,
     transaction: transactionIdentity(
       outcome.writeBack.transactionHash,

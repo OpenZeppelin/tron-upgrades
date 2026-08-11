@@ -129,7 +129,7 @@ describe('the option surface composes upstream types and never re-declares a mem
     // kind). `{ kind: 'beacon' }` does not compile against this type, which is
     // the type-level half of that refusal; `@ts-expect-error` pins it below.
     const beaconProxyDeployOpts: DeployOpts = beaconProxyShaped;
-    // @ts-expect-error `kind` is not a member: the runtime refuses the option entirely (`OPTION_UNKNOWN`), never narrows a wrong value.
+    // @ts-expect-error `kind` is not a member: the runtime refuses the option entirely (`UnknownOptionError`), never narrows a wrong value.
     const beaconProxyRefusesKind: DeployBeaconProxyOptions = { kind: 'beacon' };
 
     const forceImportShaped: ForceImportOptions = { kind: 'uups' };
@@ -183,9 +183,9 @@ describe('the option surface composes upstream types and never re-declares a mem
     // `StandaloneOptions`/`UpgradeOptions` themselves still carry `kind` —
     // `DeployProxyOptions` and `DeployImplementationOptions` need it — so
     // these two aliases build on `Omit<_, 'kind'>` instead.
-    // @ts-expect-error `kind` is not a member: deployBeacon refuses the option entirely (`OPTION_UNKNOWN`), never narrows a wrong value.
+    // @ts-expect-error `kind` is not a member: deployBeacon refuses the option entirely (`UnknownOptionError`), never narrows a wrong value.
     const deployBeaconRefusesKind: DeployBeaconOptions = { kind: 'beacon' };
-    // @ts-expect-error `kind` is not a member: upgradeBeacon refuses the option entirely (`OPTION_UNKNOWN`), never narrows a wrong value.
+    // @ts-expect-error `kind` is not a member: upgradeBeacon refuses the option entirely (`UnknownOptionError`), never narrows a wrong value.
     const upgradeBeaconRefusesKind: UpgradeBeaconOptions = { kind: 'beacon' };
     expect(deployBeaconRefusesKind).toBeDefined();
     expect(upgradeBeaconRefusesKind).toBeDefined();
@@ -595,6 +595,21 @@ describe('resolved options carry the operation-level fields (B1)', () => {
   it('refuses a kind outside the closed set, never coerces', () => {
     expect(() =>
       resolveUpgradeOptions({ kind: 'diamond' } as never, accepted),
+    ).toThrow(OptionValueError);
+  });
+
+  it.each([
+    ['call', { call: 42 }],
+    ['initialOwner', { initialOwner: 42 }],
+  ] as const)('refuses an invalid %s through its dedicated reader', (_name, options) => {
+    expect(() =>
+      resolveUpgradeOptions(options as never, accepted),
+    ).toThrow(OptionValueError);
+  });
+
+  it('refuses an empty initialOwner consistently with an empty initializer', () => {
+    expect(() =>
+      resolveUpgradeOptions({ initialOwner: '' } as never, accepted),
     ).toThrow(OptionValueError);
   });
 

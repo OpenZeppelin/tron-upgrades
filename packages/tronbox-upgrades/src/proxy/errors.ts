@@ -232,7 +232,8 @@ export class ImplementationNotPreviouslyDeployedError extends ProxyOperationRefu
   readonly code = 'implementation-not-previously-deployed';
   constructor(readonly contractName: string) {
     super(
-      `redeployImplementation: 'never' was set, but the implementation ` +
+      `redeployImplementation: 'never' (or useDeployedImplementation: true) ` +
+        `was set, but the implementation ` +
         `contract ${contractName} was not previously deployed on this ` +
         `network — there is no recorded deployment of this exact contract ` +
         `version to reuse, so the fresh deploy this policy exists to forbid ` +

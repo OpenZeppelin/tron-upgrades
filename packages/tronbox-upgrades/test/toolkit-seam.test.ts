@@ -49,6 +49,37 @@ import { MAINNET_CHAIN_ID, mainnetFirstBlockHash, mainnetGenesisHash } from './h
  * must not leak that write into the real `process.env`.
  */
 describe('the toolkit reads the resolver output at the right level (B1)', () => {
+  it.each([
+    [
+      'hostDeploy',
+      (context: Awaited<ReturnType<typeof createOperationToolkit>>) =>
+        context.toolkit.hostDeploy({ contractName: 'Box' } as never, []),
+    ],
+    [
+      'callThroughFacade',
+      (context: Awaited<ReturnType<typeof createOperationToolkit>>) =>
+        context.toolkit.callThroughFacade({
+          facadeName: 'ProxyAdmin',
+          at: 'T...',
+          method: 'upgradeAndCall',
+          args: [],
+        }),
+    ],
+  ] as const)('%s is an explicit validate-only stub', async (member, invoke) => {
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: shape.handles,
+      rawOptions: {},
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+
+    await expect(Promise.resolve().then(() => invoke(context))).rejects.toThrow(
+      `internal error: ${member} was reached from a validate-only operation`,
+    );
+  });
+
   it('kind:uups survives from rawOptions to context.resolved and engineOptions', async () => {
     const shape = migrateShapedHandles();
     const context = await createOperationToolkit({
@@ -259,21 +290,18 @@ describe('the toolkit reads the resolver output at the right level (B1)', () => 
  * carries no unresolved library placeholder even when
  * `unsafeAllowLinkedLibraries` opted the deploy in at entry.
  *
- * The REAL toolkit is built here, through `createOperationToolkit` in
- * `validate-only` mode — never a fake `hostDeploy` — because a fake toolkit's
- * `hostDeploy` is exactly the thing under test and would make this
- * tautological. `validate-only` is the vehicle: `hostDeploy` touches no chain
- * before `.new()`, so it is fully reachable without a live network.
+ * The REAL toolkit is built here through `createOperationToolkit`, never a
+ * fake `hostDeploy`, because a fake toolkit's `hostDeploy` is exactly the
+ * thing under test and would make this tautological.
  */
 describe('hostDeploy verifies linking before it deploys (review §3 M4)', () => {
   it('refuses bytecode with an unresolved placeholder even under the linking opt-out, before any deploy attempt', async () => {
     const shape = migrateShapedHandles();
     const context = await createOperationToolkit({
-      handles: shape.handles,
+      handles: { ...shape.handles, ...realSeamChainHandle() },
       rawOptions: { unsafeAllow: ['external-library-linking'] },
       acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
-      processEnv: {},
-      mode: 'validate-only',
+      processEnv: process.env,
     });
     // `binary` is the field the host's own `Contract.new()` deploys
     // (`tx_params.data = self.binary`) — the library-linked form computed
@@ -304,11 +332,10 @@ describe('hostDeploy refuses a trailing plain-object argument before it deploys 
   it('refuses before `.new()` is ever called, even with linking already satisfied', async () => {
     const shape = migrateShapedHandles();
     const context = await createOperationToolkit({
-      handles: shape.handles,
+      handles: { ...shape.handles, ...realSeamChainHandle() },
       rawOptions: {},
       acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
-      processEnv: {},
-      mode: 'validate-only',
+      processEnv: process.env,
     });
     const abstraction = {
       contractName: 'Box',
@@ -531,7 +558,7 @@ describe('the same pair is genuinely inert for deployBeacon\'s own validation pa
  * closely enough for `deriveValidationInput`'s unmocked `fs.existsSync` /
  * `fs.readFileSync` / `fileSystemBuildInfoReader.read` to succeed.
  */
-describe('the degraded-output channel is truthful: every capturable engine call and both indeterminate-resolution accepts now disclose (r3739084431)', () => {
+describe('the degraded-output channel is truthful: every capturable engine call and the single indeterminate-resolution emit site disclose', () => {
   it('validateImplementation records artifact-name-indeterminate when env.artifacts.resolve reports non-unique', async () => {
     const project = realToolkitProject({
       standaloneId: 'stateless',
@@ -784,6 +811,8 @@ interface SeededManifestData {
 function seedManifestImplementation(versionKey: string, address: string): void {
   const existing: SeededManifestData = fs.existsSync(REAL_SEAM_MANIFEST_FILE)
     ? (JSON.parse(fs.readFileSync(REAL_SEAM_MANIFEST_FILE, 'utf8')) as SeededManifestData)
+    // Mirrors the installed engine's `currentManifestVersion`; a drift makes
+    // the seeded record fail loudly when the engine reads it.
     : { manifestVersion: '3.2', impls: {}, proxies: [] };
   existing.impls[versionKey] = { address };
   fs.mkdirSync(path.dirname(REAL_SEAM_MANIFEST_FILE), { recursive: true });
@@ -1014,8 +1043,8 @@ describe("fetchOrDeployImplementation's removed-retry branch — the REAL produc
 /*
  * The two arms `fetchOrDeployImplementation`'s catch refuses to retry —
  * "refuse" here meaning the ORIGINAL error propagates unchanged, through the
- * same real seam. The second arm doubles as the field-shape canary (audit's
- * own framing): it asserts directly against the installed engine's
+ * same real seam. The second arm doubles as the field-shape canary: it asserts
+ * directly against the installed engine's
  * `InvalidDeployment` that `removed` really does read `true` after the
  * engine's own removal path, which is the exact predicate the wrapper's catch
  * reads — so an upstream rename of that field fails this suite loudly rather
@@ -1169,8 +1198,8 @@ describe('forceImport refuses either redeploy-policy spelling before adoption ru
 });
 
 /*
- * Fix round 1, item 4 (folded in from review): the pins above and earlier in
- * this file exercise the beacon operations' accepted-options constants
+ * The pins above and earlier in this file exercise the beacon operations'
+ * accepted-options constants
  * DIRECTLY (`createOperationToolkit({ acceptedOptions: DEPLOY_BEACON_ACCEPTED_OPTIONS,
  * ... })`), which proves the LIST refuses the right keys but not that each
  * exported operation is actually WIRED to its own constant — a cross-wiring
@@ -1178,14 +1207,14 @@ describe('forceImport refuses either redeploy-policy spelling before adoption ru
  * would leave every one of those pins green. This suite closes that gap: one
  * call per operation through its PUBLIC entry point (`../src/beacon`, not
  * `runDeployBeacon`/`runUpgradeBeacon`/`runDeployBeaconProxy`), each with one
- * option that is STILL genuinely refused after the fix-round-1 revert —
+ * option that is genuinely refused —
  * `initializer` for `deployBeacon`, `initialOwner` for `upgradeBeacon`,
  * `redeployImplementation` for `deployBeaconProxy` — so a cross-wiring that
  * pointed any of the three at a DIFFERENT beacon operation's list (all three
  * of which happen to still refuse a nearby option) would need to coincide on
- * every one of the three choices to stay green; picking three keys that are
- * refused by exactly one op each is what makes that coincidence implausible
- * rather than merely unlikely.
+ * every one of the three choices to stay green. The keys maximize cross-wiring
+ * detection: with one refused key per operation, four of the six possible
+ * wrong constant assignments are the achievable ceiling.
  *
  * Driven through the real seam (`realSeamChainHandle()`, same fixture as the
  * `forceImport` suite above) for the identical reason: none of these three

@@ -41,6 +41,7 @@ import { toTronHex } from '../src/record/address';
 import type { ChainAccess, ChainInstanceIdentity } from '../src/chain';
 import { zeroChainAddress } from '../src/chain';
 import type { AbsolutePath, ContractAbstraction } from '../src/environment';
+import { ResultCapabilityUnavailableError } from '../src/results';
 
 /*
  * The proxy operations — the ordering invariants, pinned on a recording fake
@@ -56,7 +57,7 @@ const PROXY_ADDR = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const NEW_IMPL = 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb';
 // A different implementation than `NEW_IMPL`, standing in for "what the proxy
 // currently runs" in the upgrade tests that need the two distinguished.
-const OTHER_IMPL = 'TQ5NMqJjhpQGK7YJbESmqLZKmqSXvfRWMR';
+const OTHER_IMPL = 'TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh';
 // A real, distinct base58 address for `initialOwner` — already used in that
 // exact role in `test/surface-request-response-contract.test.ts`.
 const OWNER_BASE58 = 'TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh';
@@ -310,7 +311,7 @@ function buildFake(spec: FakeSpec = {}): Fake {
     contractAt: async (abstraction, address) => {
       log.push('contractAt');
       contractAtCall = { abstraction, address };
-      return { address } as never;
+      return { address, events: {} } as never;
     },
 
     async validateImplementation(name) {
@@ -331,7 +332,7 @@ function buildFake(spec: FakeSpec = {}): Fake {
     requireDeployer() {
       log.push('requireDeployer');
       if (spec.noDeployer) {
-        throw new DeployerAbsentError('tronbox test');
+        throw new DeployerAbsentError('deployer');
       }
       return {} as never;
     },
@@ -511,6 +512,19 @@ function buildFake(spec: FakeSpec = {}): Fake {
 // ---------------------------------------------------------------------------
 
 describe('deployProxy — the order is the contract', () => {
+  it('seals unavailable contract capabilities at the operation return boundary', async () => {
+    const fake = buildFake();
+    const result = await runDeployProxy(
+      fake.context,
+      fakeAbstraction({}),
+      [42],
+    );
+
+    expect(() => result.contract.events).toThrow(
+      ResultCapabilityUnavailableError,
+    );
+  });
+
   it('runs validation first, queues once, and everything chain-touching happens inside the step', async () => {
     const fake = buildFake();
     const result = await runDeployProxy(
@@ -880,6 +894,7 @@ describe('deployProxy — a refused deploy leaves the on-disk record byte-unchan
     const after = recordFixtureBytes(session);
     expect(after.manifest).not.toBeNull();
     expect(after.manifest).not.toBe(before.manifest);
+    expect(after.fingerprint).not.toBeNull();
   });
 });
 
@@ -910,14 +925,17 @@ describe('deployProxy — a reverted or indeterminate confirmation is never reco
 });
 
 describe('deployProxy — an interrupted confirmation, and what a re-run does about it', () => {
+  // Deliberately a two-scene model: the first run establishes the landed-but-
+  // unrecorded state, and the second models the separate process that retries it.
   it('the interrupted run throws mid-confirm after both deploys landed, with nothing recorded', async () => {
     // Distinct from `'indeterminate'` above: the gate never SETTLED on a
     // verdict at all here — `confirm` itself rejects, standing in for the
     // process dying mid-confirm.
-    const interrupted = buildFake({ confirmThrows: new Error('ECONNRESET') });
+    const error = new Error('ECONNRESET');
+    const interrupted = buildFake({ confirmThrows: error });
     await expect(
       runDeployProxy(interrupted.context, fakeAbstraction({}), [42]),
-    ).rejects.toThrow('ECONNRESET');
+    ).rejects.toBe(error);
     expect(interrupted.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
       'hostDeploy:Box',
       'hostDeploy:TransparentUpgradeableProxy',
@@ -1081,6 +1099,8 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
   });
 
   it('already-current still dispatches the upgrade without a call', async () => {
+    // The v5 admin route is always `upgradeAndCall`, so it carries the
+    // possibly-empty data argument even when the caller supplied no call.
     const fake = buildFake({
       priorAddress: NEW_IMPL,
       currentImplementation: toTronHex(canonicalizeAddress(NEW_IMPL)),

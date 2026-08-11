@@ -15,6 +15,7 @@ import {
   TransactionRevertedError,
 } from '../deploy';
 import { transactionIdentity, operationNotes } from '../results/types';
+import { sealUnavailable } from '../results/limitations';
 import type { DeployedBeacon, DeployedProxy, UpgradedProxy } from '../results/types';
 import {
   assertNoOptionsInArgsPosition,
@@ -203,7 +204,9 @@ export async function runDeployBeacon(
   // beacon's own handle (implementation()/upgradeTo/owner ABI), and
   // `implementation` is what the beacon was deployed pointing at.
   return Object.freeze({
-    contract: await toolkit.contractAt(beaconAbstraction, outcome.deployed.address),
+    contract: sealUnavailable(
+      await toolkit.contractAt(beaconAbstraction, outcome.deployed.address),
+    ),
     address: outcome.deployed.address,
     transaction: transactionIdentity(
       outcome.deployed.transactionHash,
@@ -253,7 +256,9 @@ export async function runDeployBeaconProxy(
   });
 
   return Object.freeze({
-    contract: await toolkit.contractAt(contract, writeBack.address),
+    contract: sealUnavailable(
+      await toolkit.contractAt(contract, writeBack.address),
+    ),
     address: writeBack.address,
     transaction: transactionIdentity(writeBack.transactionHash, 'deployBeaconProxy'),
     notes: operationNotes(toolkit.channel.recorded),
@@ -329,7 +334,7 @@ export async function runUpgradeBeacon(
   });
 
   return Object.freeze({
-    contract: await toolkit.contractAt(contract, beacon),
+    contract: sealUnavailable(await toolkit.contractAt(contract, beacon)),
     address: beacon,
     transaction: transactionIdentity(
       outcome.writeBack.transactionHash,

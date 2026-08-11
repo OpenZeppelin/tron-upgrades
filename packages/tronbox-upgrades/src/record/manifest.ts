@@ -174,9 +174,9 @@ export interface StoredAddressMigration {
 /**
  * Brings every stored address to the canonical form, in place in a copy.
  *
- * Needed because minting at the boundary fixes only what *enters* the record. A
- * manifest written before this plugin — or by the sibling plugin, which lower-cases —
- * holds addresses in another spelling, and the engine compares with exact string
+ * Needed because minting at the boundary fixes only what *enters* the record.
+ * Records written before either plugin canonicalized hold addresses in another
+ * spelling, and the engine compares with exact string
  * equality, so a stored lower-case address never matches a canonicalized query.
  *
  * **Idempotent**: a second pass over an already-canonical manifest reports zero

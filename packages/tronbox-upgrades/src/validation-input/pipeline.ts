@@ -249,8 +249,9 @@ export interface ValidationInputDependencies {
    * at most one read-and-parse per `*.output.json` entry, plus an existence
    * probe and, when the pair is present, one read-and-parse of its paired
    * compiler-*input* file (see `environment/ambiguity.ts`'s `BuildInfoFile` for
-   * the full contract, including why a missing or corrupt pair is not an error
-   * there — it becomes a per-candidate rejection here). Injected for the same
+   * the full contract, including why a pair that is missing, corrupt, or could
+   * not be read is not an error there — it becomes a per-candidate rejection
+   * here). Injected for the same
    * reason as `exists`: the three-way `absent` / `unreadable` / `files` result
    * has to be drivable without arranging a corrupt build tree on a real disk.
    */

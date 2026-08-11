@@ -45,7 +45,8 @@
  * `0.8.28` admits Solidity's `layout at` custom base slots, but upstream's
  * without-storage-layouts comparison drops `baseSlot` (openzeppelin-upgrades#1296):
  * `unfoldStorageLayout` rebuilds both layouts without `baseSlot`, so
- * `undefined === undefined` passes and a changed custom base slot can be missed.
+ * both missing values normalize to the zero slot, so normalized
+ * `0x0 === 0x0` passes and a changed custom base slot can be missed.
  * Do not raise this ceiling without a base-slot comparison guard unless the
  * upstream fix has shipped; `test/baseslot-canary.test.ts` fails the day it does.
  */

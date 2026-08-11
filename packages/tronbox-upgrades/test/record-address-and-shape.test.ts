@@ -19,6 +19,9 @@ import {
   RecordLocationUnusableError,
   type AddressRejectionCause,
 } from '../src/record/errors';
+import { recordCount } from '../src/record/manifest';
+import { ChainInstanceChangedError } from '../src/chain';
+import type { ManifestData } from '@openzeppelin/upgrades-core';
 
 /*
  * The record layer — the mint chain, the error family, and the upstream canary.
@@ -275,21 +278,36 @@ describe('the upstream canary: `processProxyKind` still assigns before delegatin
 
 describe('`recordCount` is one definition, and it is the number the user is shown', () => {
   it('reports the stored entry count, and the refusal message shows that same number', () => {
-    /*
-     * The failure this guards: a count computed one way for the message and another
-     * way for the logic, so the number a user reads is not the number that drove the
-     * decision. Asserted by taking both from the same error object rather than
-     * recomputing one of them here.
-     */
-    const proxies = [{ address: EVM_VALID }, { address: EVM_VALID }];
-    const count = proxies.length;
-    expect(count).toBe(2);
-
-    // `CanonicalAddress` is a branded string, so a count over minted addresses is
-    // still a plain number — the brand must not leak into arithmetic.
-    const minted: CanonicalAddress[] = proxies.map(entry =>
-      canonicalizeAddress(entry.address),
+    const manifest: ManifestData = {
+      manifestVersion: '3.2',
+      impls: {
+        version: {
+          address: EVM_VALID,
+          layout: { storage: [], types: {} },
+        },
+      },
+      proxies: [
+        { address: EVM_VALID, kind: 'transparent' },
+        { address: EVM_VALID, kind: 'uups' },
+      ],
+    };
+    const error = new ChainInstanceChangedError(
+      {
+        kind: 'changed',
+        signal: 'chain-id',
+        recorded: '0x1',
+        observed: '0x2',
+      },
+      {
+        manifestFile: '/project/.openzeppelin/unknown-1.json',
+        recordCount: recordCount(manifest),
+        endpoint: 'http://node.invalid',
+      },
     );
-    expect(minted).toHaveLength(count);
+    const rendered = error.message.match(/(\d+) deployment record\(s\)/);
+
+    expect(rendered).not.toBeNull();
+    expect(error.context.recordCount).toBe(recordCount(manifest));
+    expect(Number(rendered?.[1])).toBe(error.context.recordCount);
   });
 });

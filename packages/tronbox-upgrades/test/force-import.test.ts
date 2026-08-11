@@ -1,5 +1,4 @@
-import fs from 'node:fs';
-import { mkdtempSync } from 'node:fs';
+import fs, { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -182,7 +181,8 @@ function buildFake(spec: Spec = {}) {
         beacon: spec.beaconSlot ?? null,
       };
     },
-    contractAt: async (_a: never, address: string) => ({ address }) as never,
+    contractAt: async (_a: never, address: string) =>
+      ({ address, events: {} }) as never,
     async validateImplementation(name: string) {
       log.push(`validate:${name}`);
       return {

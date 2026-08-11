@@ -290,8 +290,12 @@ function readInitialOwner(supplied: SuppliedOptions): string | undefined {
   if (value === undefined) {
     return undefined;
   }
-  if (typeof value !== 'string') {
-    throw new OptionValueError('initialOwner', value, 'a TRON address, as a string');
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new OptionValueError(
+      'initialOwner',
+      value,
+      'a non-empty TRON address, as a string',
+    );
   }
   return value;
 }
@@ -538,7 +542,8 @@ function buildResolved(supplied: SuppliedOptions): ResolvedUpgradeOptions {
     call: readCallOption(supplied),
     initialOwner: readInitialOwner(supplied),
     unsafeSkipProxyAdminCheck:
-      readBooleanOption(supplied, 'unsafeSkipProxyAdminCheck') ?? false,
+      readBooleanOption(supplied, 'unsafeSkipProxyAdminCheck') ??
+      pluginOptionDefaults.unsafeSkipProxyAdminCheck,
   });
 }
 

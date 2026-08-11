@@ -321,6 +321,8 @@ describe('fresh: the record pair is consumed, and the same fixture still refuses
 
 describe("fresh: the pair's content is the produced solcInput (the ex-M2 kill)", () => {
   it("hands on the paired file's content verbatim — both sentinels survive", async () => {
+    // Deliberately duplicated by the close-out matrix's `(c)` case below:
+    // this local pin diagnoses the fresh-path property where it is introduced.
     // The ex-M2 wrong-span kill: two sentinels planted in the PAIR — one
     // settings key, one source-content marker absent from the disk tree —
     // both must survive into the produced input untouched, because the input
@@ -842,6 +844,10 @@ describe('stale: a refusal that names its evidence, and 0-vs-1 byte decides it',
       },
     ]);
     expect(diagnosis.headline).toContain('abstract contract');
+    expect(diagnosis.remedy).toContain('concrete deployable contract');
+    expect(diagnosis.remedy).toContain(
+      'recompilation cannot create deployed bytecode',
+    );
   });
 });
 
@@ -1041,6 +1047,8 @@ describe('the Foundry model: absent/stale refuse, fresh consumes the pair', () =
   });
 
   it("(c) the fresh path's solcInput IS the paired file's content, verbatim", async () => {
+    // Cross-reference: the focused fresh-path suite above carries the same
+    // sentinels; this duplicate keeps the close-out matrix self-contained.
     const project = pairProject('append', 'before');
     const before = corpusCompile('append', 'astOnly', 'before');
     const recordedContent = `${pairSource(upgradePair('append'), 'before')}\n// recorded-not-disk`;

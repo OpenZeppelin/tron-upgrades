@@ -13,8 +13,7 @@ export class NothingToAdoptError extends ProxyOperationRefusedError {
     readonly found: string = 'no code at all',
   ) {
     super(
-      `Nothing to import at ${address}: found ${found}. forceImport adopts a ` +
-        `proxy, a beacon, or a deployed implementation — check the address and ` +
+      `Nothing usable at ${address}: found ${found}. Check the address and ` +
         `the network you are connected to.`,
     );
     this.name = 'NothingToAdoptError';

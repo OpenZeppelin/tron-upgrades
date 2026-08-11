@@ -33,7 +33,7 @@ import { absolute } from './readers';
 import { testDir } from './locate';
 
 /**
- * The validation pipeline's fixture kit: the nine upgrade pairs, the real solc
+ * The validation pipeline's fixture kit: the ten upgrade pairs, the real solc
  * output they compile to, and the fakes `deriveValidationInput` needs to run
  * with nothing on a real disk.
  *

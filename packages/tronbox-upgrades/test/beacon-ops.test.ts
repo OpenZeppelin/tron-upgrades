@@ -101,7 +101,8 @@ function buildFake(spec: Spec = {}) {
         },
       },
     } as never,
-    contractAt: async (_a: never, address: string) => ({ address }) as never,
+    contractAt: async (_a: never, address: string) =>
+      ({ address, events: {} }) as never,
     validateImplementation: async (name: string, resolvedOptions: { kind?: string }) => {
       log.push(`validate:${name}:${resolvedOptions.kind}`);
       return {

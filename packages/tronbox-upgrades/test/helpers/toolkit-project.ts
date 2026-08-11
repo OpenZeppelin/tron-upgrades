@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { afterAll } from 'vitest';
 
 import {
   artifactBytecodeFor,
@@ -10,6 +11,14 @@ import {
 } from './ladder-fixtures';
 import { migrateShapedHandles, type HandleShape } from './handles';
 import { makeTempDir } from './locate';
+
+const TOOLKIT_PROJECT_DIRS = new Set<string>();
+
+afterAll(() => {
+  for (const root of TOOLKIT_PROJECT_DIRS) {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 /**
  * A real, on-disk TronBox-shaped project for `createOperationToolkit`'s
@@ -82,6 +91,7 @@ export function realToolkitProject(
   const { compile, sourceKey, contractName } = corpusCompileFor(spec.standaloneId);
 
   const root = makeTempDir('toolkit-project');
+  TOOLKIT_PROJECT_DIRS.add(root);
   const contractsDir = path.join(root, 'contracts');
   const buildInfoDir = path.join(root, 'build', 'build-info');
   fs.mkdirSync(contractsDir, { recursive: true });

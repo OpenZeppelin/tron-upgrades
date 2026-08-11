@@ -43,10 +43,10 @@ import {
  * reach (not some other member the fixture accidentally also satisfies), the
  * headline is non-empty, and the remedy contains the one phrase that is
  * *specific to this cause* — `diagnose.ts` states that no remedy is shared
- * between causes, and `build-record-absent` / `build-record-stale` are the pair
- * that makes the claim worth checking: both are fixed by the same
- * `tronbox compile --all`, and the two remedies differ only in the trailing
- * clause that tells the user which situation they were in.
+ * between causes. The ordinary `build-record-stale` driver and
+ * `build-record-absent` share the `tronbox compile --all` action but retain
+ * cause-specific trailing clauses; the abstract/interface stale arm is pinned
+ * separately because recompilation cannot create deployed bytecode for it.
  */
 
 const fixture = upgradePairsFixture();
@@ -106,7 +106,8 @@ async function driveSourceUnreadable(): Promise<ValidationInputOutcome> {
 /** 3 — the target imports a specifier nothing on disk answers to. */
 async function driveImportUnresolvable(): Promise<ValidationInputOutcome> {
   const project = ladderProject({
-    sourceText: 'import "./Missing.sol";\ncontract T {}',
+    sourceText:
+      'pragma solidity ^0.8.0;\nimport "./Missing.sol";\ncontract T {}',
   });
   return deriveValidationInput({
     contract: project.contractName,
@@ -271,7 +272,7 @@ const REMEDY_NAMES: Record<Cause['kind'], string> = {
   'import-unresolvable': 'Fix the reference',
   'artifact-shape-unsupported': 'Upgrade TronBox',
   'build-record-absent': 'even when TronBox considers the project up to date',
-  'build-record-stale': 'describe the same compile',
+  'build-record-stale': 'same compile as the artifact',
   'library-name-unsupported': 'Rename ',
 };
 

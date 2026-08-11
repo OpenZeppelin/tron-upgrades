@@ -99,7 +99,9 @@ function run(command, args, { cwd, timeoutMs, allowFailure = false } = {}) {
 }
 
 /**
- * Network-level failures retry; an ANSWERED request never does. The long
+ * Failures before a JSON answer — including a non-JSON response body — retry.
+ * `response.ok` is intentionally unchecked here, so a JSON error response is
+ * returned to the caller for its operation-specific validation. The long
  * `spawnSync` steps block the event loop for minutes, the node closes the
  * idle keep-alive socket meanwhile, and the next fetch that reuses the dead
  * pooled connection dies with `TypeError: fetch failed` — measured twice at

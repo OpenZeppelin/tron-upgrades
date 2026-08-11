@@ -13,16 +13,17 @@ import type { RedeployMode } from './types';
  * *"a silently flipped default … changes safety posture across every
  * operation"*.
  *
- * What this table owns is the four values upstream has no opinion about, plus the
+ * What this table owns is the five values upstream has no opinion about, plus the
  * recorded expectation the canary checks upstream against.
  */
 
-/** The four defaults this package owns, from `plugin-truffle/src/utils/options.ts:withDefaults`. */
+/** The five defaults this package owns. */
 export const pluginOptionDefaults: {
   readonly timeout: number;
   readonly pollingInterval: number;
   readonly redeployImplementation: RedeployMode;
   readonly useDeployedImplementation: boolean;
+  readonly unsafeSkipProxyAdminCheck: boolean;
 } = Object.freeze({
   /** Milliseconds. Live on TRON — a recorded divergence from the parity target. */
   timeout: 60_000,
@@ -31,6 +32,7 @@ export const pluginOptionDefaults: {
   redeployImplementation: 'onchange',
   /** Collapsed into `redeployImplementation` at resolution; never surfaces. */
   useDeployedImplementation: false,
+  unsafeSkipProxyAdminCheck: false,
 });
 
 /** `constructorArgs` when the caller supplies none. Frozen, shared, never mutated. */

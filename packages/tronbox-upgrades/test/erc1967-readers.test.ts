@@ -127,8 +127,13 @@ describe('beacon — the beacon\'s own implementation(), not an ERC-1967 slot', 
         eth_call: { error: { code: -32600, message: 'Smart contract is not exist.' } },
       }),
     });
-    await expect(
-      beacon.getImplementationAddress(BEACON, { tronWrap: handle.raw }),
-    ).rejects.toBeInstanceOf(NothingToAdoptError);
+    const failure = await beacon
+      .getImplementationAddress(BEACON, { tronWrap: handle.raw })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(NothingToAdoptError);
+    expect((failure as Error).message).not.toContain('forceImport');
   });
 });

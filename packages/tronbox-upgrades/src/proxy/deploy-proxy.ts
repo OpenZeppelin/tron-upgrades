@@ -20,6 +20,7 @@ import {
   linkedLibraryNames,
 } from '../deploy';
 import { transactionIdentity, operationNotes } from '../results/types';
+import { sealUnavailable } from '../results/limitations';
 import type { DeployedProxy } from '../results/types';
 import { PROXY_CONTRACT_NAMES } from './artifacts';
 import {
@@ -280,7 +281,9 @@ export async function runDeployProxy(
   }
 
   return Object.freeze({
-    contract: await toolkit.contractAt(contract, outcome.address),
+    contract: sealUnavailable(
+      await toolkit.contractAt(contract, outcome.address),
+    ),
     // Tool-verbatim, deliberately not canonicalized — a rule of the result
     // contract: the record got the canonical form above.
     address: outcome.address,

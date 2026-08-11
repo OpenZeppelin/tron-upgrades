@@ -1422,6 +1422,11 @@ describe('the face is `openRecord` plus four named values, and everything else i
       ),
       `${SANCTIONED_RECORD_EDGE} should be the one sanctioned record-layer edge`,
     ).toBe(true);
+    expect(
+      faceExports(entry)
+        .filter(export_ => export_.from === SANCTIONED_RECORD_EDGE)
+        .map(export_ => export_.name),
+    ).toEqual(['RecordFingerprintUnreadableError']);
     const exportedNames = new Set(faceExports(entry).map(entry_ => entry_.name));
     for (const recordValue of FACE_VALUES) {
       expect(exportedNames.has(recordValue), `${recordValue} escaped`).toBe(false);

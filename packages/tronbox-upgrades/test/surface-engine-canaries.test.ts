@@ -372,10 +372,9 @@ describe('the defaults table is pinned by a two-sided canary', () => {
     expect(Object.isFrozen(resolved.validation.unsafeAllow)).toBe(true);
   });
 
-  it('has the four package-owned defaults matching the recorded table', () => {
+  it('has the five package-owned defaults matching the recorded table', () => {
     /*
-     * Direction two. These four are the ones upstream has no opinion about, each
-     * traced to `plugin-truffle/src/utils/options.ts:withDefaults`.
+     * Direction two. These five are the ones upstream has no opinion about.
      *
      * `timeout` and `pollingInterval` are **live on TRON** — a recorded divergence
      * from the parity target, which treated them as inert — its own comment says
@@ -386,6 +385,7 @@ describe('the defaults table is pinned by a two-sided canary', () => {
     expect(pluginOptionDefaults.pollingInterval).toBe(5_000);
     expect(pluginOptionDefaults.redeployImplementation).toBe('onchange');
     expect(pluginOptionDefaults.useDeployedImplementation).toBe(false);
+    expect(pluginOptionDefaults.unsafeSkipProxyAdminCheck).toBe(false);
     expect(defaultConstructorArgs).toEqual([]);
     expect(Object.isFrozen(defaultConstructorArgs)).toBe(true);
     expect(Object.isFrozen(pluginOptionDefaults)).toBe(true);
@@ -394,6 +394,7 @@ describe('the defaults table is pinned by a two-sided canary', () => {
     expect(resolved.timeout).toBe(60_000);
     expect(resolved.pollingInterval).toBe(5_000);
     expect(resolved.redeployImplementation).toBe('onchange');
+    expect(resolved.unsafeSkipProxyAdminCheck).toBe(false);
     expect(resolved.constructorArgs).toEqual([]);
     // `useDeployedImplementation` collapses into `redeployImplementation` and never
     // surfaces on the resolved value, so exactly one field expresses the policy.

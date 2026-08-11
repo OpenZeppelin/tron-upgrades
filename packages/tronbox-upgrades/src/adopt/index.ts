@@ -13,6 +13,7 @@
 import type { ContractAbstraction } from '../environment';
 import { canonicalizeAddress } from '../record';
 import { operationNotes } from '../results/types';
+import { sealUnavailable } from '../results/limitations';
 import type { AdoptionOutcome } from '../results/types';
 import {
   createOperationToolkit,
@@ -189,7 +190,7 @@ export async function runForceImport(
     kind: found,
     address,
     implementation: implementationAddress,
-    contract: await toolkit.contractAt(contract, address),
+    contract: sealUnavailable(await toolkit.contractAt(contract, address)),
     notes: operationNotes(toolkit.channel.recorded),
   }) as unknown as AdoptionOutcome;
 }

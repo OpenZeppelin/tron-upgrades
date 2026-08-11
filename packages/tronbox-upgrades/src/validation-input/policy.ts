@@ -10,7 +10,7 @@ import { unreachableCause, type Cause } from './causes';
  * flipping it must be a one-value change plus a message, not a redesign."*
  *
  * Three properties hold it, and all three are properties of the *source* rather
- * than of behaviour, which is why each is checkable by reading this directory
+ * than of behaviour, which is why each is checkable by reading the source
  * rather than by trusting a comment elsewhere:
  *
  * - **Exactly one importer** — `pipeline.ts` — and exactly one call site.

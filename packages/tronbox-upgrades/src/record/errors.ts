@@ -261,8 +261,8 @@ export type FingerprintUnreadableCause =
  */
 const fingerprintTwoExits =
   'If this is still the same chain, delete the fingerprint file and re-run — the ' +
-  'guard re-arms itself from the current chain. If the node was wiped, delete the ' +
-  'record file and the fingerprint together, and redeploy — the same two outcomes ' +
+  'guard re-arms from the current chain. If the node was wiped, delete the ' +
+  'record file and the fingerprint and redeploy — the same two outcomes ' +
   'the readable-mismatch refusal already names.';
 
 const fingerprintRemedies: Readonly<
