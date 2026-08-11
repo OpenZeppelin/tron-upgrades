@@ -77,12 +77,23 @@ describe('scan subjects: no absence scan can range over nothing', () => {
     ['environmentSources', () => environmentSources().length],
     ['nonEnvironmentSources', () => nonEnvironmentSources().length],
     ['chainSources', () => chainSources().length],
-    ['resolverCallSites', () => resolverCallSites().length],
     ['typedInterpolations', () => typedInterpolations().length],
   ];
 
   it.each(subjects)('%s ranges over a non-empty subject', (_name, count) => {
     expect(count()).toBeGreaterThan(0);
+  });
+
+  it('resolverCallSites ranges over an empty subject, non-vacuously', () => {
+    // This subject moved OUT of the non-empty list above when the embedded
+    // compiler left (the Foundry-model decision, 2026-08-07): the package's
+    // one `createRequire` exemption was the compiler's soljson loader, so the
+    // live sweep's correct answer is now the empty set. An emptiness answer
+    // from a broken walker would look identical, which is why the sweep's own
+    // non-vacuity lives in `host-import-boundary.test.ts` — "the type-checked
+    // sweep fires on $label" drives the same instrument over four fixture
+    // shapes and requires a row from each.
+    expect(resolverCallSites().length).toBe(0);
   });
 
   it('the full census covers every operation directory the package now has', () => {
