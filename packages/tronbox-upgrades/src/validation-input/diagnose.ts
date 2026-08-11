@@ -1,4 +1,8 @@
-import { unreachableCause, type Cause } from './causes';
+import {
+  unreachableCause,
+  type BuildRecordRejection,
+  type Cause,
+} from './causes';
 import { SUPPORTED_SOLC } from './compiler';
 import { ValidationInputInvariantError } from './errors';
 import { MAX_LIBRARY_NAME_LENGTH } from './identity';
@@ -10,20 +14,21 @@ import { MAX_LIBRARY_NAME_LENGTH } from './identity';
  * determination and message rendering happen where the failure is observed,
  * whatever the table decides; only the *disposition* is policy. That separation
  * is what makes a leniency flip provably unable to change the diagnosis, and
- * what makes eleven cause tests plus one policy-table test possible instead of
- * eleven × two.
+ * what makes seven cause tests plus one policy-table test possible instead of
+ * seven × two.
  *
  * Every headline interpolates the concrete failing thing its own cause
  * carries: the contract, the source key and path, the specifier and its
- * importer, the two long versions that disagreed, the library and its band. No
- * headline is generic and none covers two causes — which is the property that
- * makes the actionable-diagnosis requirement checkable per path rather than in
- * aggregate.
+ * importer, the rejected record files and their reasons, the library and its
+ * band. No headline is generic and none covers two causes — which is the
+ * property that makes the actionable-diagnosis requirement checkable per path
+ * rather than in aggregate.
  *
- * Every remedy is distinct across the eleven. The pair that makes that
- * rule earn its keep is 7 versus 11: both are fixed by running
- * `tronbox compile`, and the remedy is what tells the user which situation they
- * are in — recompile a stale artifact, or go read the compiler's own errors.
+ * Every remedy is distinct across the seven. The pair that makes that
+ * rule earn its keep is 5 versus 6: both are fixed by running
+ * `tronbox compile --all`, and the remedy is what tells the user which
+ * situation they are in — no record was ever written for this contract, or
+ * every record found no longer describes the compiled artifact.
  */
 
 /**
@@ -55,32 +60,50 @@ function diagnosis(headline: string, remedy: string): Diagnosis {
   return Object.freeze({ headline, remedy });
 }
 
-/** Which compiler tree the path came from, in the user's own vocabulary. */
-function familyName(family: 'tvm' | 'evm'): string {
-  return family === 'evm' ? 'Ethereum (--evm)' : 'Tron';
+/**
+ * One rejected record rendered as `file (reason)`, with the reason in the
+ * user's vocabulary rather than the enum's. Self-contained on purpose: the
+ * rejection reasons are the whole evidence a `build-record-stale` refusal
+ * carries, so a phrase that needs the source code to decode would defeat the
+ * actionable-diagnosis requirement for the one cause with a list payload.
+ */
+function rejectionPhrase(reason: BuildRecordRejection['reason']): string {
+  switch (reason) {
+    case 'deployed-bytecode-differs':
+      return "its deployed bytecode is not the artifact's";
+    case 'nothing-to-compare':
+      return (
+        'it carries no deployed bytecode to verify — an abstract contract ' +
+        'or interface cannot be validated'
+      );
+    case 'ast-closure-incomplete':
+      return "it lacks an AST for part of the contract's import closure";
+    case 'target-definition-absent':
+      return 'its AST does not declare this contract';
+    case 'input-pair-absent':
+      return 'its paired compiler-input file is missing';
+    case 'input-pair-unparseable':
+      return 'its paired compiler-input file is not valid JSON';
+    case 'input-pair-unusable':
+      return 'its paired compiler-input file is not the input of this record';
+  }
+}
+
+function renderRejections(rejected: readonly BuildRecordRejection[]): string {
+  return rejected
+    .map(entry => `${entry.file} (${rejectionPhrase(entry.reason)})`)
+    .join('; ');
 }
 
 export function diagnose(cause: Cause): Diagnosis {
   switch (cause.kind) {
-    case 'compiler-absent':
-      return diagnosis(
-        `TronBox's compiler cache has no usable ${familyName(cause.family)} ` +
-          `Solidity compiler ${cause.requestedVersion} at ` +
-          `${cause.soljsonPath}, and that is the version this project compiles ` +
-          `with. Upgrade-safety validation needs to run that exact compiler to ` +
-          `read storage layouts out of it.`,
-        `Run \`tronbox compile\`, which downloads the compiler, or fetch it ` +
-          `directly with \`tronbox --download-compiler ${cause.requestedVersion}\`` +
-          `${cause.family === 'evm' ? ' --evm' : ''}.`,
-      );
-
     case 'compiler-unsupported':
       return diagnosis(
         `This project compiles with Solidity ${cause.resolvedVersion}, which is ` +
           `outside the range tronbox-upgrades supports for upgrade-safety ` +
           `validation (${SUPPORTED_SOLC.min}–${SUPPORTED_SOLC.max}). Validation ` +
-          `needs storage layouts from the compiler, and this plugin is verified ` +
-          `only across that range.` +
+          `interprets the compiler output TronBox recorded for this project, ` +
+          `and this plugin is verified only across that range.` +
           (cause.viaLegacyFlag === undefined
             ? ''
             : ` The version came from the \`${cause.viaLegacyFlag}\` flag in ` +
@@ -93,20 +116,6 @@ export function diagnose(cause: Cause): Diagnosis {
             `\`compilers.solc.version\` to a version between ` +
             `${SUPPORTED_SOLC.min} and ${SUPPORTED_SOLC.max}, then run ` +
             `\`tronbox compile\`.`,
-      );
-
-    case 'compiler-mismatched':
-      return diagnosis(
-        `The artifact was built by ${cause.artifactLongVersion}, but the ` +
-          `compiler this project now resolves to reports ` +
-          `${cause.loadedLongVersion}. Those are different builds, so the ` +
-          `storage layouts one produces do not describe the bytecode the other ` +
-          `produced. Validation is currently using the ` +
-          `${familyName(cause.family)} compiler tree.`,
-        `Recompile the project with \`tronbox compile\` so the artifact and the ` +
-          `compiler agree — and check that \`--evm\` is used the same way when ` +
-          `you build and when you deploy or upgrade, since the two trees ship ` +
-          `different builds under the same version number.`,
       );
 
     case 'source-unreadable':
@@ -124,9 +133,10 @@ export function diagnose(cause: Cause): Diagnosis {
     case 'import-unresolvable':
       return diagnosis(
         `${cause.importedBy} refers to "${cause.specifier}", which does not ` +
-          `resolve to a source this plugin may hand the compiler. Every source ` +
-          `has to be supplied to solc up front, so a reference that cannot be ` +
-          `resolved stops the validation before the compiler runs.`,
+          `resolve to a source of this project. The validation reads this ` +
+          `contract's whole import closure out of the build record TronBox ` +
+          `wrote, so a reference that cannot be resolved stops it before the ` +
+          `record is consulted.`,
         `Fix the reference to "${cause.specifier}" in ${cause.importedBy}: local ` +
           `files must start with \`./\` or \`../\` and stay inside the contracts ` +
           `directory, and an npm import must look like \`package/path.sol\` or ` +
@@ -137,50 +147,42 @@ export function diagnose(cause: Cause): Diagnosis {
       return diagnosis(
         `The compiled artifact for ${cause.contract} carries no ` +
           `\`${cause.missingField}\`, which upgrade-safety validation needs in ` +
-          `order to tie the compiler's storage layouts to the bytecode that is ` +
+          `order to tie the build record TronBox wrote to the bytecode that is ` +
           `about to be deployed.`,
         `Upgrade TronBox to ${cause.providedSince} or later — that is the ` +
           `oldest version verified to write \`${cause.missingField}\` into every ` +
           `artifact — then run \`tronbox compile\`.`,
       );
 
-    case 'artifact-stale':
+    case 'build-record-absent':
       return diagnosis(
-        `The compiled artifact for ${cause.contract} does not match the sources ` +
-          `on disk: recompiling them produces different code. Validating the ` +
-          `artifact would check the wrong program.`,
-        `Run \`tronbox compile\`.`,
-      );
-
-    case 'compiler-resource-exhausted':
-      return diagnosis(
-        `The Solidity compiler ran out of memory compiling ${cause.target} ` +
-          `together with its ${cause.closureSize} transitive sources` +
+        `TronBox's build-info directory ` +
           `${
-            cause.raised === 'memory-access-out-of-bounds'
-              ? ''
-              : ' (the WebAssembly module aborted for a reason other than the' +
-                ' memory ceiling)'
-          }. That closure is the smallest input this plugin can give the ` +
-          `compiler for this contract, so there is nothing smaller to retry ` +
-          `with.`,
-        `Reduce ${cause.target}'s import closure — split the contract, or drop ` +
-          `imports it does not use — and report the closure size to the ` +
-          `tronbox-upgrades issue tracker so the ceiling is recorded.`,
+            cause.because === 'directory-absent'
+              ? 'does not exist'
+              : cause.because === 'directory-unreadable'
+                ? 'could not be read'
+                : 'holds no build record for this contract'
+          }, so there is no record of the compile that produced this ` +
+          `artifact. Upgrade-safety validation reads storage information out ` +
+          `of that record and never compiles on its own, so without one there ` +
+          `is nothing to validate from.`,
+        `Run \`tronbox compile --all\` and retry: the \`--all\` flag forces ` +
+          `recompilation of unchanged sources, so the remedy always works — ` +
+          `a build record is written even when TronBox considers the project ` +
+          `up to date.`,
       );
 
-    case 'layout-vacuous':
+    case 'build-record-stale':
       return diagnosis(
-        `The compiler returned an empty storage layout for ${cause.contract}, ` +
-          `which declares ${cause.declaredStateVariables} state variable` +
-          `${cause.declaredStateVariables === 1 ? '' : 's'}. An empty reference ` +
-          `layout makes every variable in an upgrade look like a safe append, so ` +
-          `this refusal exists to stop a validation that would pass no matter ` +
-          `what changed.`,
-        `Please report this as a bug against tronbox-upgrades, naming ` +
-          `${cause.contract} and your compiler version — the plugin asked for a ` +
-          `layout and got nothing usable, and that is the plugin's fault rather ` +
-          `than your project's.`,
+        `Every build record found for this contract was rejected: ` +
+          `${renderRejections(cause.rejected)}. None of them describes the ` +
+          `compiled artifact that is about to be deployed, so validating from ` +
+          `them would check the wrong program.`,
+        `Run \`tronbox compile --all\` and retry: the \`--all\` flag forces ` +
+          `recompilation of unchanged sources, so the remedy always works — ` +
+          `the regenerated build record and artifact describe the same ` +
+          `compile.`,
       );
 
     case 'library-name-unsupported':
@@ -199,16 +201,6 @@ export function diagnose(cause: Cause): Diagnosis {
           }.`,
         `Rename ${cause.libraryName} to ${MAX_LIBRARY_NAME_LENGTH} characters ` +
           `or fewer and run \`tronbox compile\`.`,
-      );
-
-    case 'sources-do-not-compile':
-      return diagnosis(
-        `The sources for ${cause.target} do not compile: the compiler reported ` +
-          `${cause.errorCount} error${cause.errorCount === 1 ? '' : 's'}. ` +
-          `Until they compile there is no output to compare the artifact ` +
-          `against, so nothing about the upgrade can be checked.`,
-        `Fix the compile errors in ${cause.target}; run \`tronbox compile\` to ` +
-          `see the compiler's own error text, which TronBox prints in full.`,
       );
 
     default:

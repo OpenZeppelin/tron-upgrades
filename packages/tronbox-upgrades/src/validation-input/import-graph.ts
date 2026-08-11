@@ -13,18 +13,18 @@ import {
 } from './source-key';
 
 /**
- * The plugin's own import resolver. Causes 4 and 5 are born here.
+ * The plugin's own import resolver. The `source-unreadable` and
+ * `import-unresolvable` causes are born here.
  *
  * **Owning resolution is structural, not a preference.** The host's resolver is
- * off-limits under the environment seam's host-import boundary, and measurement
- * showed the reason it would not help anyway: `TronSolc.js:55` calls
- * `compile(input, null, null)` — **no import
- * callback** — so every source has to be in the input before solc runs. A project
- * whose graph is not resolved first gets
- * `ParserError: Source "Nope.sol" not found: File not supplied initially`, which
- * names a mechanism inside the *plugin's* input assembly and is indistinguishable
- * from a genuine source error. Owning the walk is what turns a
- * previously undetectable condition into two causes with two different remedies.
+ * off-limits under the environment seam's host-import boundary, and the walk is
+ * what the whole record path stands on: it derives the target's **source key**
+ * — the key the build record's `contracts` map is indexed by — and the
+ * **closure** the record is projected onto and content-checked against
+ * (`ast-closure-incomplete`). A graph resolved by different rules is a
+ * different key set, and a different key set reads a different record. Owning
+ * the walk is also what turns a previously undetectable condition into two
+ * causes with two different remedies.
  *
  * **The walk starts at the target and never enumerates the contracts directory.**
  * That is what makes cost a function of graph depth rather than project
@@ -47,9 +47,10 @@ interface PendingRef {
   readonly ref: SourceRef;
   /**
    * How this source was named, and by whom. `null` for the target, which is not
-   * an import — and that is precisely what makes cause 4's `'missing'` arm
-   * distinct from cause 5: a *target* that is not on disk is a missing source,
-   * while an *import* that is not on disk is an unresolvable import.
+   * an import — and that is precisely what makes `source-unreadable`'s
+   * `'missing'` arm distinct from `import-unresolvable`: a *target* that is not
+   * on disk is a missing source, while an *import* that is not on disk is an
+   * unresolvable import.
    */
   readonly importedFrom: { readonly by: string; readonly specifier: string } | null;
 }
@@ -153,10 +154,14 @@ const FIRST_STRING_LITERAL = /"([^"]*)"|'([^']*)'/;
  * - An import statement must be terminated by `;`, which Solidity requires.
  * - The word `import` inside a *string literal* followed by a `;` on the same
  *   statement would be read as an import. The consequence is a **loud** refusal
- *   naming the specifier and the file (cause 5), not a silent wrong answer.
+ *   naming the specifier and the file (`import-unresolvable`), not a silent
+ *   wrong answer.
  * - A missed import is the failure mode that matters, and it does not pass
- *   silently either: solc reports `File not supplied initially`, which arrives as
- *   cause 11 with an error count. That is a *mislabelled* diagnosis rather than a
+ *   silently either: the closure comes up short, the build record is projected
+ *   without the missed source, and the engine fails loudly on the gap — its
+ *   `inherit` list still comes from the AST's own `linearizedBaseContracts`, so
+ *   a base whose source was not projected is a `TypeError` in the consumer,
+ *   never an empty layout. That is a *mislabelled* diagnosis rather than a
  *   wrong validation, and it is the one thing a real parser would improve here.
  */
 export function extractImports(source: string): string[] {

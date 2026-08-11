@@ -45,7 +45,8 @@ import type { AbsolutePath } from '../environment';
  * A key rejected because the host would reject it too.
  *
  * A discriminated result rather than a throw or a `null`, so the refusal arm
- * cannot be dropped silently — it is cause 4's and cause 5's raw material.
+ * cannot be dropped silently — it is `source-unreadable`'s and
+ * `import-unresolvable`'s raw material.
  */
 export type SourceKeyResult =
   | { readonly ok: true; readonly key: string }
@@ -168,9 +169,9 @@ export function modulePathOnDisk(root: AbsolutePath, specifier: string): string 
  * `v4.9.0`:
  * absolute paths and `..` segments are refused as traversal, an unscoped
  * reference needs at least one `/`, and a scoped one at least two. Reproduced
- * because an import the host refuses is an import this plugin cannot compile the
- * project the same way with — so it is cause 5, decided before solc runs, rather
- * than a `ParserError` the user cannot act on.
+ * because an import the host refuses is an import the host could never have
+ * compiled a build record from — so it is `import-unresolvable`, decided before
+ * any record is consulted, rather than a key mismatch the user cannot act on.
  */
 export function isValidModuleSpecifier(specifier: string): boolean {
   if (path.isAbsolute(specifier) || /(^|[\\/])\.\.([\\/]|$)/.test(specifier)) {

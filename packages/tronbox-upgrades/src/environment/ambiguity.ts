@@ -24,9 +24,9 @@ export interface BuildInfoFile {
    * Absence or corruption of the pair is never an error at this layer — only
    * a `*.output.json` failure produces `status: 'unreadable'`. The ambiguity
    * index has no use for the pair and does not propagate it; it exists on
-   * this type for the Foundry-model validation pipeline's fresh-compile path,
-   * which turns a missing or corrupt pair into its own refusal reason rather
-   * than this reader throwing on its behalf.
+   * this type for the Foundry-model validation pipeline's fresh path,
+   * which turns a missing or corrupt pair into its own per-candidate
+   * rejection reason rather than this reader throwing on its behalf.
    */
   readonly inputFile: AbsolutePath | undefined;
   /**
@@ -120,8 +120,8 @@ function isObjectRecord(
  * `buildInfoFile`, never `inputFile`. It is read anyway because this is
  * already the one place that walks `buildInfoDirectory` and already holds
  * each `<hash>` stem, and the Foundry-model validation pipeline — which
- * builds its solc request from the recorded compiler *input* instead of
- * re-invoking `solc` — needs exactly this pairing. That consumer decides what
+ * hands consumers the recorded compiler *input* instead of re-invoking
+ * `solc` — needs exactly this pairing. That consumer decides what
  * a missing or corrupt pair means; this function only surfaces it, and does
  * not throw or return `status: 'unreadable'` for either case.
  *

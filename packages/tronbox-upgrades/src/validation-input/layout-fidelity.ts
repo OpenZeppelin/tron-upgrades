@@ -14,11 +14,8 @@ import type { SolcStandardOutput } from './solc-input';
  *
  * **The retired premise.** This module was first written when the plugin always
  * ran its own compile and always asked for `storageLayout`, so "the key is
- * present" and "positions are available" were the same statement. Validation is
- * now lazy: AST-only when the host's build record content-verifies against the
- * artifact, and a single-contract compile only when the record is stale, absent,
- * or when an AST-only refusal needs slot positions to decide. Under an input the
- * plugin did not compile, the two original instruments inverted:
+ * present" and "positions are available" were the same statement. Under an
+ * input the plugin did not compile, the two original instruments inverted:
  *
  *   • `detectFidelity` returned `{kind:'slot-level'}` for EVERY contract,
  *     because it skipped contracts whose `storageLayout` key was absent — and on
@@ -26,16 +23,26 @@ import type { SolcStandardOutput } from './solc-input';
  *     full slot fidelity claimed for an input that has none.
  *
  *   • `isLayoutVacuous` returned `true` for EVERY contract, for the same reason,
- *     firing cause 9 (`layout-vacuous`, "report a bug, this is ours") on every
- *     validation.
+ *     firing the then-`layout-vacuous` cause ("report a bug, this is ours") on
+ *     every validation.
  *
  * **Two instruments inverting in opposite directions is worse than either
  * alone, because whoever resurrects the module will trust one of them.** One
  * said everything was fine; the other said everything was broken.
  *
- * **The fix, in one sentence:** both instruments now take the basis that
- * produced the output, and both read the *produced* layout's own positions
- * (`slot`, `offset`) rather than the presence of a key we asked for.
+ * **The present shape.** The embedded compiler is gone (the Foundry-model
+ * decision, 2026-08-07): every produced input is assembled from the host's
+ * build record, so there is no longer a "we compiled it" basis for either
+ * instrument to branch on. `detectFidelity` therefore reads the *produced*
+ * layouts' own positions unconditionally — an absent `storageLayout` key
+ * counts as missing, because nothing here requested one — and
+ * `isLayoutVacuous` asks the one vacuity question a record input has: is the
+ * target's own AST definition there to reconstruct a layout from. Today the
+ * detector's answer is always `declaration-order-only` with the output's whole
+ * contract census, because no supported TronBox requests `storageLayout`; the
+ * day the host starts emitting layouts into its records, the same scan starts
+ * reporting `slot-level`, and the pipeline's return-boundary assertion fails
+ * loudly at that moment instead of a stale fidelity claim shipping silently.
  *
  * ── Three measured facts the implementation below rests on ───────────────────
  *
@@ -70,23 +77,12 @@ import type { SolcStandardOutput } from './solc-input';
  */
 
 /**
- * Which step produced the `solcOutput` a fidelity question is being asked about.
- *
- * Not an implementation detail of the pipeline: it is *the* input to both
- * instruments here, because the same output shape means different things
- * depending on who compiled it. An absent `storageLayout` key is expected on
- * `'build-record-ast'` (the host never requests one) and is a surprise on
- * `'plugin-compile'` (we always do).
- */
-export type LayoutBasis = 'build-record-ast' | 'plugin-compile';
-
-/**
  * What the produced layout can support: full positions, or declaration order.
  *
- * Reported per input and asserted against the basis that produced it — the
- * biconditional lives at the pipeline's return boundary, because the claim being
- * checked is *"the fidelity reported equals the fidelity this step can deliver"*
- * and only the pipeline knows the step.
+ * Reported per input and asserted at the pipeline's return boundary, because
+ * the claim being checked is *"the fidelity reported equals the fidelity the
+ * producing step can deliver"* — and the one producing step, the build-record
+ * read, delivers declaration order until the host starts emitting layouts.
  */
 export type LayoutFidelity =
   | { readonly kind: 'slot-level' }
@@ -202,61 +198,31 @@ function layoutOf(
     : undefined;
 }
 
-/** Every `<source>:<contract>` the output carries, in a determined order. */
-function fullyQualifiedNames(output: SolcStandardOutput): string[] {
-  const names: string[] = [];
-  for (const [source, contracts] of Object.entries(output.contracts ?? {})) {
-    for (const contract of Object.keys(contracts)) {
-      names.push(`${source}:${contract}`);
-    }
-  }
-  return names.sort();
-}
-
 /**
  * Runs on **every** produced input, not only when degradation is suspected, and
  * exactly once per input.
  *
- * Calling it only where degradation is suspected would let a leniency flip pass
- * its test while production never ran the detector — and the day the policy table
- * flips, a reduced-fidelity input would ship reading `slot-level`.
+ * Calling it only where degradation is suspected — or replacing it with the
+ * constant it currently evaluates to — would freeze today's answer into the
+ * type system: no supported TronBox requests `storageLayout` in its
+ * `outputSelection`, so every contract's key is absent and the answer is
+ * `declaration-order-only` over the output's whole census. The scan is kept
+ * live because the build record is the one place layouts would appear when
+ * the host starts emitting them, and this call is what notices.
  *
- * **`'build-record-ast'` is unconditional and needs no scan of the layouts.** The
- * host's `outputSelection` requests `'': ['ast']` plus ten contract-level outputs
- * and `storageLayout` is not among them, so no build record carries positions for
- * *any* contract, ever. `missingFor` is therefore the output's whole contract set
- * — which the caller asserts non-empty, since an output with no contracts is the
- * vacuous-pass hazard rather than a fidelity question.
- *
- * **`'plugin-compile'` scans the layouts that are present, and skips the ones
- * that are not.** That boundary is deliberate and survives the rework: on this
- * basis we requested layouts, and solc was measured to emit the key even when empty
- * (`{"storage":[],"types":null}` for a purely namespaced contract), and the
- * silent-omission hazard lives strictly below `0.5.13`, which the range gate
- * makes unreachable. Counting an absent key as missing here would turn an
- * unverified assumption about what solc emits for an interface into an invariant
- * error on every project. Absence for the contract *under validation* is not a
- * fidelity question at all — it is cause 9, decided by {@link isLayoutVacuous}.
+ * **An absent `storageLayout` key counts as missing.** Under the old
+ * plugin-compile basis an absent key was skipped, because *we* had requested
+ * the key and solc was measured to emit it even empty
+ * (`{"storage":[],"types":null}` for a purely namespaced contract) — absence
+ * meant "not a layout question". Nothing requests the key any more, so
+ * absence means exactly what it says: no positions for this contract.
  */
-export function detectFidelity(
-  output: SolcStandardOutput,
-  basis: LayoutBasis,
-): LayoutFidelity {
-  if (basis === 'build-record-ast') {
-    return {
-      kind: 'declaration-order-only',
-      missingFor: Object.freeze(fullyQualifiedNames(output)),
-    };
-  }
-
+export function detectFidelity(output: SolcStandardOutput): LayoutFidelity {
   const missingFor: string[] = [];
   for (const [source, contracts] of Object.entries(output.contracts ?? {})) {
     for (const contract of Object.keys(contracts)) {
       const layout = layoutOf(output, source, contract);
-      if (layout === undefined) {
-        continue;
-      }
-      if (positionShortfall(layout).storage.length > 0) {
+      if (layout === undefined || positionShortfall(layout).storage.length > 0) {
         missingFor.push(`${source}:${contract}`);
       }
     }
@@ -264,40 +230,35 @@ export function detectFidelity(
 
   return missingFor.length === 0
     ? { kind: 'slot-level' }
-    : { kind: 'declaration-order-only', missingFor: Object.freeze(missingFor) };
+    : {
+        kind: 'declaration-order-only',
+        missingFor: Object.freeze(missingFor.sort()),
+      };
 }
 
 /**
  * Whether the layout the consumer will hold for the contract under validation
  * says nothing at all.
  *
- * The hazard is the same on both bases and it is measured: an empty *original*
- * layout classifies every variable in the new contract as a safe append —
+ * The hazard is measured: an empty *original* layout classifies every variable
+ * in the new contract as a safe append —
  * `getStorageUpgradeErrors(EMPTY_original, real_updated)` returns no errors and
- * `assertStorageUpgradeSafe(EMPTY, real)` does not throw. What differs is where
- * emptiness comes from.
+ * `assertStorageUpgradeSafe(EMPTY, real)` does not throw.
  *
- * - **`'plugin-compile'`** — the consumer receives solc's layout verbatim, so
- *   absent or empty are the same answer and both are read here.
- * - **`'build-record-ast'`** — the consumer receives no layout and
- *   `dist/storage/extract.js:extractStorageLayout` reconstructs one from the
- *   contract's own AST, so an absent `storageLayout` key means nothing and the
- *   only way the layout can come back empty *against a contract that declares
- *   state* is for the AST not to be there to reconstruct from. That is what is
- *   checked, and it is why this arm is a build-record rejection rather than
- *   cause 9: a record whose sources do not cover the target is a record to stop
- *   using, not a bug to report.
+ * On a build-record input the consumer receives no `storageLayout` and
+ * `dist/storage/extract.js:extractStorageLayout` reconstructs one from the
+ * contract's own AST, so an absent `storageLayout` key means nothing and the
+ * only way the layout can come back empty *against a contract that declares
+ * state* is for the AST not to be there to reconstruct from. That is what is
+ * checked, and it is why the gate treats a hit as a **build-record rejection**
+ * (`target-definition-absent`) rather than a plugin bug: a record whose AST
+ * does not declare the target is a record to stop using, not a bug to report.
  */
 export function isLayoutVacuous(
   output: SolcStandardOutput,
   source: string,
   contract: string,
-  basis: LayoutBasis,
 ): boolean {
-  if (basis === 'plugin-compile') {
-    const layout = layoutOf(output, source, contract);
-    return layout === undefined || (layout.storage ?? []).length === 0;
-  }
   return findContractDefinition(output, source, contract) === undefined;
 }
 
@@ -335,11 +296,11 @@ function astNodes(output: SolcStandardOutput, source: string): readonly AstNode[
  * The contract's own definition node, or `undefined` when this output cannot
  * supply one.
  *
- * One function rather than two lookups, because {@link isLayoutVacuous}'s
- * AST arm and {@link countDeclaredStateVariables} must agree about what "the AST
- * is there" means: a vacuity check that says the definition is present while the
- * variable count reads it as absent would report zero declared variables on a
- * non-vacuous layout, which is the silent accept both exist to prevent.
+ * One function rather than two lookups, because {@link isLayoutVacuous} and
+ * {@link declaresNamespacedStorage} must agree about what "the AST is there"
+ * means: a vacuity check that says the definition is present while the
+ * namespace census reads it as absent would state a shortfall about a contract
+ * the other instrument refused to see at all.
  */
 function findContractDefinition(
   output: SolcStandardOutput,
@@ -363,53 +324,6 @@ function contractDefinitions(
     }
   }
   return byId;
-}
-
-/**
- * How many state variables occupy storage in this contract, inherited ones
- * included.
- *
- * Cause 9's payload, and the count is what makes the cause honest rather than
- * paranoid: a contract that genuinely declares nothing has an empty layout
- * legitimately, so the refusal fires only when the layout is empty **and** the AST
- * says it should not be.
- *
- * Three exclusions, all because they occupy no slot: `constant` variables,
- * `immutable` ones, and anything that is not a state variable. Inheritance is
- * walked through `linearizedBaseContracts` because a contract with no variables of
- * its own inherits a non-empty layout, and counting only its own would let the
- * vacuous case through for every derived contract in the ecosystem.
- */
-export function countDeclaredStateVariables(
-  output: SolcStandardOutput,
-  source: string,
-  contract: string,
-): number {
-  const definitions = contractDefinitions(output);
-  const target = findContractDefinition(output, source, contract);
-  if (target === undefined) {
-    return 0;
-  }
-
-  const bases = Array.isArray(target.linearizedBaseContracts)
-    ? target.linearizedBaseContracts
-    : [target.id];
-
-  let count = 0;
-  for (const baseId of bases) {
-    const base = typeof baseId === 'number' ? definitions.get(baseId) : undefined;
-    for (const member of base?.nodes ?? []) {
-      if (
-        member.nodeType === 'VariableDeclaration' &&
-        member.stateVariable === true &&
-        member.constant !== true &&
-        member.mutability !== 'immutable'
-      ) {
-        count += 1;
-      }
-    }
-  }
-  return count;
 }
 
 /**

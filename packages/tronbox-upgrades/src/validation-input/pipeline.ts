@@ -1,10 +1,8 @@
 import fs from 'node:fs';
-import os from 'node:os';
 
 import {
   ArtifactNameAmbiguousError,
   fileSystemBuildInfoReader,
-  type AbsolutePath,
   type ArtifactAccess,
   type ArtifactRecord,
   type ArtifactRecordField,
@@ -18,53 +16,27 @@ import type { OutputChannel } from '../output';
 
 import {
   ARTIFACT_FIELDS_VERIFIED_SINCE,
+  type BuildRecordRejection,
   type Cause,
-  type WasmAbort,
 } from './causes';
-import {
-  isSupportedSolcVersion,
-  loadCompiler,
-  openCompiler,
-  type CompilerHandle,
-  type CompilerIdentity,
-} from './compiler';
+import { isSupportedSolcVersion } from './compiler';
 import { diagnose, type Diagnosis } from './diagnose';
 import { ValidationInputInvariantError } from './errors';
 import { resolveSourceGraph } from './import-graph';
+import { libraryNameBand, verifyBuildRecordFreshness } from './identity';
 import {
-  absentFromRecompile,
-  compareArtifactIdentity,
-  libraryNameBand,
-  verifyBuildRecordFreshness,
-  type ArtifactIdentityComparison,
-} from './identity';
-import {
-  countDeclaredStateVariables,
   declaresNamespacedStorage,
   detectFidelity,
   isLayoutVacuous,
-  type LayoutBasis,
   type LayoutFidelity,
 } from './layout-fidelity';
-import {
-  createCompileMemo,
-  cutPartition,
-  partitionIdentity,
-  type CompileMemo,
-  type Partition,
-  type PartitionRecord,
-} from './partition';
+import { cutPartition, type PartitionRecord } from './partition';
 import { policy, type ReducedMode } from './policy';
 import { absoluteSourcePath } from './source-key';
-import {
-  buildSolcInput,
-  countErrorDiagnostics,
-  type SolcStandardInput,
-  type SolcStandardOutput,
-} from './solc-input';
+import type { SolcStandardInput, SolcStandardOutput } from './solc-input';
 
 /**
- * The whole of the validation ladder, and **the one place `policy.ts` is
+ * The whole of the validation pipeline, and **the one place `policy.ts` is
  * imported and called**.
  *
  * A refusal is a value, never a throw. That is not stylistic: the pipeline has to
@@ -73,68 +45,71 @@ import {
  * would need to return. Returning a value is what makes the policy table the only
  * thing a leniency flip touches.
  *
- * The only two things this module throws are `ValidationInputInvariantError` and
- * `CompilerRetiredError`, both of which denote plugin bugs.
+ * The only thing this module throws is `ValidationInputInvariantError` (plus
+ * the seam's own `ArtifactNameAmbiguousError`, for an operation that skipped
+ * its ambiguity decision), and both denote plugin bugs rather than user
+ * conditions.
  *
- * ── The ladder, which is this module's shape ─────────────────────────────────
+ * ── The Foundry model, which is this module's shape ──────────────────────────
  *
- * Validation compiles **lazily**. Steps 1–2 are a gate — *locate* a build record
- * for the target, then *content-verify* it — and steps 3–5 are the gate's
- * outcomes. Four paths, and the compile is one arm rather than the trunk:
+ * Validation **never compiles**. Steps 1–2 are a gate — *locate* a build record
+ * for the target, then *content-verify* it — and step 3 is the gate's outcome.
+ * Two paths, and neither one reaches a compiler:
  *
- * | path | reached when | compiles | `fidelity` |
+ * | path | reached when | outcome | `fidelity` |
  * |---|---|---|---|
- * | fresh      | a record was located and verified                  | **0** | `declaration-order-only` |
- * | stale      | records were located, every candidate rejected     | 1     | `slot-level` |
- * | absent     | no record for this pair                            | 1     | `slot-level` |
- * | escalated  | **from fresh only**, on a non-empty AST-only report | 1     | `slot-level` |
+ * | fresh          | a record was located, verified, and its paired input is usable | proceed, from the record | `declaration-order-only` |
+ * | stale / absent | every candidate rejected, or no record for this pair | **refuse** (`build-record-stale` / `build-record-absent`), remedy `tronbox compile --all` | — |
  *
- * **Escalation is caller-driven, and it must be**: the report the escalation
- * turns on compares the new layout against the *deployed* implementation's, which
- * this sub-feature never sees. So the caller re-asks with the input it already
- * holds ({@link ValidationInputRequest.escalateFrom}), and the single-fire
- * property is structural rather than a counter — escalation accepts only an input
- * whose basis is `'build-record-ast'`, and what it returns is a
- * `'plugin-compile'` input, so a second escalation of the same chain is a type
- * the entry point refuses.
+ * This is the review's superseding maintainer decision (2026-08-07): adopt the
+ * Foundry model. The earlier design compiled the one contract itself on the
+ * stale and absent paths and on an escalation from a non-empty AST-only
+ * report; all three compiling arms are deleted, because the remedy the user
+ * already has — `tronbox compile --all` — regenerates the record and the
+ * artifact together, and the `--all` flag forces recompilation of unchanged
+ * sources, so it always works.
  *
  * **Reduced fidelity on the fresh path is not a degradation to apologise for, and
  * the pipeline does not pretend otherwise.** Reconstructing the layout from the
  * AST makes the engine *stricter*, not blinder: appends are structurally exempt,
  * and reordering, renames, retypes and deletions are all still detected. Exactly
  * two shapes need positions — a `__gap` consumption and intra-slot repacking —
- * and those are what escalation exists for. It is still *stated* rather than
- * silent, because a refusal the user cannot distinguish from an observed
- * incompatibility is the failure this plugin is not allowed to ship.
+ * and both are refused conservatively rather than silently accepted. It is
+ * still *stated* rather than silent, because a refusal the user cannot
+ * distinguish from an observed incompatibility is the failure this plugin is
+ * not allowed to ship. When TronBox can emit `storageLayout` into its build
+ * records, the same record read carries the layouts — which is why
+ * {@link detectFidelity} keeps running unconditionally on every produced input.
  */
 
 /** ─── What consumers receive ─────────────────────────────────────────────── */
 
 export interface ValidationInput {
   /**
-   * The reconstructed solc standard-JSON input.
+   * The solc standard-JSON input, **verbatim from the paired `<hash>.json`
+   * file TronBox wrote next to the verified build record** — the exact input
+   * that produced `solcOutput`, narrowed and handed on untouched.
    *
-   * Reconstructed from the contracts directory on **every** path, including the
-   * fresh one, and that is deliberate: the consumer's engine reads
-   * `sources[key].content` for its own namespace-annotation version check and
-   * would throw on a key the output carries and the input does not. Its
-   * `settings.outputSelection` describes what this plugin asks for when it
-   * compiles; on the fresh path nothing was compiled from it, and
-   * {@link InputProvenance.basis} is what says so.
+   * Deliberately not reconstructed from the contracts directory: source text
+   * on disk can drift from what was compiled while the deployed bytecode
+   * still verifies, and a consumer decoding the output's AST spans against
+   * drifted text reads the wrong characters (the ex-M2 wrong-span hazard).
+   * The pair is the one input whose spans match this output by construction.
    */
   readonly solcInput: SolcStandardInput;
-  /** Either the host's own build record, projected, or this plugin's compile. */
+  /** The host's own build record, projected onto the target's closure. */
   readonly solcOutput: SolcStandardOutput;
   /** LONG form, e.g. `0.8.26+commit.733b4d28.Emscripten.clang`. */
   readonly solcVersion: string;
   /**
    * Never optional. **Its value is a function of the step that produced the
-   * input, and the return boundary asserts the biconditional**: the fresh path
-   * reports `declaration-order-only` with a non-empty `missingFor`, the three
-   * compiling paths report `slot-level`. An unconditional `slot-level` assertion
-   * — which this pipeline once carried — raises on the ordinary path; a
-   * `declaration-order-only` claim on a compiled input understates what was
-   * measured and would refuse shapes it could have decided.
+   * input, and the return boundary asserts it**: the fresh path — the only
+   * producing step — reports `declaration-order-only` with a non-empty
+   * `missingFor`, because no supported TronBox requests `storageLayout` in its
+   * `outputSelection`. The detector still runs over the real output rather
+   * than being assumed, so the day the host starts emitting layouts, the
+   * boundary assertion is what fails first — loudly, at the moment the claim
+   * changes.
    */
   readonly fidelity: LayoutFidelity;
   readonly provenance: InputProvenance;
@@ -166,77 +141,42 @@ export type BuildRecordGate =
         | 'no-record-for-target';
     };
 
-export interface BuildRecordRejection {
-  readonly file: string;
-  readonly reason:
-    | 'deployed-bytecode-differs'
-    | 'nothing-to-compare'
-    | 'ast-closure-incomplete'
-    | 'target-definition-absent';
-}
+/**
+ * The per-candidate rejection vocabulary lives with the causes — it is
+ * `build-record-stale`'s payload — and is re-exported here because the gate is
+ * what constructs it and provenance consumers read it off this module's types.
+ */
+export type { BuildRecordRejection } from './causes';
 
 /**
- * Where `solcOutput` came from — the one field that tells the four paths apart.
+ * Where the produced input came from.
  *
- * A closed union rather than a set of optional fields, so *"which compiler ran"*
- * and *"which record verified"* cannot both be absent or both be present. On the
- * fresh path no compiler is located, loaded or read: there is no
- * {@link CompilerIdentity} to record, and the long version is the artifact's own
- * — the build record that verified against it was produced by that compiler, by
- * content.
- */
-export type InputBasis =
-  | {
-      readonly kind: 'build-record-ast';
-      readonly gate: Extract<BuildRecordGate, { kind: 'fresh' }>;
-      /** `ArtifactRecord.longCompilerVersion`, verified by the bytecode match. */
-      readonly compilerLongVersion: string;
-    }
-  | {
-      readonly kind: 'plugin-compile';
-      readonly reason: CompileReason;
-      /**
-       * The gate result that sent this call to the compiler. On an escalation it
-       * is the `fresh` gate of the input being escalated — which is the record of
-       * *escalated from a verified record*, and the reason no separate flag is
-       * needed to read the path off a produced input.
-       */
-      readonly gate: BuildRecordGate;
-      readonly compiler: CompilerIdentity;
-      /** Both identities, so a metadata-only difference is reportable. */
-      readonly identity: ArtifactIdentityComparison;
-    };
-
-export type CompileReason =
-  | 'build-record-stale'
-  | 'build-record-absent'
-  | 'ast-only-escalation';
-
-/**
- * The basis vocabulary is shared with the fidelity detector on purpose, and this
- * pin is what keeps it shared.
+ * A single-member union on purpose: the Foundry model has exactly one
+ * producing step, and keeping the discriminant means a future second basis
+ * (TronBox emitting `storageLayout`, say) is an added member rather than a
+ * reshaping — a consumer switching on `kind` today is already total.
  *
- * Both instruments in `layout-fidelity.ts` take a {@link LayoutBasis}, and the
- * question they answer is *this* union's question — where the output came from.
- * Two spellings of one distinction is how the permissive mislabel got in the
- * first time: one place decided "we compiled it" and another read "the key is
- * present". Renaming either member now fails to compile instead.
+ * On the fresh path no compiler is located, loaded or read: the long version
+ * is the artifact's own — the build record that verified against it was
+ * produced by that compiler, by content.
  */
-type AssertAssignable<Narrow extends Wide, Wide> = Narrow;
-type _BasisVocabularyIsShared = AssertAssignable<
-  InputBasis['kind'],
-  LayoutBasis
->;
+export type InputBasis = {
+  readonly kind: 'build-record-ast';
+  readonly gate: Extract<BuildRecordGate, { kind: 'fresh' }>;
+  /** `ArtifactRecord.longCompilerVersion`, verified by the bytecode match. */
+  readonly compilerLongVersion: string;
+  /** The paired `<hash>.json` file `solcInput` was read from. The audit trail. */
+  readonly inputFile: string;
+};
 
 export interface InputProvenance {
-  /**
-   * `solcInput`'s origin, which is the contracts directory on every path. It is
-   * `solcOutput`'s origin that varies, and {@link basis} carries it.
-   */
-  readonly reconstructedFrom: 'contracts-directory';
   readonly basis: InputBasis;
   readonly partition: PartitionRecord;
-  /** Every source key in the input, in the input's own order. The audit trail. */
+  /**
+   * Every source key in `solcInput`, in the input's own order — the paired
+   * file's whole key set, which is a superset of `partition.closure` (the
+   * record was the whole-project compile in the common case). The audit trail.
+   */
   readonly sourceKeys: readonly string[];
 }
 
@@ -252,28 +192,28 @@ export type ValidationInputOutcome =
 /** ─── What the caller supplies ───────────────────────────────────────────── */
 
 /**
- * Exactly what the validation ladder needs from the environment seam, and no more.
+ * Exactly what the validation pipeline needs from the environment seam, and no more.
  *
- * **`buildInfoDirectory` is picked, and that reverses an earlier decision rather
- * than relaxing one.** The earlier shape left it out so that reading a build
- * record was a *compile error*, on the grounds that a record can never supply a
- * storage layout — the host's `outputSelection` requests `'': ['ast']` and ten
- * contract-level outputs, and `storageLayout` is not among them. That
- * measurement is unchanged and is exactly why the fresh path is AST-only. What it
- * does not support is the conclusion that a record is therefore useless: the AST
- * is what the engine reconstructs a layout from, and a record whose deployed
- * bytecode matches the artifact is evidence about *content*, not provenance —
- * which is the one question the four mis-pairing hazards left undecidable.
+ * **`buildInfoDirectory` is the pipeline's whole subject.** The record read out
+ * of it is content evidence — a record whose deployed bytecode matches the
+ * artifact describes these exact compiled bytes whatever its age or
+ * provenance — and its paired `<hash>.json` compiler input is what consumers
+ * receive as `solcInput`.
  *
  * **`contractsBuildDirectory` is still not picked.** Every artifact fact the
- * validation ladder needs — both bytecodes, the source, the source path, the
+ * validation pipeline needs — both bytecodes, the source, the source path, the
  * long compiler version — arrives off `ArtifactAccess.record`, with no
  * filesystem access at all. Declaring it would be a dependency claim with no
  * reader behind it.
  *
+ * **`compiler` is read for one field**: `resolvedVersion`, which the range
+ * gate checks against `SUPPORTED_SOLC` before any work. No compiler is ever
+ * located or loaded; the range gates which solc *output* this plugin
+ * interprets.
+ *
  * **`output` is the operation's own `OutputChannel`.** A reduced-fidelity note
  * has to *ride the operation's result*, and a result's notes are exactly one
- * channel's `recorded`. A channel the validation ladder minted for itself
+ * channel's `recorded`. A channel the validation pipeline minted for itself
  * would be a second channel whose records reach no result — the note written
  * and then lost.
  */
@@ -288,22 +228,20 @@ export interface ValidationInputEnvironment {
 }
 
 /**
- * The wasm, the filesystem and nothing else.
+ * The filesystem and nothing else.
  *
  * **There is no `policy` member and there must not be**: an injectable table
- * restores per-call-site variation through the back door. The flip test
- * substitutes `policy.ts` at its module boundary in a fixture, which is a test
- * affordance and not an API.
+ * restores per-call-site variation through the back door. A test that needs a
+ * different table substitutes `policy.ts` at its module boundary in a fixture,
+ * which is a test affordance and not an API.
  *
- * There is no writer either: the validation ladder persists nothing, so the
+ * There is no writer either: the validation pipeline persists nothing, so the
  * injected surface has no write capability to misuse. Production defaults are
- * resolved **inside** the
- * call rather than captured at module scope, which is what lets the nine
- * non-compiler causes — and now the whole fresh path — be exercised with no
- * `~/.tronbox` populated.
+ * resolved **inside** the call rather than captured at module scope, which is
+ * what lets every path be exercised with nothing on a real disk.
  */
 export interface ValidationInputDependencies {
-  readonly loadCompiler?: (soljsonPath: string) => CompilerHandle;
+  /** Read by the import walk that derives the target's closure and source key. */
   readonly readSource?: (candidate: string) => string;
   readonly exists?: (candidate: string) => boolean;
   /**
@@ -312,21 +250,11 @@ export interface ValidationInputDependencies {
    * probe and, when the pair is present, one read-and-parse of its paired
    * compiler-*input* file (see `environment/ambiguity.ts`'s `BuildInfoFile` for
    * the full contract, including why a missing or corrupt pair is not an error
-   * there). Injected for the same reason as `exists`: the three-way `absent` /
-   * `unreadable` / `files` result has to be drivable without arranging a
-   * corrupt build tree on a real disk.
+   * there — it becomes a per-candidate rejection here). Injected for the same
+   * reason as `exists`: the three-way `absent` / `unreadable` / `files` result
+   * has to be drivable without arranging a corrupt build tree on a real disk.
    */
   readonly readBuildInfo?: BuildInfoReader['read'];
-  /**
-   * The machine's home directory, under which TronBox caches compilers.
-   *
-   * On this surface rather than inside `compiler.ts` because the seam that owns
-   * the `~/.tronbox` convention cannot read it — it imports no ambient module and
-   * is a function of its arguments alone — and `compiler.ts` must not read it
-   * either, or the module that constructs a `createRequire` resolver would also be
-   * the module that decides where it points.
-   */
-  readonly homeDirectory?: () => string;
 }
 
 export interface ValidationInputRequest {
@@ -334,59 +262,9 @@ export interface ValidationInputRequest {
   readonly contract: string;
   readonly env: ValidationInputEnvironment;
   readonly deps?: ValidationInputDependencies;
-  /**
-   * The AST-only input whose report came back non-empty — the escalation seam.
-   *
-   * **Escalation fires on ANY non-empty report, and there is no predicate.** The
-   * obvious gate — escalate only where every flagged operation is explicable by
-   * missing positions — was specified and then *measured unimplementable* with
-   * a live P4-gate observability probe. Two findings killed it. On the
-   * decisive pair, a truly safe intra-slot padding change and a genuine
-   * mid-layout insert produce reports identical in every field a gate could key
-   * on — one `insert` op each, the same `originalLabel: null`, the same absent
-   * positions, the same `changeUncertain: null`; **the only difference is the
-   * name of the inserted variable**, and no gate may be built on a user-chosen
-   * identifier. And the position half of the predicate is a *tautology* in the
-   * mode it was written for: `dist/storage/compare.js:storageFieldBegin` returns
-   * `undefined` whenever `slot` or `offset` is undefined, and AST-only output
-   * carries neither, so it scored true on all six probe rows including all four
-   * genuine rejects.
-   *
-   * What that costs is one compile before refusing a genuine incompatibility.
-   * What it buys is that an escalation only ever happens where the alternative
-   * was refusing — so the extra compile buys a possible accept on a path that
-   * otherwise ends in a rejection the user has to debug, and where the refusal
-   * stands it can name the number to change.
-   */
-  readonly escalateFrom?: ValidationInput;
 }
 
 /** ─── The refusal / leniency boundary ────────────────────────────────────── */
-
-/**
- * How a caught throw out of `compile` is classified, without quoting it.
- *
- * Detected by `name` rather than `instanceof WebAssembly.RuntimeError` for one
- * reason worth stating: the `WebAssembly` global's typing depends on which `lib`
- * the consuming project compiles with, and a validation failing to recognise the
- * compiler's own ceiling because of a `lib` setting would be absurd. Emscripten's
- * `RuntimeError` carries `name === 'RuntimeError'` either way, which is what
- * a live compile probe captured verbatim as
- * `RuntimeError: memory access out of bounds`.
- *
- * Anything that is **not** a wasm abort is re-raised: a timeout is a different
- * event from an OOM and would be a *new* cause, never a widening of cause 8.
- */
-const CEILING_MESSAGE = 'memory access out of bounds';
-
-function classifyWasmAbort(thrown: unknown): WasmAbort | null {
-  if (!(thrown instanceof Error) || thrown.name !== 'RuntimeError') {
-    return null;
-  }
-  return thrown.message.includes(CEILING_MESSAGE)
-    ? 'memory-access-out-of-bounds'
-    : 'other-wasm-abort';
-}
 
 /** Builds the reduced-fidelity input a `proceed-reduced` disposition needs. */
 type ReducedInputFactory = (mode: ReducedMode) => ValidationInput;
@@ -396,11 +274,13 @@ type ReducedInputFactory = (mode: ReducedMode) => ValidationInput;
  * in that order, so the message is produced unconditionally and a flip provably
  * cannot change it.
  *
- * `proceedWith` is `null` for every cause discovered before there is a compiled
- * output, and a `proceed-reduced` row on such a cause raises rather than silently
- * refusing. That is deliberate: there is nothing to proceed *with*, and a flip
- * that cannot be honoured has to fail at the moment it is made rather than look
- * like it worked.
+ * `proceedWith` is `null` for every cause the pipeline can currently raise,
+ * because under the Foundry model every cause is decided *before* an input
+ * exists — so a `proceed-reduced` row raises rather than silently refusing.
+ * That is deliberate: there is nothing to proceed *with*, and a flip that
+ * cannot be honoured has to fail at the moment it is made rather than look
+ * like it worked. The parameter and the emission below are kept because they
+ * are what makes a future flip a one-row change plus the input to honour it.
  */
 function dispose(
   cause: Cause,
@@ -417,9 +297,9 @@ function dispose(
   if (proceedWith === null) {
     throw new ValidationInputInvariantError(
       `the policy table says "proceed-reduced" for the cause "${cause.kind}", ` +
-        `which is decided before the compiler produces any output — so there is ` +
+        `which is decided before any validation input exists — so there is ` +
         `no layout to proceed with. A cause that can be treated leniently has to ` +
-        `be one that arises after a successful compile.`,
+        `be one that arises with a produced input in hand.`,
     );
   }
 
@@ -446,17 +326,18 @@ function dispose(
  * produces an output with no contracts, nothing detects a missing layout, and the
  * measured vacuous pass fires — `getStorageUpgradeErrors(EMPTY, real)` returns no
  * errors, so every variable in the new contract is classified as a safe append.
+ * The closure-containment clause is the input-side half of the same trap: every
+ * source the output was projected onto must be present in the input the
+ * consumer will decode spans against.
  *
- * The second is **the fidelity biconditional**, which is the assertion this
- * pipeline used to get backwards. It is not *"fidelity is `slot-level`"*: it is
- * *"the fidelity reported equals the fidelity the producing step can deliver"*.
- * A `slot-level` claim on an AST-only input is the permissive mislabel the
- * fidelity detector exists to catch; a `declaration-order-only` claim on a
- * compiled input understates what was measured. The one licensed exception is a
- * policy-chosen reduction — the leniency flip — which is why `reducedByPolicy`
- * is a parameter rather than something inferred from the value.
+ * The second is **the fidelity claim**: the one producing step assembles from
+ * the host's build record, no build record carries storage positions — TronBox
+ * does not request them — so a `slot-level` claim here is the permissive
+ * mislabel the fidelity detector exists to catch, and a `declaration-order-only`
+ * claim naming no contract at all means the output carried none, which is the
+ * vacuous pass wearing a fidelity label.
  */
-function assertInput(input: ValidationInput, reducedByPolicy: boolean): void {
+function assertInput(input: ValidationInput): void {
   const { provenance, fidelity } = input;
   const inputKeys = Object.keys(input.solcInput.sources);
 
@@ -481,44 +362,34 @@ function assertInput(input: ValidationInput, reducedByPolicy: boolean): void {
         `"${provenance.partition.target}".`,
     );
   }
+  for (const key of provenance.partition.closure) {
+    if (input.solcInput.sources[key] === undefined) {
+      throw new ValidationInputInvariantError(
+        `the produced input carries no source for "${key}", which is in the ` +
+          `closure the output was projected onto — the consumer would decode ` +
+          `AST spans against a source it does not hold.`,
+      );
+    }
+  }
   if (input.solcVersion === '') {
     throw new ValidationInputInvariantError(
       'a validation input was produced with an empty compiler version.',
     );
   }
 
-  const basis = provenance.basis;
-  if (basis.kind === 'build-record-ast') {
-    if (fidelity.kind !== 'declaration-order-only') {
-      throw new ValidationInputInvariantError(
-        `a validation input assembled from the host's build record reports ` +
-          `"${fidelity.kind}" fidelity. No build record carries storage ` +
-          `positions — TronBox does not request them — so this claims a ` +
-          `fidelity the input cannot have.`,
-      );
-    }
-    if (fidelity.missingFor.length === 0) {
-      throw new ValidationInputInvariantError(
-        'a validation input assembled from the host\'s build record reports ' +
-          'reduced fidelity for no contract at all, so its output carries no ' +
-          'contracts and the reference layout would be empty.',
-      );
-    }
-    return;
-  }
-
-  if (!basis.identity.withoutMetadataMatches) {
+  if (fidelity.kind !== 'declaration-order-only') {
     throw new ValidationInputInvariantError(
-      `a validation input was produced for an artifact whose identity does not ` +
-        `match the recompile; that outcome should have been cause 7.`,
+      `a validation input assembled from the host's build record reports ` +
+        `"${fidelity.kind}" fidelity. No build record carries storage ` +
+        `positions — TronBox does not request them — so this claims a ` +
+        `fidelity the input cannot have.`,
     );
   }
-  if (fidelity.kind !== 'slot-level' && !reducedByPolicy) {
+  if (fidelity.missingFor.length === 0) {
     throw new ValidationInputInvariantError(
-      `a compiled validation input reports "${fidelity.kind}" fidelity for ` +
-        `${fidelity.missingFor.length} contract(s), inside a supported compiler ` +
-        `range where every build emits positions. The policy table did not ask ` +
-        `for a reduction, so this is a plugin bug rather than a degradation.`,
+      'a validation input assembled from the host\'s build record reports ' +
+        'reduced fidelity for no contract at all, so its output carries no ' +
+        'contracts and the reference layout would be empty.',
     );
   }
 }
@@ -529,12 +400,12 @@ function assertInput(input: ValidationInput, reducedByPolicy: boolean): void {
  * Resolves the artifact, or hands the decision back to whoever owns it.
  *
  * `resolve` reports three statuses and only one of them is the validation
- * ladder's:
+ * pipeline's:
  *
  * - **`unique`** — proceed.
  * - **`ambiguous`** — *policy for this branch is the operation's*, stated in the
  *   seam itself, and the operation is expected to decide before calling here.
- *   When it has not, the validation ladder fails closed by raising the seam's
+ *   When it has not, the validation pipeline fails closed by raising the seam's
  *   **own** diagnosis rather than validating one of N same-named contracts:
  *   picking silently is the mis-pairing class this whole sub-feature exists to
  *   remove, and `ArtifactNameAmbiguousError` renders the candidates itself, so
@@ -542,7 +413,7 @@ function assertInput(input: ValidationInput, reducedByPolicy: boolean): void {
  * - **`indeterminate`** — the build-info index could not be built, so *collisions
  *   could not be checked*; the abstraction still came from the host's own
  *   resolver for that name. The operation owns the statement for it
- *   (`'artifact-name-indeterminate'`) and the validation ladder must not
+ *   (`'artifact-name-indeterminate'`) and the validation pipeline must not
  *   invent a second rendering, so it proceeds on the abstraction and says
  *   nothing.
  */
@@ -620,12 +491,12 @@ function recordMaps(output: unknown): RecordMaps | undefined {
  * The projected output: the target's own closure, and nothing else.
  *
  * **Projection is not tidiness, it is a requirement of the consumer.** The engine
- * iterates `solcOutput.contracts` and reads `solcInput.sources[source].content`
- * for each source it finds, so a record covering sources outside this target's
- * closure — the whole-project compile, which is the common case — would send the
- * consumer looking for input entries the reconstructed input does not have. The
- * closure is the same set the compile path hands solc, so the two paths produce
- * the same key space.
+ * iterates `solcOutput.contracts` and validates every contract it finds, so a
+ * record covering sources outside this target's closure — the whole-project
+ * compile, which is the common case — would make every validation pay for the
+ * whole project. The paired input is *not* projected: its whole key set rides
+ * along verbatim, which is harmless (the engine reads input sources by the
+ * output's keys) and is what keeps `solcInput` the recorded file's own content.
  *
  * **It is also where the one assumption the fresh path rests on gets checked at
  * runtime instead of trusted.** A record's `sources` list can be a *subset* of
@@ -633,7 +504,7 @@ function recordMaps(output: unknown): RecordMaps | undefined {
  * reasoning that a contract present in `contracts` must have its whole import
  * closure in the same file (solc cannot emit bytecode for a source whose imports
  * are absent) is sound but not something to bet a silent vacuous pass on. Any
- * closure key whose AST is missing rejects the candidate, and the caller compiles.
+ * closure key whose AST is missing rejects the candidate.
  */
 function projectBuildRecord(
   maps: RecordMaps,
@@ -654,12 +525,44 @@ function projectBuildRecord(
     }
   }
 
-  // One cast, from `unknown`, at the boundary where JSON becomes a typed record —
-  // the same idiom the compiler wrapper uses on solc's own answer. Everything the
-  // cast asserts has been checked immediately above, except the AST's interior,
-  // which is the engine's subject and not this module's.
+  // One cast, from `unknown`, at the boundary where JSON becomes a typed record.
+  // Everything the cast asserts has been checked immediately above, except the
+  // AST's interior, which is the engine's subject and not this module's.
   const projected: unknown = { contracts, sources };
   return projected as SolcStandardOutput;
+}
+
+/**
+ * The paired compiler input, narrowed to the shape consumers are typed over —
+ * and handed on **verbatim** when it fits.
+ *
+ * The checks assert exactly what `SolcStandardInput` declares: the language,
+ * a `sources` map whose every entry carries string `content`, and a `settings`
+ * object with an `outputSelection`. Nothing is copied, defaulted or repaired:
+ * a pair that fails any check is not "fixed up", it rejects the candidate,
+ * because a repaired input is no longer the input that produced the output —
+ * which is the whole property the fresh path exists to preserve.
+ */
+function narrowRecordedInput(value: unknown): SolcStandardInput | undefined {
+  const top = asObject(value);
+  if (top === undefined || top.language !== 'Solidity') {
+    return undefined;
+  }
+  const sources = asObject(top.sources);
+  if (sources === undefined) {
+    return undefined;
+  }
+  for (const entry of Object.values(sources)) {
+    const source = asObject(entry);
+    if (source === undefined || typeof source.content !== 'string') {
+      return undefined;
+    }
+  }
+  const settings = asObject(top.settings);
+  if (settings === undefined || asObject(settings.outputSelection) === undefined) {
+    return undefined;
+  }
+  return value as SolcStandardInput;
 }
 
 interface GateRequest {
@@ -677,7 +580,8 @@ interface GateRequest {
  * branch narrows the projected output with it: a `fresh` gate without the output
  * it verified — or an output without the gate that verified it — is not
  * representable, which is the object-identity half of *"the file that verifies is
- * the file consumed."*
+ * the file consumed."* The same holds for the paired input: it rides the same
+ * result member as the gate that vouched for it.
  */
 type GateResult =
   | {
@@ -686,10 +590,14 @@ type GateResult =
       readonly output: SolcStandardOutput;
       /**
        * The verified record's own `evm.bytecode`, carried out so the fresh path
-       * can decide cause 10 from the same object that verified. Absent only if
-       * the host's record omitted the field, which no supported version does.
+       * can decide the library-name cause from the same object that verified.
+       * Absent only if the host's record omitted the field, which no supported
+       * version does.
        */
       readonly creationBytecode: RecordBytecode | undefined;
+      /** The paired `<hash>.json` content, narrowed, verbatim. */
+      readonly solcInput: SolcStandardInput;
+      readonly inputFile: string;
     }
   | {
       readonly kind: 'fallback';
@@ -709,7 +617,14 @@ type GateResult =
  * **The file that verifies is the file consumed.** Verifying record A and then
  * reading ASTs from record B would reintroduce the mis-pairing this check exists
  * to remove, so verification and projection happen against the same object and
- * the result carries its file name.
+ * the result carries its file name. The paired input is held to the same rule:
+ * only the verified candidate's own `<hash>.json` may become `solcInput`, and a
+ * candidate whose pair is missing, unparseable or not this output's input is
+ * **rejected** rather than patched over — the reasons are the last three
+ * members of `BuildRecordRejection`.
+ *
+ * A `fallback` result no longer sends the caller to a compiler: it is the
+ * evidence a `build-record-stale` / `build-record-absent` refusal carries.
  */
 function consultBuildRecord(request: GateRequest): GateResult {
   let result;
@@ -717,7 +632,7 @@ function consultBuildRecord(request: GateRequest): GateResult {
     result = request.readBuildInfo(request.buildInfoDirectory);
   } catch {
     // A reader that raises is the same situation as one that reports the
-    // directory unreadable: no record can be consulted, so the caller compiles.
+    // directory unreadable: no record can be consulted, so the caller refuses.
     return {
       kind: 'fallback',
       gate: { kind: 'absent', because: 'directory-unreadable' },
@@ -776,19 +691,37 @@ function consultBuildRecord(request: GateRequest): GateResult {
       rejected.push({ file: file.file, reason: 'ast-closure-incomplete' });
       continue;
     }
-    if (
-      isLayoutVacuous(
-        output,
-        request.targetKey,
-        request.contractName,
-        'build-record-ast',
-      )
-    ) {
+    if (isLayoutVacuous(output, request.targetKey, request.contractName)) {
       // The bytecode verified and the closure's ASTs are all present, but this
       // record's AST for the target source declares no such contract — so the
       // layout the engine reconstructs would be empty against a contract that is
       // not. A record to stop using, not a bug to report.
       rejected.push({ file: file.file, reason: 'target-definition-absent' });
+      continue;
+    }
+
+    // The paired compiler input, checked last because it is only ever needed
+    // for the candidate everything above vouched for. The `inputFile` /
+    // `input` split is the reader's own contract: `inputFile` undefined means
+    // the pair does not exist; `inputFile` set with `input` undefined means it
+    // exists and did not parse.
+    if (file.inputFile === undefined) {
+      rejected.push({ file: file.file, reason: 'input-pair-absent' });
+      continue;
+    }
+    if (file.input === undefined) {
+      rejected.push({ file: file.file, reason: 'input-pair-unparseable' });
+      continue;
+    }
+    const solcInput = narrowRecordedInput(file.input);
+    if (
+      solcInput === undefined ||
+      request.closure.some(key => solcInput.sources[key] === undefined)
+    ) {
+      // Parses but is not the solc input of this output: wrong shape, or it
+      // lacks a source the record's own output covers — either way, handing it
+      // to a consumer would decode this output's spans against the wrong text.
+      rejected.push({ file: file.file, reason: 'input-pair-unusable' });
       continue;
     }
 
@@ -801,6 +734,8 @@ function consultBuildRecord(request: GateRequest): GateResult {
       },
       output,
       creationBytecode: asBytecode(asObject(entry.evm)?.bytecode),
+      solcInput,
+      inputFile: file.inputFile,
     };
   }
 
@@ -815,111 +750,27 @@ function consultBuildRecord(request: GateRequest): GateResult {
       };
 }
 
-/** ─── The compile step ───────────────────────────────────────────────────── */
+/** ─── Step 3: the fresh arm ──────────────────────────────────────────────── */
 
-type CompileOutcome =
-  | { readonly ok: true; readonly output: SolcStandardOutput }
-  | { readonly ok: false; readonly cause: Cause };
-
-/**
- * One partition, one invocation — and **no retry, no split, no fallback**. One
- * contract's closure is the smallest input this plugin can offer, so the ceiling
- * is terminal; a retry would meet a poisoned handle and report a plugin bug where
- * the user needs an actionable refusal.
- *
- * **The memo is call-scoped and amortises nothing.** It holds at most one entry,
- * because one call derives one contract, and it is created inside the call, so it
- * cannot hit across calls — any statement that it amortises the compile is false,
- * and under the ladder it is more false than it was: three paths in four compile
- * at most once and the fourth does not compile at all. It ships because it is the
- * seam a union-first partition would need and because it is directly testable at
- * the partition module's own boundary, not because it saves anything today.
- */
-function compilePartition(
-  handle: CompilerHandle,
-  memo: CompileMemo,
-  identityKey: string,
-  input: SolcStandardInput,
-  record: PartitionRecord,
-): CompileOutcome {
-  const memoized = memo.get(identityKey);
-  if (memoized !== undefined) {
-    return { ok: true, output: memoized };
-  }
-  try {
-    const output = handle.compile(input);
-    memo.set(identityKey, output);
-    return { ok: true, output };
-  } catch (thrown) {
-    const raised = classifyWasmAbort(thrown);
-    if (raised === null) {
-      // Not the compiler's own ceiling. The handle has already retired itself,
-      // and this is not one of the eleven, so it is not dressed as one.
-      throw thrown;
-    }
-    return {
-      ok: false,
-      cause: {
-        kind: 'compiler-resource-exhausted',
-        target: record.target,
-        closureSize: record.closure.length,
-        raised,
-      },
-    };
-  }
-}
-
-/** ─── The two arms ───────────────────────────────────────────────────────── */
-
-/** Everything both arms need, assembled once before the gate is consulted. */
+/** Everything the fresh arm needs, assembled once before the gate is consulted. */
 interface ArmContext {
   readonly name: string;
   readonly record: ArtifactRecord;
-  readonly env: ValidationInputEnvironment;
-  readonly partition: Partition;
-  readonly solcInput: SolcStandardInput;
+  readonly partition: PartitionRecord;
   readonly channel: Pick<OutputChannel, 'note' | 'degraded'>;
 }
 
-interface FinishRequest {
-  readonly context: ArmContext;
-  readonly solcOutput: SolcStandardOutput;
-  readonly solcVersion: string;
-  readonly fidelity: LayoutFidelity;
-  readonly basis: InputBasis;
-  readonly reducedByPolicy: boolean;
-}
-
-function finishInput(request: FinishRequest): ValidationInput {
-  const { context } = request;
-  const input: ValidationInput = Object.freeze({
-    solcInput: context.solcInput,
-    solcOutput: request.solcOutput,
-    solcVersion: request.solcVersion,
-    fidelity: request.fidelity,
-    provenance: Object.freeze({
-      reconstructedFrom: 'contracts-directory' as const,
-      basis: Object.freeze(request.basis),
-      partition: context.partition.record,
-      sourceKeys: context.partition.record.closure,
-    }),
-  });
-  assertInput(input, request.reducedByPolicy);
-  return input;
-}
-
 /**
- * The namespaced shortfall, stated on **every** path because it is present on
- * every path.
+ * The namespaced shortfall, stated because it is present on the one producing
+ * path.
  *
  * A namespace's members get no `slot` and no `offset` unless the sources are
  * compiled a second time with a storage variable injected for each namespaced
- * struct, which this version does not do — so they are position-less whether the
- * flat layout came from a build record or from this plugin's own compile. And
- * upstream's only slot-absence branch reads the flat `storage` list, which for a
- * contract whose storage lives entirely in namespaces is **empty**, so the branch
- * never fires while every namespace member lacks positions. Every OZ 5.x contract
- * is in that state.
+ * struct, which this plugin never does — so they are position-less in every
+ * input this pipeline produces. And upstream's only slot-absence branch reads
+ * the flat `storage` list, which for a contract whose storage lives entirely in
+ * namespaces is **empty**, so the branch never fires while every namespace
+ * member lacks positions. Every OZ 5.x contract is in that state.
  *
  * What the note means — bounded by the upstream maintainer's ruling (2026-08-04):
  * this is a fidelity statement, not a safety patch. A real change to a namespaced
@@ -936,7 +787,7 @@ function stateNamespaceShortfall(
 ): void {
   const namespaces = declaresNamespacedStorage(
     output,
-    context.partition.record.target,
+    context.partition.target,
     context.name,
   );
   if (namespaces.length === 0) {
@@ -950,7 +801,7 @@ function stateNamespaceShortfall(
     detail: [
       'Slot positions for namespaced members require a second compilation of ' +
         'the same sources with a storage variable injected for each namespaced ' +
-        'struct. This version does not perform it, in either validation mode.',
+        'struct. This version does not perform it.',
       'The validation engine reports nothing here on its own: its ' +
         'reduced-information check reads only the flat storage list, and for a ' +
         'contract whose storage lives entirely in namespaces that list is empty.',
@@ -964,44 +815,52 @@ function stateNamespaceShortfall(
 }
 
 /**
- * Step 3 — the fresh path. **Zero compiles**, and no compiler is located, loaded
- * or version-compared.
+ * Step 3 — the fresh path, which is the pipeline's only producing path.
+ * **Zero compiles**, and no compiler is located, loaded or version-compared.
  *
- * **Exactly two causes are unreachable from here, and both for a reason rather
- * than by omission.** Cause 1, a *missing* compiler, cannot refuse a validation
- * whose layouts come from the host's own record — which is what makes validation
- * work under the tool's own test command, where the artifact tree is a fresh
- * temporary copy and no compile has run. Cause 3, a compiler-versus-artifact
- * *mismatch*, is decided here by content instead: the record's deployed bytecode
- * matched the artifact's, which is stronger evidence than two version strings
- * agreeing. **Every other cause the path can reach, it does reach** — the range
- * gate ahead of it, the source-resolution causes ahead of it, and cause 10 below.
+ * **The compiler causes are unreachable from here for a reason rather than by
+ * omission.** A missing or mismatched compiler cannot refuse a validation
+ * whose layouts come from the host's own record — which is what makes
+ * validation work under the tool's own test command, where the artifact tree
+ * is a fresh temporary copy and no compile has run. The record's deployed
+ * bytecode matched the artifact's, which is stronger evidence than two
+ * version strings agreeing. Every cause the path can reach, it does reach —
+ * the range gate ahead of it, the source-resolution causes ahead of it, and
+ * the library-name band below. Nothing on this path can raise
+ * `build-record-stale`: a candidate that fails content verification is a
+ * rejection inside the gate, decided before this arm is entered.
  */
 function freshArm(
   context: ArmContext,
-  gate: Extract<BuildRecordGate, { kind: 'fresh' }>,
-  output: SolcStandardOutput,
-  creationBytecode: RecordBytecode | undefined,
+  fresh: Extract<GateResult, { kind: 'fresh' }>,
 ): ValidationInputOutcome {
-  if (creationBytecode !== undefined) {
+  if (fresh.creationBytecode !== undefined) {
     /**
-     * **Cause 10 is decided on this path too, and it has to be.** A library name
-     * past the band corrupts the *artifact's* bytecode — measured through the
-     * host with a 45-character name, which produced an artifact whose `bytecode`
-     * had an odd hex digit count — and that is a property of the project, not of
-     * which path validated it. This path never hashes the artifact, so the
-     * failure would not surface here; it would surface later, in whatever reads
-     * the implementation identity, as upstream's `Bytecode is not a valid hex
-     * string`, which names neither the library nor the cause. The band is read
-     * off the verified record's own link references, which the host requests.
+     * **The library-name cause is decided here, and it has to be.** A library
+     * name past the band corrupts the *artifact's* bytecode — measured through
+     * the host with a 45-character name, which produced an artifact whose
+     * `bytecode` had an odd hex digit count — and that is a property of the
+     * project, not of which path validated it. This path never hashes the
+     * artifact, so the failure would not surface here; it would surface later,
+     * in whatever reads the implementation identity, as upstream's `Bytecode
+     * is not a valid hex string`, which names neither the library nor the
+     * cause. The band is read off the verified record's own link references,
+     * which the host requests.
      */
-    const band = libraryNameBand(creationBytecode);
+    const band = libraryNameBand(fresh.creationBytecode);
     if (band !== undefined) {
       return dispose(band, context.channel, null);
     }
   }
 
-  const fidelity = detectFidelity(output, 'build-record-ast');
+  /**
+   * Unconditionally, on every produced input — never assumed from the basis.
+   * Today every build record is AST-only, so the detector's answer is always
+   * `declaration-order-only`; the day TronBox emits `storageLayout` into its
+   * records, this call is what notices, and the return-boundary assertion is
+   * what fails loudly instead of a stale claim shipping silently.
+   */
+  const fidelity = detectFidelity(fresh.output);
 
   context.channel.degraded({
     code: 'storage-layout-unavailable',
@@ -1011,223 +870,52 @@ function freshArm(
     detail: [
       'TronBox does not ask the compiler for storage layouts, so the build ' +
         'record it wrote for this contract carries none and the layout is ' +
-        'reconstructed from the contract source instead.',
+        'reconstructed from the record\'s own AST.',
       'A reconstructed layout is stricter, not blinder: renames, retypes, ' +
         'reordering and deletions are all still detected, and appending new ' +
         'variables is still safe. What it cannot decide is whether a change ' +
         'fits inside space a `__gap` array or intra-slot padding already ' +
-        'reserved.',
+        'reserved — those two shapes are refused rather than silently ' +
+        'accepted.',
     ],
     remedy:
-      'No action needed: if the check reaches one of those two shapes, the ' +
-      'plugin compiles this one contract itself and re-checks with slot ' +
-      'positions before refusing anything.',
+      'Storage-layout positions were not available from the TronBox build ' +
+      'record, so the comparison used declaration order. See the README ' +
+      'section "Validation without storage layouts" for what that mode can ' +
+      'and cannot decide.',
   });
 
-  stateNamespaceShortfall(context, output);
+  stateNamespaceShortfall(context, fresh.output);
 
-  return {
-    kind: 'input',
-    input: finishInput({
-      context,
-      solcOutput: output,
-      solcVersion: context.record.longCompilerVersion,
-      fidelity,
-      basis: {
-        kind: 'build-record-ast',
-        gate,
+  const input: ValidationInput = Object.freeze({
+    solcInput: fresh.solcInput,
+    solcOutput: fresh.output,
+    solcVersion: context.record.longCompilerVersion,
+    fidelity,
+    provenance: Object.freeze({
+      basis: Object.freeze({
+        kind: 'build-record-ast' as const,
+        gate: fresh.gate,
         compilerLongVersion: context.record.longCompilerVersion,
-      },
-      reducedByPolicy: false,
+        inputFile: fresh.inputFile,
+      }),
+      partition: context.partition,
+      sourceKeys: Object.freeze(Object.keys(fresh.solcInput.sources)),
     }),
-  };
-}
-
-interface CompileArmRequest {
-  readonly context: ArmContext;
-  readonly gate: BuildRecordGate;
-  readonly reason: CompileReason;
-  readonly exists: (candidate: string) => boolean;
-  readonly load: (soljsonPath: AbsolutePath) => CompilerHandle;
-  readonly homeDirectory: () => string;
-}
-
-/**
- * Steps 4 and 5 — the compiling paths, which are the same code reached for three
- * different reasons.
- *
- * Nothing here cares *why* it was reached: a stale record, no record, and an
- * escalated AST-only refusal all need the same single-contract compile with
- * `storageLayout` requested, and the reason is carried into the provenance rather
- * than branched on. That is the property that made the earlier always-compile
- * draft reusable instead of rewritable.
- */
-function compileArm(request: CompileArmRequest): ValidationInputOutcome {
-  const { context, gate, reason } = request;
-  const { env, name, record, channel, solcInput, partition } = context;
-  const target = partition.record.target;
-
-  const opened = openCompiler({
-    compiler: env.compiler,
-    artifactLongVersion: record.longCompilerVersion,
-    exists: request.exists,
-    load: request.load,
-    homeDirectory: request.homeDirectory,
   });
-  if (!opened.ok) {
-    return dispose(opened.cause, channel, null);
-  }
-
-  const compiled = compilePartition(
-    opened.handle,
-    createCompileMemo(),
-    partitionIdentity(
-      partition.record,
-      env.compiler.settings,
-      opened.identity.longVersion,
-    ),
-    solcInput,
-    partition.record,
-  );
-  if (!compiled.ok) {
-    return dispose(compiled.cause, channel, null);
-  }
-  const solcOutput = compiled.output;
-
-  const errorCount = countErrorDiagnostics(solcOutput);
-  if (errorCount > 0) {
-    // Cause 11, never cause 7: a failed compile produces no artifact to compare,
-    // so it cannot honestly reach the identity gate at all.
-    return dispose(
-      { kind: 'sources-do-not-compile', target, errorCount },
-      channel,
-      null,
-    );
-  }
-
-  const contractOutput = solcOutput.contracts?.[target]?.[name];
-
-  if (contractOutput !== undefined) {
-    const band = libraryNameBand(contractOutput.evm.bytecode);
-    if (band !== undefined) {
-      // Before any identity work: past the band, upstream's own hashing throws
-      // `Bytecode is not a valid hex string`, which names neither the library nor
-      // the cause.
-      return dispose(band, channel, null);
-    }
-  }
-
-  const identity =
-    contractOutput === undefined
-      ? { comparison: absentFromRecompile() }
-      : compareArtifactIdentity({
-          recompiled: contractOutput.evm.bytecode,
-          artifactBytecode: record.bytecode,
-        });
-
-  if (!identity.comparison.withoutMetadataMatches) {
-    return dispose({ kind: 'artifact-stale', contract: name }, channel, null);
-  }
-
-  const basis: InputBasis = {
-    kind: 'plugin-compile',
-    reason,
-    gate,
-    compiler: opened.identity,
-    identity: identity.comparison,
-  };
-
-  /**
-   * Unconditionally, and one call site — above both the reduced path and the
-   * ordinary one, so *every* produced input has had the detector run over it.
-   * Calling it only where degradation is suspected would let the flip test pass
-   * while production never ran the detector, and the day the table flips a
-   * reduced input would ship reading `slot-level`.
-   */
-  const detected = detectFidelity(solcOutput, 'plugin-compile');
-
-  const build = (
-    fidelity: LayoutFidelity,
-    reducedByPolicy: boolean,
-  ): ValidationInput =>
-    finishInput({
-      context,
-      solcOutput,
-      solcVersion: opened.identity.longVersion,
-      fidelity,
-      basis,
-      reducedByPolicy,
-    });
-
-  /**
-   * What a `proceed-reduced` row would produce. Switching on the mode rather than
-   * ignoring it means a second `ReducedMode` member becomes a compile error here
-   * instead of silently taking this branch.
-   */
-  const reducedInput: ReducedInputFactory = mode => {
-    switch (mode.kind) {
-      case 'declaration-order-only':
-        return build(
-          detected.kind === 'declaration-order-only'
-            ? detected
-            : {
-                kind: 'declaration-order-only',
-                // Documented never-empty, so it names the contract whose layout
-                // is the reason the flip was reached.
-                missingFor: Object.freeze([`${target}:${name}`]),
-              },
-          true,
-        );
-    }
-  };
-
-  if (isLayoutVacuous(solcOutput, target, name, 'plugin-compile')) {
-    const declaredStateVariables = countDeclaredStateVariables(
-      solcOutput,
-      target,
-      name,
-    );
-    if (declaredStateVariables > 0) {
-      // A cause and not an invariant throw, because letting an empty reference
-      // layout through is a measured *silent accept*.
-      return dispose(
-        { kind: 'layout-vacuous', contract: name, declaredStateVariables },
-        channel,
-        reducedInput,
-      );
-    }
-  }
-
-  stateNamespaceShortfall(context, solcOutput);
-
-  if (identity.comparison.metadataOnlyDifference === true) {
-    // Recorded in provenance *and* stated. The durable record is the provenance
-    // flag; the channel statement is the courtesy, which is why it is a note
-    // rather than a degraded-mode entry — nothing about the validation is
-    // reduced, only the metadata blob differs.
-    channel.note(
-      `${name}: the compiled code matches the artifact exactly, but the ` +
-        `compiler metadata differs.`,
-      [
-        'Validation is proceeding: upgrade safety is decided from the code, and ' +
-          'the code is identical.',
-      ],
-    );
-  }
-
-  return { kind: 'input', input: build(detected, false) };
+  assertInput(input);
+  return { kind: 'input', input };
 }
 
 /**
- * The range gate, applied on **every** path including the one that never loads a
- * compiler.
+ * The range gate, applied before any record is read.
  *
- * The compiler-opening step applies the same predicate to the same value, and
- * that is not a duplicated decision: there is one range constant and one
- * predicate reading it, and this is the call that makes an out-of-range project
- * refuse *before* any work on the path where nothing is ever loaded. Declaring a
- * support range and then honouring it only when a compile happens to be needed
- * would make the range a property of the cache state rather than of the plugin.
+ * No compiler is ever loaded, but declaring a support range and honouring it
+ * only sometimes would make the range a property of the project's state rather
+ * than of the plugin: the record this pipeline interprets was produced by the
+ * project's compiler, and this plugin's reading of that output is verified
+ * only across `SUPPORTED_SOLC`. An out-of-range project refuses *before* any
+ * work, with the range named.
  */
 function rangeGate(compiler: CompilerConfiguration): Cause | undefined {
   if (isSupportedSolcVersion(compiler.resolvedVersion)) {
@@ -1245,41 +933,6 @@ function rangeGate(compiler: CompilerConfiguration): Cause | undefined {
   };
 }
 
-/**
- * The escalation source, validated — and this is where P4 fires **once**.
- *
- * Two conditions, both raising rather than refusing, because a caller that gets
- * either wrong has a bug the user cannot act on. The basis must be
- * `'build-record-ast'`: escalation exists to replace a reconstructed layout with
- * a compiled one, and an input that already carries positions has nothing to
- * escalate to — which is exactly why a second escalation of the same chain
- * cannot happen, since this function's own product is a `'plugin-compile'` input.
- * And the input must be *this* contract's, or the compile would answer a question
- * about a different target.
- */
-function escalationGate(
-  escalateFrom: ValidationInput,
-  target: string,
-): Extract<BuildRecordGate, { kind: 'fresh' }> {
-  const basis = escalateFrom.provenance.basis;
-  if (basis.kind !== 'build-record-ast') {
-    throw new ValidationInputInvariantError(
-      `an escalation was requested from an input this plugin compiled itself ` +
-        `(reason "${basis.reason}"). Escalation replaces a layout reconstructed ` +
-        `from the host's build record with a compiled one, so an already ` +
-        `compiled input has nothing to escalate to — and asking twice for the ` +
-        `same target means the second answer was not being accepted.`,
-    );
-  }
-  if (escalateFrom.provenance.partition.target !== target) {
-    throw new ValidationInputInvariantError(
-      `an escalation for "${target}" was requested from an input derived for ` +
-        `"${escalateFrom.provenance.partition.target}".`,
-    );
-  }
-  return basis.gate;
-}
-
 /** ─── The face's implementation ──────────────────────────────────────────── */
 
 export async function deriveValidationInput(
@@ -1291,12 +944,7 @@ export async function deriveValidationInput(
   const readSource =
     deps.readSource ??
     ((candidate: string) => fs.readFileSync(candidate, 'utf8'));
-  const load = deps.loadCompiler ?? loadCompiler;
   const readBuildInfo = deps.readBuildInfo ?? fileSystemBuildInfoReader.read;
-  // `os.homedir` passed as a reference rather than called here: the gate inside
-  // `openCompiler` decides whether the machine is read at all, and on the fresh
-  // path it is not read even once.
-  const homeDirectory = deps.homeDirectory ?? (() => os.homedir());
   const channel = env.output;
 
   const resolved = artifactAbstraction(env, contract);
@@ -1335,15 +983,16 @@ export async function deriveValidationInput(
   }
 
   /**
-   * The closure is resolved on every path, before the gate, and that ordering is
-   * the design rather than an accident.
+   * The closure is resolved before the gate, and that ordering is the design
+   * rather than an accident.
    *
-   * The fresh path needs it twice over — the input the consumer receives is
-   * assembled from it, and it is the key set the build record is projected onto —
-   * so there is no path that can skip it and no branch on whether to. It also
-   * keeps the source-resolution causes ahead of every compiler cause, which is
-   * the honest order once the compiler is optional: a project with an unreadable
-   * import has that problem whether or not it also lacks a cached compiler.
+   * The gate needs it twice over — it is the key set the build record is
+   * projected onto, and the derived `targetKey` is how the record's
+   * `contracts` map is indexed for this contract at all. It also keeps the
+   * source-resolution causes ahead of the record causes, which is the honest
+   * order: a project with an unreadable import has that problem whether or
+   * not it also lacks a build record, and `tronbox compile --all` cannot fix
+   * a reference the compiler itself would refuse.
    */
   const graph = resolveSourceGraph({
     targetPath: absoluteSourcePath(record.sourcePath, env.paths.root),
@@ -1358,26 +1007,12 @@ export async function deriveValidationInput(
   }
 
   const partition = cutPartition(graph.targetKey, graph.sources);
-  const solcInput = buildSolcInput(partition.sources, env.compiler);
   const context: ArmContext = {
     name,
     record,
-    env,
     partition,
-    solcInput,
     channel,
   };
-
-  if (request.escalateFrom !== undefined) {
-    return compileArm({
-      context,
-      gate: escalationGate(request.escalateFrom, partition.record.target),
-      reason: 'ast-only-escalation',
-      exists,
-      load,
-      homeDirectory,
-    });
-  }
 
   const consulted = consultBuildRecord({
     readBuildInfo,
@@ -1385,27 +1020,18 @@ export async function deriveValidationInput(
     targetKey: graph.targetKey,
     contractName: name,
     artifactDeployedBytecode: record.deployedBytecode,
-    closure: partition.record.closure,
+    closure: partition.closure,
   });
 
   if (consulted.kind === 'fresh') {
-    return freshArm(
-      context,
-      consulted.gate,
-      consulted.output,
-      consulted.creationBytecode,
-    );
+    return freshArm(context, consulted);
   }
 
-  return compileArm({
-    context,
-    gate: consulted.gate,
-    reason:
-      consulted.gate.kind === 'stale'
-        ? 'build-record-stale'
-        : 'build-record-absent',
-    exists,
-    load,
-    homeDirectory,
-  });
+  return dispose(
+    consulted.gate.kind === 'stale'
+      ? { kind: 'build-record-stale', rejected: consulted.gate.rejected }
+      : { kind: 'build-record-absent', because: consulted.gate.because },
+    channel,
+    null,
+  );
 }

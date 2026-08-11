@@ -25,13 +25,19 @@ import { unreachableCause, type Cause } from './causes';
  *   substitutes this module at its boundary in a fixture, which is a test
  *   affordance and not an API.
  *
- * **What v1 decides: refuse, on all eleven.** There is no input v1 produces
- * whose fidelity is anything but slot-level. The `proceed-reduced` machinery is
- * built anyway, because the reporting side is what makes a flip cheap — a
- * measurement showed that reduced fidelity is *unobservable* from upgrades-core
- * (the report carries no flag and `hasLayout` is not public), so a flip without
- * a detector and a rendered statement produces a plugin that proceeds silently,
- * violating the requirement that reduced-fidelity validation be disclosed.
+ * **What v1 decides: refuse, on all seven.** Under the Foundry model every
+ * cause is decided *before* a validation input exists — the record either
+ * verifies and the fresh path proceeds, or the refusal fires with nothing to
+ * proceed with — so a `proceed-reduced` row is currently un-honourable on
+ * every cause and `dispose` raises if one is ever reached. The machinery is
+ * kept anyway, because the reporting side is what makes a future flip cheap —
+ * a measurement showed that reduced fidelity is *unobservable* from
+ * upgrades-core (the report carries no flag and `hasLayout` is not public), so
+ * a flip without a detector and a rendered statement produces a plugin that
+ * proceeds silently, violating the requirement that reduced-fidelity
+ * validation be disclosed. A flip today is therefore one row here PLUS a
+ * produced input for the flipped cause to proceed with, and the second half is
+ * the real work.
  */
 
 /** One member in v1, and v1 never constructs it outside the flip test. */
@@ -72,8 +78,8 @@ const REFUSE = { disposition: 'refuse' } as const;
  * `ReducedMode` is already constructible, and `'storage-layout-unavailable'` is
  * already a `DegradedCode` member (`src/output/types.ts:69`).
  *
- * The `Record<Cause['kind'], …>` annotation is what makes the table total: a
- * twelfth cause cannot be added to the union without a row appearing here (a
+ * The `Record<Cause['kind'], …>` annotation is what makes the table total: an
+ * eighth cause cannot be added to the union without a row appearing here (a
  * missing key is TS2741, an unknown key TS2353), and the failure is a compile
  * error at the moment the member is *added* rather than the moment it is first
  * *reached*.
@@ -87,17 +93,13 @@ const REFUSE = { disposition: 'refuse' } as const;
  * exactly backwards from what the flip scaffolding asks for.
  */
 const POLICY_TABLE: Readonly<Record<Cause['kind'], PolicyEntry>> = {
-  'compiler-absent': REFUSE,
   'compiler-unsupported': REFUSE,
-  'compiler-mismatched': REFUSE,
   'source-unreadable': REFUSE,
   'import-unresolvable': REFUSE,
   'artifact-shape-unsupported': REFUSE,
-  'artifact-stale': REFUSE,
-  'compiler-resource-exhausted': REFUSE,
-  'layout-vacuous': REFUSE,
+  'build-record-absent': REFUSE,
+  'build-record-stale': REFUSE,
   'library-name-unsupported': REFUSE,
-  'sources-do-not-compile': REFUSE,
 };
 
 /**

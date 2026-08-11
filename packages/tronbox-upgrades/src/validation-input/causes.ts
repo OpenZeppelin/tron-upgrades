@@ -1,46 +1,54 @@
 import { ValidationInputInvariantError } from './errors';
 
 /**
- * The closed union of the eleven reasons the validation ladder cannot produce a
- * validation input, and nothing else. Pure data: no policy, no rendering, no I/O.
+ * The closed union of the seven reasons the validation pipeline cannot produce
+ * a validation input, and nothing else. Pure data: no policy, no rendering, no
+ * I/O.
  *
  * **Closed is the property that matters.** It is what makes one
- * `could not validate` covering eleven different situations unrepresentable —
+ * `could not validate` covering seven different situations unrepresentable —
  * the actionable-diagnosis failure the enumeration exists to prevent — and it
- * is what makes *"any obligation the validation ladder owes a diagnosis for
+ * is what makes *"any obligation the validation pipeline owes a diagnosis for
  * has a member"* checkable rather than aspirational. Adding an obligation adds
  * a member; there is no `throw` at a call site for a condition that lacks one.
  *
- * **Every payload field is a scalar or a closed union — the scalars-only
- * rule.** That is not a convention asking politely: there is no field on any
- * member that a Solidity source string, a settings object, a host handle or an
- * upstream `Error` could be assigned to, so the leak is unrepresentable rather
- * than filtered. The source-confinement rule confines source text to
- * `solcInput.sources[key].content` elsewhere, and this type is half of why
- * that holds.
+ * **Every payload field is a scalar, a closed union, or a list of records made
+ * of exactly those — the scalars-only rule.** That is not a convention asking
+ * politely: there is no field on any member that a Solidity source string, a
+ * settings object, a host handle or an upstream `Error` could be assigned to,
+ * so the leak is unrepresentable rather than filtered. The one non-scalar
+ * payload, cause 6's `rejected` list, is a `readonly` array of
+ * {@link BuildRecordRejection} — a file path plus a closed-union reason — and
+ * carries the same property member-wise. The source-confinement rule confines
+ * source text to `solcInput.sources[key].content` elsewhere, and this type is
+ * half of why that holds.
+ *
+ * ── The Foundry-model cause-set change (review decision, 2026-08-07) ─────────
+ *
+ * This union used to have eleven members, four of them about the plugin's own
+ * embedded compiler. The maintainer decision to adopt the Foundry model —
+ * validate from the build record TronBox already wrote, never compile —
+ * changed the set as follows:
+ *
+ * | cause | fate |
+ * |---|---|
+ * | `compiler-absent`, `compiler-mismatched`, `compiler-resource-exhausted`, `sources-do-not-compile` | DELETED — no plugin compile exists |
+ * | `artifact-stale` | ABSORBED into `build-record-stale` — the recompiled-vs-artifact comparison is gone; record-vs-artifact bytecode freshness is what remains, and its refusal names the rejected records per file |
+ * | `layout-vacuous` | DELETED — its only producer was the compile arm; on the record path the same hazard is decided per candidate at the gate (`target-definition-absent`) and flows into `build-record-stale` |
+ * | `build-record-absent`, `build-record-stale` | NEW — the two Foundry-model refusals, both remedied by `tronbox compile --all` |
+ * | `compiler-unsupported`, `source-unreadable`, `import-unresolvable`, `artifact-shape-unsupported`, `library-name-unsupported` | KEPT unchanged |
  */
 export type Cause =
   /**
-   * 1 — the compiler the project resolves to is not in `~/.tronbox`.
+   * 1 — the project's compiler version is outside `SUPPORTED_SOLC`.
    *
-   * Detectable before any work: an existence check on the derived path. The path
-   * is carried so the remedy names *which* file was looked for, which is the only
-   * way a user can tell a missing download from a moved cache.
-   */
-  | {
-      readonly kind: 'compiler-absent';
-      readonly requestedVersion: string;
-      readonly soljsonPath: string;
-      readonly family: 'tvm' | 'evm';
-    }
-  /**
-   * 2 — the compiler is outside `SUPPORTED_SOLC`.
-   *
-   * A distinct cause from 1 and 3: the compiler may be present, loadable and
-   * matching, and still outside the range this plugin has verified. The declared floor, and the
-   * gate is on the *version* rather than on the output because measurement
-   * showed a sub-0.5.13 compiler accepting a `storageLayout` request with zero
-   * diagnostics of any severity and simply omitting the key.
+   * No compiler is ever loaded, but the range still gates which solc *output*
+   * this plugin interprets: the build record the pipeline validates from was
+   * produced by the project's compiler, and this plugin is verified only
+   * across the declared range. The gate is on the *version* rather than on
+   * the output because measurement showed a sub-0.5.13 compiler accepting a
+   * `storageLayout` request with zero diagnostics of any severity and simply
+   * omitting the key.
    */
   | {
       readonly kind: 'compiler-unsupported';
@@ -48,24 +56,7 @@ export type Cause =
       readonly viaLegacyFlag?: 'useZeroFourCompiler' | 'useZeroFiveCompiler';
     }
   /**
-   * 3 — the loaded compiler is not the build that produced the artifact.
-   *
-   * Compared as the **long** version. A measurement showed why a triple cannot
-   * work: `~/.tronbox/solc/soljson_v0.8.26.js` reports
-   * `0.8.26+commit.733b4d28.Emscripten.clang` and
-   * `~/.tronbox/evm-solc/soljson_v0.8.26.js` reports
-   * `0.8.26+commit.8a97fa7a.Emscripten.clang` — same filename, different
-   * compilers, different bytecode. `family` is carried for the remedy, not for
-   * the comparison.
-   */
-  | {
-      readonly kind: 'compiler-mismatched';
-      readonly loadedLongVersion: string;
-      readonly artifactLongVersion: string;
-      readonly family: 'tvm' | 'evm';
-    }
-  /**
-   * 4 — a source in the closure is missing or unreadable.
+   * 2 — a source in the closure is missing or unreadable.
    *
    * The **path**, never the bytes — the scalars-only and source-confinement
    * rules together. `because` separates the two remedies: a file that is gone
@@ -79,13 +70,13 @@ export type Cause =
       readonly because: 'missing' | 'unreadable';
     }
   /**
-   * 5 — an import cannot be resolved to a source the plugin may supply.
+   * 3 — an import cannot be resolved to a source the host could have compiled.
    *
-   * Both halves are needed: the specifier alone does not say which file to edit.
-   * Decided *before* solc runs, because measurement showed what happens
-   * otherwise — `ParserError: Source "Nope.sol" not found: File not supplied
-   * initially`, a message about the plugin's own input assembly that a user
-   * cannot act on.
+   * Both halves are needed: the specifier alone does not say which file to
+   * edit. The walk that discovers this is also what derives the target's
+   * source key — the key the build record's `contracts` map is indexed by —
+   * so an unresolvable reference stops the validation before any record is
+   * consulted.
    */
   | {
       readonly kind: 'import-unresolvable';
@@ -93,7 +84,7 @@ export type Cause =
       readonly specifier: string;
     }
   /**
-   * 6 — the artifact lacks a field the validation ladder requires.
+   * 4 — the artifact lacks a field the validation pipeline requires.
    *
    * `missingField` is a closed union rather than a free string, so a new
    * requirement cannot be reported as a generic absence. Its five
@@ -114,70 +105,44 @@ export type Cause =
       readonly providedSince: string;
     }
   /**
-   * 7 — the artifact does not correspond to the sources on disk.
+   * 5 — no build record exists for this contract at all.
    *
-   * **The payload is the contract name and nothing else, corrected from an
-   * originally specified `identity: ArtifactIdentityComparison`.**
-   * Two reasons that field cannot stay, and the second is the substantive one:
-   *
-   * - It is an object, so it fails the type-level instrument that checks
-   *   *"every `Cause` member's payload fields extend
-   *   `string | number | boolean`"*.
-   * - **It is constant on this path, so it carries no information a message could
-   *   name.** This cause fires *iff* `withoutMetadataMatches` is `false`;
-   *   a differing trimmed hash implies a differing full hash, so
-   *   `withMetadataMatches` is `false` too; and `metadataOnlyDifference` is
-   *   present *iff*
-   *   `withoutMetadataMatches && !withMetadataMatches`, so it is absent. The
-   *   record is always `{ false, false }` here.
-   *
-   * The full comparison record still exists and is still reported — on
-   * `InputProvenance.identity` for the success path, where it is *not*
-   * constant and where the metadata-only row lives.
-   */
-  | { readonly kind: 'artifact-stale'; readonly contract: string }
-  /**
-   * 8 — the compiler exhausted its own memory on this closure.
-   *
-   * Fires by **catching**, not by timing: the TVM wasm reports
-   * its ceiling as a `WebAssembly.RuntimeError`, measured verbatim as
-   * `RuntimeError: memory access out of bounds`
-   * (measured with a live compile probe). Terminal — one contract's closure
-   * is the smallest partition there is.
-   *
-   * **`raised` is a closed union, corrected from the originally specified
-   * `raised: string`.** The scalars-only rule's violation scenario names
-   * quoting the wasm's `RuntimeError` into this message as the violation, so
-   * the field cannot hold the throw's text. A classification keeps the
-   * distinction the probe measured —
-   * the ceiling has one verbatim string, and any other wasm abort is a different
-   * event — while quoting nothing.
+   * `because` separates three situations with one remedy: the build-info
+   * directory is not there, it could not be read, or it is there and readable
+   * and simply holds no record naming this source-key/contract pair. All
+   * three mean the same thing to the Foundry model — there is nothing to
+   * validate from — and `tronbox compile --all` regenerates the record
+   * unconditionally, because the `--all` flag forces recompilation of
+   * unchanged sources, so the remedy always works.
    */
   | {
-      readonly kind: 'compiler-resource-exhausted';
-      readonly target: string;
-      readonly closureSize: number;
-      readonly raised: WasmAbort;
+      readonly kind: 'build-record-absent';
+      readonly because:
+        | 'directory-absent'
+        | 'directory-unreadable'
+        | 'no-record-for-target';
     }
   /**
-   * 9 — the layout for the contract under validation is empty or absent.
+   * 6 — records were located for this pair and every candidate was rejected.
    *
-   * A cause and not an invariant throw, even though it means the plugin has a
-   * bug, because measurement showed the consequence of letting it through:
-   * `getStorageUpgradeErrors(EMPTY_original, real_updated)` returns **no
-   * errors** and `assertStorageUpgradeSafe(EMPTY, real)` does not throw — an
-   * empty reference layout classifies every variable as a safe append. A silent
-   * accept is the worst outcome in this sub-feature, so the condition goes
-   * through the same enumerated, rendered, tested path as everything else rather
-   * than depending on an exception reaching a handler.
+   * The payload is the gate's own per-file evidence: which record failed and
+   * why, one {@link BuildRecordRejection} per candidate examined. The common
+   * single-candidate case is `deployed-bytecode-differs` — the record TronBox
+   * wrote no longer describes the compiled artifact, i.e. one of the two is
+   * stale — and the remedy is the same `tronbox compile --all`, which
+   * regenerates both sides of the comparison at once.
+   *
+   * This member absorbs the old `artifact-stale` cause: the recompiled-vs-
+   * artifact comparison it reported is gone with the embedded compiler, and
+   * the record-vs-artifact freshness comparison that remains is decided here,
+   * per candidate, with the file named.
    */
   | {
-      readonly kind: 'layout-vacuous';
-      readonly contract: string;
-      readonly declaredStateVariables: number;
+      readonly kind: 'build-record-stale';
+      readonly rejected: readonly BuildRecordRejection[];
     }
   /**
-   * 10 — a linked library's name is past the length the host can encode.
+   * 7 — a linked library's name is past the length the host can encode.
    *
    * Measured directly: `Compile/index.js:replaceLinkReferences` builds
    * `'__' + name`, pads with `_` while shorter than 40 and splices over a
@@ -193,38 +158,51 @@ export type Cause =
       readonly libraryName: string;
       readonly length: number;
       readonly band: '37-38' | '>=39';
-    }
-  /**
-   * 11 — the sources on disk do not compile.
-   *
-   * It is not cause 7: cause 7 fires *iff*
-   * `withoutMetadataMatches` is `false`, which is a **comparison result**, and a
-   * compile that fails produces no artifact to compare — so overloading cause 7
-   * would not merely name the wrong state, it would make that biconditional
-   * false as written.
-   *
-   * **The count, never the text.** solc's error strings are unbounded and
-   * routinely carry absolute filesystem paths; rendering them is the
-   * option/result surface's territory and the scalars-only and
-   * source-confinement rules' prohibition here. A `number` fits the
-   * scalars-only rule and a diagnostic array does not, so the type enforces the
-   * condition. The host already owns that rendering —
-   * `Compile/index.js:111`, `:116`, `:120` and `:141` at `v4.9.0` take
-   * `standardOutput.errors`, partition them by `severity` and print each
-   * `formattedMessage` — which is
-   * why the remedy points the user at it instead of reproducing it.
-   */
-  | {
-      readonly kind: 'sources-do-not-compile';
-      readonly target: string;
-      readonly errorCount: number;
     };
 
-/** How the wasm aborted. Closed, so nothing quotes the abort's own text. */
-export type WasmAbort = 'memory-access-out-of-bounds' | 'other-wasm-abort';
+/**
+ * One located build record, with the reason it could not be used.
+ *
+ * Declared here rather than in `pipeline.ts` because it is cause 6's payload
+ * vocabulary — pure data, closed, and importable by `diagnose.ts` without a
+ * second module specifier. The pipeline's gate constructs it and re-exports
+ * the type for provenance consumers.
+ *
+ * The reasons, in the order the gate decides them per candidate:
+ *
+ * - `'nothing-to-compare'` — the record or the artifact carries no deployed
+ *   bytecode to verify (an abstract contract or interface is the honest case:
+ *   `'0x'` against `''` is a match of two absences, not evidence).
+ * - `'deployed-bytecode-differs'` — the record's deployed bytecode is not the
+ *   artifact's, so the record describes some other compile.
+ * - `'ast-closure-incomplete'` — the record verified but does not carry an AST
+ *   for every source in the target's import closure, so the layout the engine
+ *   reconstructs from it would be built on missing sources.
+ * - `'target-definition-absent'` — the record verified but its AST for the
+ *   target source declares no contract of this name, so the reconstructed
+ *   reference layout would be empty against a contract that is not.
+ * - `'input-pair-absent'` — the record verified but its paired `<hash>.json`
+ *   compiler input, which the Foundry model hands to consumers as the
+ *   validation's `solcInput`, does not exist next to it.
+ * - `'input-pair-unparseable'` — the pair exists and is not valid JSON.
+ * - `'input-pair-unusable'` — the pair parses but is not the solc
+ *   standard-JSON input of this output: wrong shape, or missing a source the
+ *   record's own output covers.
+ */
+export interface BuildRecordRejection {
+  readonly file: string;
+  readonly reason:
+    | 'deployed-bytecode-differs'
+    | 'nothing-to-compare'
+    | 'ast-closure-incomplete'
+    | 'target-definition-absent'
+    | 'input-pair-absent'
+    | 'input-pair-unparseable'
+    | 'input-pair-unusable';
+}
 
 /**
- * The oldest TronBox *verified* to carry all five artifact fields cause 6 can
+ * The oldest TronBox *verified* to carry all five artifact fields cause 4 can
  * name.
  *
  * Read from the host's own hard-coded artifact literal at both supported minors:
@@ -235,7 +213,7 @@ export type WasmAbort = 'memory-access-out-of-bounds' | 'other-wasm-abort';
  * `contract_name, sourcePath, source, sourceMap, deployedSourceMap,
  * abi, bytecode, deployedBytecode, unlinked_binary, compiler`. Deliberately
  * *not* the package's declared peer range (`>=4.0.0`): nothing measured says
- * these fields were present at 4.0.0, and cause 6's whole job is to name a
+ * these fields were present at 4.0.0, and cause 4's whole job is to name a
  * version a user can act on.
  */
 export const ARTIFACT_FIELDS_VERIFIED_SINCE = '4.8.0';
@@ -249,22 +227,18 @@ export const ARTIFACT_FIELDS_VERIFIED_SINCE = '4.8.0';
  * the package's own — `src/output/types.ts:97-110` and
  * `src/environment/compiler.ts:88` — and the reason for preferring it to a
  * runtime `switch` default is that a default only fires when a new member is
- * *reached*, while the alias fails when the member is *added*. So a twelfth
+ * *reached*, while the alias fails when the member is *added*. So an eighth
  * obligation that arrives without a diagnosis, a remedy and a policy entry is a
  * compile error and not a review finding.
  */
 export const causeKinds = [
-  'compiler-absent',
   'compiler-unsupported',
-  'compiler-mismatched',
   'source-unreadable',
   'import-unresolvable',
   'artifact-shape-unsupported',
-  'artifact-stale',
-  'compiler-resource-exhausted',
-  'layout-vacuous',
+  'build-record-absent',
+  'build-record-stale',
   'library-name-unsupported',
-  'sources-do-not-compile',
 ] as const satisfies readonly Cause['kind'][];
 
 /** Compile error naming any member the list above omits. No runtime emission. */
@@ -274,7 +248,7 @@ type _CauseKindsComplete = NoMissingMembers<
 >;
 
 /**
- * The exhaustiveness guard for the eleven, and the reason `policy.ts` needs no
+ * The exhaustiveness guard for the seven, and the reason `policy.ts` needs no
  * second import.
  *
  * It lives here rather than in `errors.ts` because it is a fact about *this*

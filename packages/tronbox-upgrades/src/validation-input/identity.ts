@@ -1,19 +1,21 @@
 import {
   extractLinkReferences,
-  getVersion,
   unlinkBytecode,
   type SolcBytecode,
 } from '@openzeppelin/upgrades-core';
 
 import type { Cause } from './causes';
-import { ValidationInputInvariantError } from './errors';
 
 /**
- * Contract identity: the two link forms, the two hashes, and the staleness
- * comparison.
+ * Contract identity at the record boundary: the library-name band, and the
+ * record-vs-artifact freshness comparison the whole Foundry model gates on.
  *
- * Every value here is one a wrong answer would make *silently* wrong, so each has
- * an assertion rather than a comment.
+ * This module used to also hold the recompiled-vs-artifact identity (two link
+ * forms, two hashes, `getVersion`) — that comparison left with the embedded
+ * compiler, because there is no recompile to compare against. What remains is
+ * everything the record path needs, and each value here is one a wrong answer
+ * would make *silently* wrong, so each has an assertion or a stated reason
+ * rather than a comment alone.
  */
 
 /**
@@ -34,7 +36,7 @@ import { ValidationInputInvariantError } from './errors';
  * Reproduced through the host with a 45-character name: the persisted artifact's
  * `bytecode` had an **odd** hex digit count, and `hashBytecode` threw
  * `Bytecode is not a valid hex string` — a message that names neither the library
- * nor the cause, which is why cause 10 exists.
+ * nor the cause, which is why the `library-name-unsupported` cause exists.
  *
  * An explicit exception permits these measured numeric literals in this file
  * and nowhere else. Only two of the four it names are reachable as *code* —
@@ -45,70 +47,16 @@ export const MAX_LIBRARY_NAME_LENGTH = 36;
 const CORRUPTING_NAME_LENGTH = 39;
 
 /**
- * `withoutMetadata` is the gate; `withMetadata` is diagnosis only.
- *
- * Both booleans are required, so **both comparisons must be performed** to
- * construct the record — the absence of `metadataOnlyDifference` therefore means
- * the two agreed, never that nobody looked.
- */
-export interface ArtifactIdentityComparison {
-  readonly withoutMetadataMatches: boolean;
-  readonly withMetadataMatches: boolean;
-  /** Present iff the two disagree: the code is identical, the metadata is not. */
-  readonly metadataOnlyDifference?: true;
-}
-
-/**
- * The **one** `getVersion` call site, behind a wrapper whose signature requires
- * both bytecodes.
- *
- * Upstream is `getVersion(bytecode, linkedBytecode?, constructorArgs = '')` and its
- * body is `linkedWithoutMetadata: hashBytecodeWithoutMetadata(linkedBytecode ??
- * bytecode, constructorArgs)` — measured at
- * `@openzeppelin/upgrades-core@1.46.0`, `dist/version.js:11-20`, in `dist/` and
- * **not** `dist/validate/version.js`, which does not exist. So a one-argument call
- * makes `linkedWithoutMetadata` identical to `withoutMetadata`: the two identities
- * scenario 6 requires to be distinct collapse into one, silently, with no error.
- * *That bug passes every test that does not specifically look for it*, which is
- * why the arity is enforced by a wrapper rather than by review.
- *
- * Exactly one upstream error is relayed unwrapped —
- * `Abstract contract not allowed here`, which upgrades-core throws on empty
- * bytecode and which is its own clear message for a real user error (validating an
- * abstract contract). Everything else is wrapped, because the only *measured* way
- * TronBox produces bytecode upstream cannot hash is the library-name overrun
- * measured above, and that is already cause 10 — so a hex failure that reaches
- * here is unexplained and
- * should say so loudly rather than be reported as somebody's project problem.
- */
-const ABSTRACT_CONTRACT_MESSAGE = 'Abstract contract not allowed here';
-
-function bytecodeIdentity(
-  placeholderForm: string,
-  linkedForm: string,
-): { readonly withMetadata: string; readonly withoutMetadata: string } {
-  try {
-    return getVersion(placeholderForm, linkedForm);
-  } catch (thrown) {
-    if (thrown instanceof Error && thrown.message === ABSTRACT_CONTRACT_MESSAGE) {
-      throw thrown;
-    }
-    throw new ValidationInputInvariantError(
-      `upgrades-core could not compute a contract identity from the bytecode ` +
-        `this validation assembled: ` +
-        `${thrown instanceof Error ? thrown.name : typeof thrown}.`,
-    );
-  }
-}
-
-/**
- * Cause 10, decided **before** any identity work, from the recompile's own link
- * references.
+ * The library-name cause, decided from a compile's own link references.
  *
  * The bands are checked against the library *name*, which is the inner key of
  * `evm.bytecode.linkReferences[file]` and is exactly what the host passes to
  * `replaceLinkReferences` as `library_name` (clone
- * `src/components/Compile/index.js:188-195` at `v4.9.0`).
+ * `src/components/Compile/index.js:188-195` at `v4.9.0`). The pipeline reads
+ * the references off the **verified build record's** creation bytecode — the
+ * same object whose deployed bytecode content-verified — because a name past
+ * the band corrupts the *artifact's* bytecode, and that is a property of the
+ * project, not of which path validated it.
  */
 export function libraryNameBand(
   bytecode: SolcBytecode,
@@ -128,148 +76,6 @@ export function libraryNameBand(
     }
   }
   return undefined;
-}
-
-export interface IdentityRequest {
-  /** `evm.bytecode` from **the validation ladder's own recompile** — never from the artifact. */
-  readonly recompiled: SolcBytecode;
-  /** `ArtifactRecord.bytecode`, in TronBox's legacy-placeholder form. */
-  readonly artifactBytecode: string;
-}
-
-export interface IdentityResult {
-  readonly comparison: ArtifactIdentityComparison;
-  /**
-   * The artifact's two-form identity. `withoutMetadata` is the validation
-   * identity (from the placeholder form); `linkedWithoutMetadata` binds deployment
-   * and version identity (from the linked form). No path substitutes one for the
-   * other.
-   */
-  readonly artifactVersion: {
-    readonly withMetadata: string;
-    readonly withoutMetadata: string;
-  };
-}
-
-/**
- * Normalises the artifact into the compiler's own placeholder form and compares.
- *
- * **`getUnlinkedBytecode` is not used, and the reason is measured rather than
- * stylistic.** Its signature at
- * `@openzeppelin/upgrades-core@1.46.0` is
- * `getUnlinkedBytecode(data: ValidationData, bytecode: string)`
- * (`dist/validate/query.d.ts:28`) — its first parameter is the accumulated
- * *validation log*, which the validation ladder does not have and could only
- * obtain by running `validate()` itself, i.e. by doing the consumer's work
- * twice. What it does internally is exactly the two steps below, plus a
- * version check against the log: the check the normalisation-must-happen rule
- * forbids relying on, because its two measured mismatch behaviours are a
- * throw from three frames deep and a silent fall-through returning the input
- * unchanged (`dist/validate/query.js:130` is
- * `return bytecode;`), neither of which is a staleness report.
- *
- * So the transform is taken directly from the two public primitives —
- * `extractLinkReferences` and `unlinkBytecode`, both on the package's face via
- * `dist/index.d.ts`'s `export * from './link-refs'`, declared at
- * `dist/link-refs.d.ts:9-10` — driven by **the validation ladder's own
- * recompile's** `linkReferences`. That is the normalisation-must-happen rule's
- * statement satisfied more directly than through the wrapper: link-ness comes
- * from our own compile, and upstream is used as a transform and never as a
- * check.
- *
- * **The gate is `withoutMetadata`.** It is what the manifest keys on, via
- * `linkedWithoutMetadata`, so the gate and the record agree by construction; and it
- * is the only comparison immune to the one property this design depends on and did
- * not measure — whether solc's metadata `sources` map lists the sources *supplied
- * to the invocation* or the ones the contract *uses*. If it is the former, a
- * partitioned compile's metadata differs from the host's whole-project compile by
- * construction, and a `withMetadata` gate would report every correctly built
- * project stale with a remedy that cannot help. Gating on the trimmed hash is
- * correct either way, and the metadata-only row is where the answer becomes
- * observable instead of silent.
- */
-export function compareArtifactIdentity(
-  request: IdentityRequest,
-): IdentityResult {
-  const linkReferences = extractLinkReferences(request.recompiled);
-  const unlinkedArtifact = unlinkBytecode(
-    request.artifactBytecode,
-    linkReferences,
-  );
-
-  /**
-   * A normalisation that did not happen is a broken invariant, not a
-   * pass. A live recompile-fidelity probe (§4) measured the shape this
-   * asserts — solc-native `__$8a08b1729c508fc3c9a7a1592748312f2d$__` in the
-   * recompile against TronBox's legacy
-   * `__MathLib_______________________________` in the artifact, with the returned
-   * value carrying the solc-native form.
-   */
-  for (const reference of linkReferences) {
-    if (!unlinkedArtifact.includes(reference.placeholder)) {
-      throw new ValidationInputInvariantError(
-        `normalising the artifact's library placeholders did not take: the ` +
-          `compiler's own placeholder for "${reference.name}" is absent from ` +
-          `the ${unlinkedArtifact.length}-character result, so the identity ` +
-          `computed from it would key a different implementation.`,
-      );
-    }
-  }
-
-  const artifactVersion = bytecodeIdentity(
-    unlinkedArtifact,
-    request.artifactBytecode,
-  );
-  /**
-   * The recompile has no separate linked form — solc's own output *is* the
-   * placeholder form — so both arguments are the same string, and this value's
-   * `linkedWithoutMetadata` is deliberately never read. Reading it would be
-   * exactly the two-identity collapse described above.
-   */
-  const recompiledVersion = bytecodeIdentity(
-    request.recompiled.object,
-    request.recompiled.object,
-  );
-
-  const withoutMetadataMatches =
-    artifactVersion.withoutMetadata === recompiledVersion.withoutMetadata;
-  const withMetadataMatches =
-    artifactVersion.withMetadata === recompiledVersion.withMetadata;
-
-  return {
-    comparison: Object.freeze({
-      withoutMetadataMatches,
-      withMetadataMatches,
-      // Present *iff* the two disagree. `?: true` makes a falsy value
-      // unrepresentable, so the field is a pure signal.
-      ...(withoutMetadataMatches && !withMetadataMatches
-        ? { metadataOnlyDifference: true as const }
-        : {}),
-    }),
-    artifactVersion,
-  };
-}
-
-/**
- * The comparison for a successful compile whose output does not contain the
- * target contract at all.
- *
- * **Reachable, and it belongs to cause 7 rather than to a twelfth member.** The
- * case is a contract renamed in its source after `tronbox compile`: the sources
- * resolve and compile cleanly, so this is not cause 11, and the artifact is
- * well-shaped, so it is not cause 6 — but the recompile produces no code for that
- * name. Unlike a *failed* compile, which produces no output to compare and
- * therefore cannot honestly reach the withoutMetadata gate at all, here the
- * compile succeeded and its complete output demonstrably lacks the contract.
- * "No bytecode" does not equal the artifact's bytecode, so
- * `withoutMetadataMatches` is a truthful `false`, the withoutMetadata gate's
- * biconditional holds, and `tronbox compile` is exactly the remedy.
- */
-export function absentFromRecompile(): ArtifactIdentityComparison {
-  return Object.freeze({
-    withoutMetadataMatches: false,
-    withMetadataMatches: false,
-  });
 }
 
 export interface BuildRecordFreshnessRequest {
@@ -306,19 +112,20 @@ export type BuildRecordFreshness =
  * **Why the compiled result.** Solc's deployed bytecode ends in a CBOR metadata
  * section whose hash covers the sources *and the settings*, so a source-text
  * comparison could match while settings differed and this one cannot. It also
- * needs no additional read: `evm.deployedBytecode.object` and its
- * `.linkReferences` are both in the host's own `outputSelection`, in the
- * `*.output.json` file the build-info reader already reads — so the paired
- * compiler-*input* file stays unread and the reader's one-listing-plus-one-parse
- * budget is untouched. The source-text formulation would have amended it.
+ * needs no additional read on its own account: `evm.deployedBytecode.object`
+ * and its `.linkReferences` are both in the host's own `outputSelection`, in
+ * the `*.output.json` file the build-info reader already reads. The paired
+ * compiler-*input* file `<hash>.json` **is** read now — the reader surfaces it
+ * because the Foundry-model fresh path hands its content to consumers as the
+ * validation's `solcInput` — but this comparison never consults it: freshness
+ * is decided from the output side alone.
  *
  * **Why not simply `===`.** TronBox rewrites the artifact's placeholders for every
  * linked library, so a linked contract's artifact bytes differ from solc's raw
  * object even when the two describe the same compile. The normalisation is
- * upstream's own and is used here exactly as {@link compareArtifactIdentity} uses
- * it — take the link offsets from the reference side, rewrite the *artifact* side
- * into the compiler's canonical placeholder. The only change is that the
- * reference side is the build record instead of a fresh recompile.
+ * upstream's own — take the link offsets from the reference side, rewrite the
+ * *artifact* side into the compiler's canonical placeholder. The reference
+ * side here is the build record.
  *
  * **The `0x` is added explicitly on the solc side.** `unlinkBytecode` is
  * prefix-tolerant and returns a `0x`-prefixed string (`dist/link-refs.js`);
@@ -329,8 +136,10 @@ export type BuildRecordFreshness =
  * **Equality means the same compiled output.** It means the same sources *and*
  * settings only while the CBOR tail is present; a project setting
  * `metadata.bytecodeHash: "none"` strips it and the claim weakens to the first
- * form. Sound in the safe direction either way — a mismatch sends the caller
- * down the compile path, never past a check.
+ * form. Sound in the safe direction either way — a mismatch rejects the
+ * record, and under the Foundry model a project whose every record is rejected
+ * is refused with `tronbox compile --all` as the remedy, never validated
+ * against the wrong compile.
  *
  * **The empty-versus-empty case is refused rather than passed**, and it is the
  * one vacuity trap this comparison has: an abstract contract or an interface has

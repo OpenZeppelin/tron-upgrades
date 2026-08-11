@@ -45,19 +45,6 @@ export {
 /** On the face so a consumer never restates TronBox's default compiler version. */
 export { HOST_DEFAULT_SOLC_VERSION } from './compiler';
 
-/**
- * On the face for the same reason as `HOST_DEFAULT_SOLC_VERSION`: `~/.tronbox/{solc,
- * evm-solc}/soljson_v<version>.js` is a host-internal convention, so a consumer that
- * rebuilt it would hold a second copy of a fact the seam already restates. A pure
- * function of its two arguments rather than a member of the compiler slot — the seam
- * cannot read `homedir()`, so the caller supplies it.
- */
-export {
-  soljsonPathFor,
-  type SoljsonPathInput,
-  type SoljsonPathResolution,
-} from './soljson-path';
-
 export {
   resolveEnvironment,
   type EnvironmentDependencies,

@@ -1,23 +1,22 @@
 import { ValidationInputInvariantError } from './errors';
-import type { SolcStandardOutput } from './solc-input';
 
 /**
- * How much of the project goes into one solc invocation, and the memo over that
- * decision.
+ * The partition: which slice of the project one validation is about.
  *
  * **Separate from `import-graph.ts` because the graph is a fact about the project
- * and the partition is a policy about how much of it to hand the compiler at
- * once.** The wasm's memory ceiling is what makes that a decision rather than a
- * detail: a live compile probe measured it moving with the
- * *user's* optimizer settings by better than 2× on a fixed generator (optimizer
- * off, last N that compiled 360; optimizer on, 160), so any numeric batch size
- * would be tuned against a ceiling the plugin does not control.
+ * and the partition is a policy about how much of it one validation reads.**
+ * The unit is semantic: one contract's transitive import closure, and no batch
+ * size exists. `PartitionRecord` carries no count, so there is no field a
+ * threshold could be compared against, and `target` is **singular**, so a
+ * multi-target partition is not representable.
  *
- * **The unit is therefore semantic: one contract's transitive import closure, and
- * no batch size exists.** `PartitionRecord` carries no count, so there is
- * no field a threshold could be compared against, and `target` is **singular**, so
- * a multi-target partition is not representable — union-first is
- * specified and unbuilt, and that is deliberate rather than an oversight.
+ * Under the Foundry model the closure is what the build record is **projected
+ * onto**: the gate copies exactly these source keys' entries out of the
+ * record's `contracts` and `sources` maps, and rejects any candidate whose
+ * ASTs do not cover them. This module used to also order the source *contents*
+ * for the plugin's own solc invocation and to key a compile memo — both left
+ * with the embedded compiler, because the input a consumer receives is now the
+ * record's own paired compiler input rather than anything assembled here.
  */
 
 export interface PartitionRecord {
@@ -32,25 +31,8 @@ export interface PartitionRecord {
    * testable statement, so the key wins. It also names something a user can open.
    */
   readonly target: string;
-  /** Source keys in the target's transitive closure, including its own. */
+  /** Source keys in the target's transitive closure, including its own. Sorted. */
   readonly closure: readonly string[];
-}
-
-export interface Partition {
-  readonly record: PartitionRecord;
-  /**
-   * The sources solc receives, in the order `provenance.sourceKeys` reports.
-   *
-   * **Sorted, which is a deliberate choice rather than inherited.** The host
-   * hands solc its `required_sources` map in graph-walk order. Nothing measured
-   * says solc's output depends on the order of the `sources` map — measurement
-   * showed that the *content* of a key changes every identity, and solc keys its
-   * own metadata `sources` map by name — so determinism is worth more here than
-   * mimicry: a sorted order makes two calls over an unchanged tree byte-identical
-   * inputs, which is what the referential-transparency requirement is asserted
-   * against.
-   */
-  readonly sources: Readonly<Record<string, string>>;
 }
 
 /**
@@ -58,20 +40,24 @@ export interface Partition {
  *
  * The two assertions are the containment requirement's, and the violation they
  * prevent is the worst outcome in this sub-feature rather than a tidiness
- * failure: an empty closure reaches solc, the output has no contracts,
- * `detectFidelity` sees nothing missing and reports `slot-level`, the layout
- * handed to upgrades-core is empty, and the vacuous-pass hazard measured
- * earlier fires — `getStorageUpgradeErrors(EMPTY, real)` returns no
- * errors, so every variable in the new contract is classified as a safe append.
+ * failure: an empty closure projects an empty output, nothing detects a
+ * missing layout, and the measured vacuous pass fires —
+ * `getStorageUpgradeErrors(EMPTY, real)` returns no errors, so every variable
+ * in the new contract is classified as a safe append.
+ *
+ * The closure is **sorted**, which is a deliberate choice rather than
+ * inherited: a determined order makes two calls over an unchanged tree produce
+ * deep-equal provenance, which is what the referential-transparency
+ * requirement is asserted against.
  */
 export function cutPartition(
   targetKey: string,
   sources: ReadonlyMap<string, string>,
-): Partition {
+): PartitionRecord {
   if (sources.size === 0) {
     throw new ValidationInputInvariantError(
       `the partition cut for "${targetKey}" has an empty closure, so the ` +
-        `compiler would be handed no sources at all.`,
+        `build record would be projected onto no sources at all.`,
     );
   }
   if (!sources.has(targetKey)) {
@@ -82,79 +68,5 @@ export function cutPartition(
   }
 
   const closure = [...sources.keys()].sort();
-  const ordered: Record<string, string> = {};
-  for (const key of closure) {
-    ordered[key] = sources.get(key) as string;
-  }
-
-  return {
-    record: Object.freeze({ target: targetKey, closure: Object.freeze(closure) }),
-    sources: ordered,
-  };
-}
-
-/**
- * The memo key: the **sorted** source-key set, the settings, and the compiler's
- * long version.
- *
- * All three are needed and the second is the one that is easy to leave out.
- * Measurement showed that `optimizer` *is* in solc metadata, so a memo keyed on
- * sources alone would hand a contract compiled under one optimizer profile the
- * output of another — surfacing as spurious staleness at best and a
- * wrong-layout pass at worst. The long version is in the key for the reason
- * already given: two compiler families answer to the same version number.
- *
- * Settings are serialized with `JSON.stringify`, so two structurally equal
- * settings objects with different key order key differently. That direction is
- * safe — it produces a memo *miss*, never a wrong hit — and the seam hands the
- * same frozen object throughout one call, so it does not arise in practice.
- */
-export function partitionIdentity(
-  record: PartitionRecord,
-  settings: Readonly<Record<string, unknown>>,
-  compilerLongVersion: string,
-): string {
-  return JSON.stringify([
-    [...record.closure].sort(),
-    settings,
-    compilerLongVersion,
-  ]);
-}
-
-/**
- * A compile memo for the life of one call.
- *
- * **Call-scoped, and what that costs is stated rather than glossed.** The
- * referential-transparency requirement forbids module-level mutable state — a
- * module-level cache of compiler identity across calls is a correctness bug,
- * not a speed-up — and its own allowance is for *"the memo's own documented,
- * call-scoped binding"*. But
- * `deriveValidationInput` derives exactly **one** contract per call, so a
- * call-scoped memo holds at most one entry and its *hit* path is unreachable
- * through the shipped API. The lookup runs on every compile; the hit does not.
- *
- * That is a gap between two specified requirements rather than a shortcut here: the
- * partitioning requirement describes the memo as amortising *"within one process"*,
- * a narrower invariant states it as *"within one call"*, and two other invariants'
- * tests speak of *"two targets requested in one call"* — a request shape
- * `ValidationInputRequest` does not have. It is reported at close, with the two
- * ways out named. The
- * mechanism ships because it is exactly the seam union-first needs, and because it
- * is directly testable at this module's own boundary.
- */
-export interface CompileMemo {
-  get(identity: string): SolcStandardOutput | undefined;
-  set(identity: string, output: SolcStandardOutput): void;
-}
-
-export function createCompileMemo(): CompileMemo {
-  const entries = new Map<string, SolcStandardOutput>();
-  return {
-    get(identity) {
-      return entries.get(identity);
-    },
-    set(identity, output) {
-      entries.set(identity, output);
-    },
-  };
+  return Object.freeze({ target: targetKey, closure: Object.freeze(closure) });
 }
