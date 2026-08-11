@@ -1,9 +1,9 @@
 {
   "_comment": [
-    "The nine upgrade pairs, extracted so they have ONE home.",
+    "The ten upgrade pairs, extracted so they have ONE home.",
     "",
     "Provenance: measured with two live compile probes — the ast-only-versus-slot-level",
-    "probe (all nine) and the gate-observability probe (the two safe ones, SAFE-gap and",
+    "probe (all ten) and the gate-observability probe (the two safe ones, SAFE-gap and",
     "SAFE-pad, which appear in both probes verbatim). Both probes carry them as",
     "inline object literals with no exports, so the two safe pairs had already been",
     "copied once before this file existed; this file is what stops a third copy.",
@@ -92,6 +92,15 @@
       "before": "contract T { struct S { uint256 p; uint256 q; } S s; }",
       "after": "contract T { struct S { uint256 p; uint256 mid; uint256 q; } S s; }",
       "astOnly": { "accepts": false, "kinds": ["typechange"] },
+      "slotLevel": { "accepts": false }
+    },
+    {
+      "id": "namespace-rename",
+      "name": "ERC-7201 namespace id rename (UNSAFE — relocates the namespace)",
+      "safe": false,
+      "before": "contract T {\n    /// @custom:storage-location erc7201:one\n    struct S {\n        uint256 a;\n    }\n\n    function _s() private pure returns (S storage $) {\n        assembly {\n            $.slot := 0x9179306fb0aae42378ac79c42cef6a04bad3dd77d53e3d3fb32198774fc41500\n        }\n    }\n}",
+      "after": "contract T {\n    /// @custom:storage-location erc7201:two\n    struct S {\n        uint256 a;\n    }\n\n    function _s() private pure returns (S storage $) {\n        assembly {\n            $.slot := 0x5849a5a45430e959f91fd60809202c639163442acf6e60050dfe78877cde3f00\n        }\n    }\n}",
+      "astOnly": { "accepts": false, "kinds": ["delete-namespace"] },
       "slotLevel": { "accepts": false }
     },
     {

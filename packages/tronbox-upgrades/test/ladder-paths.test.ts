@@ -233,8 +233,8 @@ describe('fresh: the record pair is consumed, and the same fixture still refuses
     },
   );
 
-  it('reports every one of the nine measured pairs the way AST-only measured it', async () => {
-    // The nine-pair measurement — zero false negatives, two false positives — was
+  it('reports every one of the ten measured pairs the way AST-only measured it', async () => {
+    // The ten-pair measurement — zero false negatives, two false positives — was
     // the only measurement of this question, and it lived in a probe log. Here it
     // is the suite's own assertion, driven through the produced inputs.
     for (const pair of fixture.pairs) {

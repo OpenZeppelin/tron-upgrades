@@ -3532,6 +3532,542 @@
     }
    }
   },
+  "namespace-rename": {
+   "astOnly": {
+    "before": {
+     "input": {
+      "language": "Solidity",
+      "sources": {
+       "S.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\ncontract T {\n    /// @custom:storage-location erc7201:one\n    struct S {\n        uint256 a;\n    }\n\n    function _s() private pure returns (S storage $) {\n        assembly {\n            $.slot := 0x9179306fb0aae42378ac79c42cef6a04bad3dd77d53e3d3fb32198774fc41500\n        }\n    }\n}"
+       }
+      },
+      "settings": {
+       "outputSelection": {
+        "*": {
+         "": [
+          "ast"
+         ],
+         "*": [
+          "abi",
+          "evm.bytecode.object",
+          "evm.bytecode.sourceMap",
+          "evm.bytecode.linkReferences",
+          "evm.deployedBytecode.object",
+          "evm.deployedBytecode.sourceMap",
+          "evm.deployedBytecode.linkReferences",
+          "evm.deployedBytecode.immutableReferences",
+          "evm.methodIdentifiers",
+          "metadata"
+         ]
+        }
+       }
+      }
+     },
+     "output": {
+      "contracts": {
+       "S.sol": {
+        "T": {
+         "abi": [],
+         "evm": {
+          "bytecode": {
+           "linkReferences": {},
+           "object": "6080604052348015600e575f80fd5b50d380156019575f80fd5b50d280156024575f80fd5b50603e8060305f395ff3fe60806040525f80fdfea26474726f6e5822122084962a67fe8ae335231bd13f10876ab9c490a2303ac6b152ef77d330d12f218964736f6c634300081a0033",
+           "sourceMap": "57:279:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+          },
+          "deployedBytecode": {
+           "immutableReferences": {},
+           "linkReferences": {},
+           "object": "60806040525f80fdfea26474726f6e5822122084962a67fe8ae335231bd13f10876ab9c490a2303ac6b152ef77d330d12f218964736f6c634300081a0033",
+           "sourceMap": "57:279:0:-:0;;;;;"
+          },
+          "methodIdentifiers": {}
+         },
+         "metadata": "{\"compiler\":{\"version\":\"0.8.26+commit.733b4d28\"},\"language\":\"Solidity\",\"output\":{\"abi\":[],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"S.sol\":\"T\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":false,\"runs\":200},\"remappings\":[]},\"sources\":{\"S.sol\":{\"keccak256\":\"0xbdbaef5d2d5b54376bddc02fddcf8cc100d630fe71a350b38c80631195b3182d\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://c072d97b60d45ed8b5310118d66452afb4c17c0dab64375d0388df1f19e59e21\",\"dweb:/ipfs/QmcLKFcdYbWAYbdwKmATqVR1M2y2fKjKy66kVnubenr4SR\"]}},\"version\":1}"
+        }
+       }
+      },
+      "sources": {
+       "S.sol": {
+        "ast": {
+         "absolutePath": "S.sol",
+         "exportedSymbols": {
+          "T": [
+           14
+          ]
+         },
+         "id": 15,
+         "license": "MIT",
+         "nodeType": "SourceUnit",
+         "nodes": [
+          {
+           "id": 1,
+           "literals": [
+            "solidity",
+            "^",
+            "0.8",
+            ".20"
+           ],
+           "nodeType": "PragmaDirective",
+           "src": "32:24:0"
+          },
+          {
+           "abstract": false,
+           "baseContracts": [],
+           "canonicalName": "T",
+           "contractDependencies": [],
+           "contractKind": "contract",
+           "fullyImplemented": true,
+           "id": 14,
+           "linearizedBaseContracts": [
+            14
+           ],
+           "name": "T",
+           "nameLocation": "66:1:0",
+           "nodeType": "ContractDefinition",
+           "nodes": [
+            {
+             "canonicalName": "T.S",
+             "documentation": {
+              "id": 2,
+              "nodeType": "StructuredDocumentation",
+              "src": "74:40:0",
+              "text": "@custom:storage-location erc7201:one"
+             },
+             "id": 5,
+             "members": [
+              {
+               "constant": false,
+               "id": 4,
+               "mutability": "mutable",
+               "name": "a",
+               "nameLocation": "146:1:0",
+               "nodeType": "VariableDeclaration",
+               "scope": 5,
+               "src": "138:9:0",
+               "stateVariable": false,
+               "storageLocation": "default",
+               "typeDescriptions": {
+                "typeIdentifier": "t_uint256",
+                "typeString": "uint256"
+               },
+               "typeName": {
+                "id": 3,
+                "name": "uint256",
+                "nodeType": "ElementaryTypeName",
+                "src": "138:7:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "visibility": "internal"
+              }
+             ],
+             "name": "S",
+             "nameLocation": "126:1:0",
+             "nodeType": "StructDefinition",
+             "scope": 14,
+             "src": "119:35:0",
+             "visibility": "public"
+            },
+            {
+             "body": {
+              "id": 12,
+              "nodeType": "Block",
+              "src": "209:125:0",
+              "statements": [
+               {
+                "AST": {
+                 "nativeSrc": "228:100:0",
+                 "nodeType": "YulBlock",
+                 "src": "228:100:0",
+                 "statements": [
+                  {
+                   "nativeSrc": "242:76:0",
+                   "nodeType": "YulAssignment",
+                   "src": "242:76:0",
+                   "value": {
+                    "kind": "number",
+                    "nativeSrc": "252:66:0",
+                    "nodeType": "YulLiteral",
+                    "src": "252:66:0",
+                    "type": "",
+                    "value": "0x9179306fb0aae42378ac79c42cef6a04bad3dd77d53e3d3fb32198774fc41500"
+                   },
+                   "variableNames": [
+                    {
+                     "name": "$.slot",
+                     "nativeSrc": "242:6:0",
+                     "nodeType": "YulIdentifier",
+                     "src": "242:6:0"
+                    }
+                   ]
+                  }
+                 ]
+                },
+                "evmVersion": "cancun",
+                "externalReferences": [
+                 {
+                  "declaration": 9,
+                  "isOffset": false,
+                  "isSlot": true,
+                  "src": "242:6:0",
+                  "suffix": "slot",
+                  "valueSize": 1
+                 }
+                ],
+                "id": 11,
+                "nodeType": "InlineAssembly",
+                "src": "219:109:0"
+               }
+              ]
+             },
+             "id": 13,
+             "implemented": true,
+             "kind": "function",
+             "modifiers": [],
+             "name": "_s",
+             "nameLocation": "169:2:0",
+             "nodeType": "FunctionDefinition",
+             "parameters": {
+              "id": 6,
+              "nodeType": "ParameterList",
+              "parameters": [],
+              "src": "171:2:0"
+             },
+             "returnParameters": {
+              "id": 10,
+              "nodeType": "ParameterList",
+              "parameters": [
+               {
+                "constant": false,
+                "id": 9,
+                "mutability": "mutable",
+                "name": "$",
+                "nameLocation": "206:1:0",
+                "nodeType": "VariableDeclaration",
+                "scope": 13,
+                "src": "196:11:0",
+                "stateVariable": false,
+                "storageLocation": "storage",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_struct$_S_$5_storage_ptr",
+                 "typeString": "struct T.S"
+                },
+                "typeName": {
+                 "id": 8,
+                 "nodeType": "UserDefinedTypeName",
+                 "pathNode": {
+                  "id": 7,
+                  "name": "S",
+                  "nameLocations": [
+                   "196:1:0"
+                  ],
+                  "nodeType": "IdentifierPath",
+                  "referencedDeclaration": 5,
+                  "src": "196:1:0"
+                 },
+                 "referencedDeclaration": 5,
+                 "src": "196:1:0",
+                 "typeDescriptions": {
+                  "typeIdentifier": "t_struct$_S_$5_storage_ptr",
+                  "typeString": "struct T.S"
+                 }
+                },
+                "visibility": "internal"
+               }
+              ],
+              "src": "195:13:0"
+             },
+             "scope": 14,
+             "src": "160:174:0",
+             "stateMutability": "pure",
+             "virtual": false,
+             "visibility": "private"
+            }
+           ],
+           "scope": 15,
+           "src": "57:279:0",
+           "usedErrors": [],
+           "usedEvents": []
+          }
+         ],
+         "src": "32:304:0"
+        },
+        "id": 0
+       }
+      }
+     }
+    },
+    "after": {
+     "input": {
+      "language": "Solidity",
+      "sources": {
+       "S.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\ncontract T {\n    /// @custom:storage-location erc7201:two\n    struct S {\n        uint256 a;\n    }\n\n    function _s() private pure returns (S storage $) {\n        assembly {\n            $.slot := 0x5849a5a45430e959f91fd60809202c639163442acf6e60050dfe78877cde3f00\n        }\n    }\n}"
+       }
+      },
+      "settings": {
+       "outputSelection": {
+        "*": {
+         "": [
+          "ast"
+         ],
+         "*": [
+          "abi",
+          "evm.bytecode.object",
+          "evm.bytecode.sourceMap",
+          "evm.bytecode.linkReferences",
+          "evm.deployedBytecode.object",
+          "evm.deployedBytecode.sourceMap",
+          "evm.deployedBytecode.linkReferences",
+          "evm.deployedBytecode.immutableReferences",
+          "evm.methodIdentifiers",
+          "metadata"
+         ]
+        }
+       }
+      }
+     },
+     "output": {
+      "contracts": {
+       "S.sol": {
+        "T": {
+         "abi": [],
+         "evm": {
+          "bytecode": {
+           "linkReferences": {},
+           "object": "6080604052348015600e575f80fd5b50d380156019575f80fd5b50d280156024575f80fd5b50603e8060305f395ff3fe60806040525f80fdfea26474726f6e582212204ca27030971070b29b4e19f93df782c0a24c290ae6ac5b3332f7ca98f1aa7d9664736f6c634300081a0033",
+           "sourceMap": "57:279:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+          },
+          "deployedBytecode": {
+           "immutableReferences": {},
+           "linkReferences": {},
+           "object": "60806040525f80fdfea26474726f6e582212204ca27030971070b29b4e19f93df782c0a24c290ae6ac5b3332f7ca98f1aa7d9664736f6c634300081a0033",
+           "sourceMap": "57:279:0:-:0;;;;;"
+          },
+          "methodIdentifiers": {}
+         },
+         "metadata": "{\"compiler\":{\"version\":\"0.8.26+commit.733b4d28\"},\"language\":\"Solidity\",\"output\":{\"abi\":[],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"S.sol\":\"T\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":false,\"runs\":200},\"remappings\":[]},\"sources\":{\"S.sol\":{\"keccak256\":\"0x1d9db9465cfd479460ea031fce92bf979835344ab5f1e4b6fdde3a35250b47ac\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://00ea37c828a7bfc6f082cdc1fa4e8317be44b7b5a4ebb59793ffdc7f490e6738\",\"dweb:/ipfs/QmRSaHnwVeRa9R6Abdz8ym6aAmqdpdFxMWwUAXjhqRrprJ\"]}},\"version\":1}"
+        }
+       }
+      },
+      "sources": {
+       "S.sol": {
+        "ast": {
+         "absolutePath": "S.sol",
+         "exportedSymbols": {
+          "T": [
+           14
+          ]
+         },
+         "id": 15,
+         "license": "MIT",
+         "nodeType": "SourceUnit",
+         "nodes": [
+          {
+           "id": 1,
+           "literals": [
+            "solidity",
+            "^",
+            "0.8",
+            ".20"
+           ],
+           "nodeType": "PragmaDirective",
+           "src": "32:24:0"
+          },
+          {
+           "abstract": false,
+           "baseContracts": [],
+           "canonicalName": "T",
+           "contractDependencies": [],
+           "contractKind": "contract",
+           "fullyImplemented": true,
+           "id": 14,
+           "linearizedBaseContracts": [
+            14
+           ],
+           "name": "T",
+           "nameLocation": "66:1:0",
+           "nodeType": "ContractDefinition",
+           "nodes": [
+            {
+             "canonicalName": "T.S",
+             "documentation": {
+              "id": 2,
+              "nodeType": "StructuredDocumentation",
+              "src": "74:40:0",
+              "text": "@custom:storage-location erc7201:two"
+             },
+             "id": 5,
+             "members": [
+              {
+               "constant": false,
+               "id": 4,
+               "mutability": "mutable",
+               "name": "a",
+               "nameLocation": "146:1:0",
+               "nodeType": "VariableDeclaration",
+               "scope": 5,
+               "src": "138:9:0",
+               "stateVariable": false,
+               "storageLocation": "default",
+               "typeDescriptions": {
+                "typeIdentifier": "t_uint256",
+                "typeString": "uint256"
+               },
+               "typeName": {
+                "id": 3,
+                "name": "uint256",
+                "nodeType": "ElementaryTypeName",
+                "src": "138:7:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "visibility": "internal"
+              }
+             ],
+             "name": "S",
+             "nameLocation": "126:1:0",
+             "nodeType": "StructDefinition",
+             "scope": 14,
+             "src": "119:35:0",
+             "visibility": "public"
+            },
+            {
+             "body": {
+              "id": 12,
+              "nodeType": "Block",
+              "src": "209:125:0",
+              "statements": [
+               {
+                "AST": {
+                 "nativeSrc": "228:100:0",
+                 "nodeType": "YulBlock",
+                 "src": "228:100:0",
+                 "statements": [
+                  {
+                   "nativeSrc": "242:76:0",
+                   "nodeType": "YulAssignment",
+                   "src": "242:76:0",
+                   "value": {
+                    "kind": "number",
+                    "nativeSrc": "252:66:0",
+                    "nodeType": "YulLiteral",
+                    "src": "252:66:0",
+                    "type": "",
+                    "value": "0x5849a5a45430e959f91fd60809202c639163442acf6e60050dfe78877cde3f00"
+                   },
+                   "variableNames": [
+                    {
+                     "name": "$.slot",
+                     "nativeSrc": "242:6:0",
+                     "nodeType": "YulIdentifier",
+                     "src": "242:6:0"
+                    }
+                   ]
+                  }
+                 ]
+                },
+                "evmVersion": "cancun",
+                "externalReferences": [
+                 {
+                  "declaration": 9,
+                  "isOffset": false,
+                  "isSlot": true,
+                  "src": "242:6:0",
+                  "suffix": "slot",
+                  "valueSize": 1
+                 }
+                ],
+                "id": 11,
+                "nodeType": "InlineAssembly",
+                "src": "219:109:0"
+               }
+              ]
+             },
+             "id": 13,
+             "implemented": true,
+             "kind": "function",
+             "modifiers": [],
+             "name": "_s",
+             "nameLocation": "169:2:0",
+             "nodeType": "FunctionDefinition",
+             "parameters": {
+              "id": 6,
+              "nodeType": "ParameterList",
+              "parameters": [],
+              "src": "171:2:0"
+             },
+             "returnParameters": {
+              "id": 10,
+              "nodeType": "ParameterList",
+              "parameters": [
+               {
+                "constant": false,
+                "id": 9,
+                "mutability": "mutable",
+                "name": "$",
+                "nameLocation": "206:1:0",
+                "nodeType": "VariableDeclaration",
+                "scope": 13,
+                "src": "196:11:0",
+                "stateVariable": false,
+                "storageLocation": "storage",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_struct$_S_$5_storage_ptr",
+                 "typeString": "struct T.S"
+                },
+                "typeName": {
+                 "id": 8,
+                 "nodeType": "UserDefinedTypeName",
+                 "pathNode": {
+                  "id": 7,
+                  "name": "S",
+                  "nameLocations": [
+                   "196:1:0"
+                  ],
+                  "nodeType": "IdentifierPath",
+                  "referencedDeclaration": 5,
+                  "src": "196:1:0"
+                 },
+                 "referencedDeclaration": 5,
+                 "src": "196:1:0",
+                 "typeDescriptions": {
+                  "typeIdentifier": "t_struct$_S_$5_storage_ptr",
+                  "typeString": "struct T.S"
+                 }
+                },
+                "visibility": "internal"
+               }
+              ],
+              "src": "195:13:0"
+             },
+             "scope": 14,
+             "src": "160:174:0",
+             "stateMutability": "pure",
+             "virtual": false,
+             "visibility": "private"
+            }
+           ],
+           "scope": 15,
+           "src": "57:279:0",
+           "usedErrors": [],
+           "usedEvents": []
+          }
+         ],
+         "src": "32:304:0"
+        },
+        "id": 0
+       }
+      }
+     }
+    }
+   }
+  },
   "gap-consumption": {
    "astOnly": {
     "before": {

@@ -40,6 +40,14 @@
  * `compareVersions(compilerVersion, maxVersion) > 0 && !options.evm`, so
  * `0.8.27`–`0.8.29` become reachable there. Those are refused with the same
  * message, because they are equally untested.
+ *
+ * **The `0.8.26` ceiling is also the base-slot guard.** Raising it past
+ * `0.8.28` admits Solidity's `layout at` custom base slots, but upstream's
+ * without-storage-layouts comparison drops `baseSlot` (openzeppelin-upgrades#1296):
+ * `unfoldStorageLayout` rebuilds both layouts without `baseSlot`, so
+ * `undefined === undefined` passes and a changed custom base slot can be missed.
+ * Do not raise this ceiling without a base-slot comparison guard unless the
+ * upstream fix has shipped; `test/baseslot-canary.test.ts` fails the day it does.
  */
 export const SUPPORTED_SOLC = { min: '0.8.0', max: '0.8.26' } as const;
 
