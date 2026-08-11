@@ -190,7 +190,18 @@ function assertAddedCoverage(workdir, report, output, runLabel) {
   if (report['m6.readerAdmin'] !== 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb') {
     die(`${runLabel} empty UUPS admin slot did not return the base58 zero address`);
   }
+  if (report['m6.readerBeaconThrew'] !== 'true') {
+    die(
+      `${runLabel} the empty beacon slot of a UUPS proxy must make the ` +
+        `beacon-slot reader throw, not smooth to zero`,
+    );
+  }
 
+  // Report hygiene for the reuse-only refusal: exactly the named code and
+  // nothing else. The migration writes its own report lines, so this is not
+  // itself the no-spend proof — that evidence is the source-level throw
+  // inside the engine's deploy callback plus replay stability (a run-1
+  // record would flip run 2 to a successful reuse and fail this check).
   const neverKeys = Object.keys(report).filter(key => key.startsWith('m6.never.'));
   if (
     neverKeys.length !== 1 ||
@@ -198,7 +209,7 @@ function assertAddedCoverage(workdir, report, output, runLabel) {
     report['m6.never.refusalCode'] !== 'implementation-not-previously-deployed'
   ) {
     die(
-      `${runLabel} reuse-only refusal must report only its named, pre-spend code; ` +
+      `${runLabel} reuse-only refusal must report only its named code; ` +
         `saw ${JSON.stringify(neverKeys)}`,
     );
   }
@@ -406,6 +417,7 @@ async function main() {
     'm6.uupsImpl',
     'm6.readerImpl',
     'm6.readerAdmin',
+    'm6.readerBeaconThrew',
     'm6.uupsValueAfter',
     'm6.autoProxy',
     'm6.autoValue',
@@ -673,7 +685,6 @@ async function main() {
     'm4.upgradedImpl',
     'm6.uupsImpl',
     'm6.readerImpl',
-    'm6.readerAdmin',
   ];
   for (const key of stable) {
     if (!sameAccount(report1[key], report2[key])) {

@@ -90,6 +90,23 @@ module.exports = async function (deployer) {
   console.log('E2E m6.readerImpl=' + readerImplementation);
   console.log('E2E m6.readerAdmin=' + readerAdmin);
 
+  // The throw side of the reader asymmetry: a UUPS proxy's beacon slot is
+  // EMPTY, and the beacon-slot reader must THROW on it — smoothing an empty
+  // beacon slot into a zero address would be the exact misread the reader
+  // API refuses to make. Only the admin reader smooths.
+  let beaconReadFailed = false;
+  try {
+    await erc1967.getBeaconAddress(uups.address, handles);
+  } catch (error) {
+    beaconReadFailed = true;
+  }
+  if (!beaconReadFailed) {
+    throw new Error(
+      'e2e: reading the empty beacon slot of a UUPS proxy resolved instead of throwing',
+    );
+  }
+  console.log('E2E m6.readerBeaconThrew=true');
+
   // The new code must be live through the same address: increment() exists
   // only on the upgraded implementation.
   const uupsBox = upgraded.contract;
