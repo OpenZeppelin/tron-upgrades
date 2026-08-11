@@ -157,6 +157,64 @@ function parseReport(output) {
   return report;
 }
 
+function assertAddedCoverage(workdir, report, output, runLabel) {
+  const base58Keys = [
+    'm4.readerBeacon',
+    'm4.readerBeaconImpl',
+    'm6.readerImpl',
+    'm6.readerAdmin',
+  ];
+  for (const key of base58Keys) {
+    if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(report[key] ?? '')) {
+      die(`${runLabel} ${key} is not a canonical base58 TRON address: ${report[key]}`);
+    }
+  }
+  if (
+    bareAddress(workdir, report['m4.readerBeacon']) !==
+    bareAddress(workdir, report['m4.beacon'])
+  ) {
+    die(`${runLabel} beacon-slot reader disagrees with deployBeacon`);
+  }
+  if (
+    bareAddress(workdir, report['m4.readerBeaconImpl']) !==
+    bareAddress(workdir, report['m4.beaconImpl'])
+  ) {
+    die(`${runLabel} beacon implementation reader disagrees with deployBeacon`);
+  }
+  if (
+    bareAddress(workdir, report['m6.readerImpl']) !==
+    bareAddress(workdir, report['m6.uupsImpl'])
+  ) {
+    die(`${runLabel} implementation-slot reader disagrees with upgradeProxy`);
+  }
+  if (report['m6.readerAdmin'] !== 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb') {
+    die(`${runLabel} empty UUPS admin slot did not return the base58 zero address`);
+  }
+
+  const neverKeys = Object.keys(report).filter(key => key.startsWith('m6.never.'));
+  if (
+    neverKeys.length !== 1 ||
+    neverKeys[0] !== 'm6.never.refusalCode' ||
+    report['m6.never.refusalCode'] !== 'implementation-not-previously-deployed'
+  ) {
+    die(
+      `${runLabel} reuse-only refusal must report only its named, pre-spend code; ` +
+        `saw ${JSON.stringify(neverKeys)}`,
+    );
+  }
+
+  if (
+    report['m6.linked.refused'] !== 'true' ||
+    report['m6.linked.accepted'] !== 'true' ||
+    !/^[1-9][0-9]*$/.test(report['m6.linked.noteCount'] ?? '')
+  ) {
+    die(`${runLabel} linked-library validation did not flip under its single allowance`);
+  }
+  if (output.includes('unsafeAllow.external-library-linking')) {
+    die(`${runLabel} silenceWarnings did not suppress the linked-library advisory`);
+  }
+}
+
 function bareHex(address) {
   if (/^(41|0x)[0-9a-fA-F]{40}$/.test(address)) {
     return address.slice(2).toLowerCase();
@@ -336,12 +394,18 @@ async function main() {
     'm2.impl',
     'm3.alreadyHeld',
     'm4.beacon',
+    'm4.beaconImpl',
     'm4.beaconProxy',
+    'm4.upgradedImpl',
     'm4.valueAfter',
+    'm4.readerBeacon',
+    'm4.readerBeaconImpl',
     'm5.kind',
     'm5.address',
     'm6.uupsProxy',
     'm6.uupsImpl',
+    'm6.readerImpl',
+    'm6.readerAdmin',
     'm6.uupsValueAfter',
     'm6.autoProxy',
     'm6.autoValue',
@@ -353,10 +417,15 @@ async function main() {
     'm6.ownedProxy',
     'm6.ownedOwner',
     'm6.refusalCode',
+    'm6.never.refusalCode',
+    'm6.linked.refused',
+    'm6.linked.accepted',
+    'm6.linked.noteCount',
   ];
   for (const key of required) {
     if (!(key in report1)) die(`first run reported no ${key}`);
   }
+  assertAddedCoverage(workdir, report1, first.output, 'first run');
   // The initializer value, exactly: on the FIRST run nothing has incremented
   // the m1 proxy yet, so anything but the literal 42 means initialize(42)
   // did not run as asked — a `>= 42` reading would let a double-initialized
@@ -580,6 +649,10 @@ async function main() {
   });
   console.log(second.output);
   const report2 = parseReport(second.output);
+  for (const key of required) {
+    if (!(key in report2)) die(`replay reported no ${key}`);
+  }
+  assertAddedCoverage(workdir, report2, second.output, 'replay');
 
   // Addresses compare by identity, not spelling — the plugin's own rule.
   const sameAccount = (left, right) => {
@@ -591,7 +664,17 @@ async function main() {
   // record reuse is untouched by the deploy-proxy change above and keeps
   // these addresses fixed across runs whether or not the proxy pointing at
   // them is new.
-  const stable = ['m1.impl', 'm2.prepared', 'm2.impl', 'm6.uupsImpl'];
+  const stable = [
+    'm1.impl',
+    'm2.prepared',
+    'm2.impl',
+    'm4.beaconImpl',
+    'm4.readerBeaconImpl',
+    'm4.upgradedImpl',
+    'm6.uupsImpl',
+    'm6.readerImpl',
+    'm6.readerAdmin',
+  ];
   for (const key of stable) {
     if (!sameAccount(report1[key], report2[key])) {
       die(`replay changed ${key}: ${report1[key]} -> ${report2[key]}`);
@@ -603,6 +686,9 @@ async function main() {
   // beacon proxy already does below.
   const fresh = [
     'm1.proxy',
+    'm4.beacon',
+    'm4.readerBeacon',
+    'm4.beaconProxy',
     'm6.uupsProxy',
     'm6.autoProxy',
     'm6.zeroProxy',
@@ -666,10 +752,6 @@ async function main() {
         `fresh proxy every run), saw ${report2['m1.valueBefore']}`,
     );
   }
-  if (report1['m4.beaconProxy'] === report2['m4.beaconProxy']) {
-    die('the beacon migration was expected to deploy fresh on replay');
-  }
-
   // 8 — tronbox test: validation without a deployer
   const tested = run(tronbox, ['test', '--network', 'development'], {
     cwd: workdir,

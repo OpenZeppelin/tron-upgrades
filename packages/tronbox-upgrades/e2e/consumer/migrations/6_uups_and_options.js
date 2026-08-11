@@ -1,4 +1,10 @@
-const { deployProxy, upgradeProxy } = require('@openzeppelin/tronbox-upgrades');
+const {
+  deployProxy,
+  upgradeProxy,
+  validateImplementation,
+  erc1967,
+  silenceWarnings,
+} = require('@openzeppelin/tronbox-upgrades');
 
 const BoxUUPS = artifacts.require('BoxUUPS');
 const BoxUUPSV2 = artifacts.require('BoxUUPSV2');
@@ -8,12 +14,27 @@ const BoxOptions = artifacts.require('BoxOptions');
 const BoxOptionsV2 = artifacts.require('BoxOptionsV2');
 const BoxOwned = artifacts.require('BoxOwned');
 const BoxSolo = artifacts.require('BoxSolo');
+const BoxLinked = artifacts.require('BoxLinked');
+const BoxNever = artifacts.require('BoxNever');
 // Written by the harness before the run; requiring it beats reading env vars
 // inside the migration sandbox.
 const params = require('../e2e-params.json');
 
 async function readBig(call) {
   return BigInt((await call()).toString());
+}
+
+function assertBase58(address, what) {
+  if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address)) {
+    throw new Error(`e2e: ${what} is not a canonical base58 TRON address: ${address}`);
+  }
+}
+
+function sameAddress(left, right) {
+  return (
+    tronWrap.address.toHex(left).toLowerCase() ===
+    tronWrap.address.toHex(right).toLowerCase()
+  );
 }
 
 // A sent transaction lands on the chain's next block; poll instead of
@@ -46,6 +67,28 @@ module.exports = async function (deployer) {
   // attempt refuses, because this proxy has no admin to route through.
   const upgraded = await upgradeProxy(uups.address, BoxUUPSV2, handles);
   console.log('E2E m6.uupsImpl=' + upgraded.implementation);
+
+  const readerImplementation = await erc1967.getImplementationAddress(
+    uups.address,
+    handles,
+  );
+  const readerAdmin = await erc1967.getAdminAddress(uups.address, handles);
+  assertBase58(readerImplementation, 'uups implementation reader result');
+  assertBase58(readerAdmin, 'uups admin reader result');
+  if (!sameAddress(readerImplementation, upgraded.implementation)) {
+    throw new Error(
+      `e2e: uups implementation reader returned ${readerImplementation}, ` +
+        `expected ${upgraded.implementation}`,
+    );
+  }
+  const zeroAddress = 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb';
+  if (readerAdmin !== zeroAddress) {
+    throw new Error(
+      `e2e: uups admin reader returned ${readerAdmin}, expected ${zeroAddress}`,
+    );
+  }
+  console.log('E2E m6.readerImpl=' + readerImplementation);
+  console.log('E2E m6.readerAdmin=' + readerAdmin);
 
   // The new code must be live through the same address: increment() exists
   // only on the upgraded implementation.
@@ -159,4 +202,68 @@ module.exports = async function (deployer) {
     );
   }
   console.log('E2E m6.refusalCode=' + refusal.code);
+
+  // The candidate differs from the implementation currently behind `opts`
+  // and has no recorded deployment. The reuse-only policy must therefore
+  // refuse before it can deploy an implementation or send an upgrade.
+  let neverRefusal = null;
+  try {
+    await upgradeProxy(opts.address, BoxNever, {
+      ...handles,
+      redeployImplementation: 'never',
+    });
+  } catch (error) {
+    neverRefusal = error;
+  }
+  if (
+    !neverRefusal ||
+    neverRefusal.code !== 'implementation-not-previously-deployed'
+  ) {
+    throw new Error(
+      "e2e: redeployImplementation:'never' was not refused by name; saw: " +
+        (neverRefusal
+          ? `${neverRefusal.code}: ${neverRefusal.message}`
+          : 'a successful upgrade'),
+    );
+  }
+  console.log('E2E m6.never.refusalCode=' + neverRefusal.code);
+
+  // This contract carries a genuine external-library link reference. The
+  // engine must reject it first, then accept the same artifact only under the
+  // one explicit allowance. Silencing suppresses that allowance's advisory
+  // write while the returned notes prove the warning was still recorded.
+  let linkedRefusal = null;
+  try {
+    await validateImplementation(BoxLinked, { artifacts });
+  } catch (error) {
+    linkedRefusal = error;
+  }
+  if (
+    !linkedRefusal ||
+    !/external libraries/i.test(String(linkedRefusal.message)) ||
+    !/LinkedMath/.test(String(linkedRefusal.message))
+  ) {
+    throw new Error(
+      'e2e: linked implementation did not receive the engine verdict; saw: ' +
+        (linkedRefusal ? linkedRefusal.message : 'successful validation'),
+    );
+  }
+  silenceWarnings();
+  const linkedAccepted = await validateImplementation(BoxLinked, {
+    artifacts,
+    unsafeAllow: ['external-library-linking'],
+  });
+  const linkedAllowanceNotes = linkedAccepted.notes.filter(note =>
+    [note.summary, ...note.detail].some(line =>
+      /unsafeAllow\.external-library-linking/.test(line),
+    ),
+  );
+  if (linkedAllowanceNotes.length === 0) {
+    throw new Error(
+      'e2e: linked implementation acceptance recorded no allowance warning',
+    );
+  }
+  console.log('E2E m6.linked.refused=true');
+  console.log('E2E m6.linked.accepted=true');
+  console.log('E2E m6.linked.noteCount=' + linkedAllowanceNotes.length);
 };
