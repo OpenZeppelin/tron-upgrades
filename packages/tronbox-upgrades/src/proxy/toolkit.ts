@@ -787,10 +787,15 @@ export async function createOperationToolkit(request: {
       // `null` is not a safe pass-through either, verified per installed
       // TronBox minor in `assertNoCheatcodeCollision`'s doc comment. Args
       // this seam builds itself never reach here as a trailing `null`:
-      // `deployBeacon`'s owner is the one plugin-built value that could be
-      // null, and it is refused pre-flight, before the queue, by
+      // `deployBeacon`'s owner is the one plugin-built LAST argument that
+      // could be null, and it is refused pre-flight, before the queue, by
       // `BeaconInitialOwnerRequiredError` — every other plugin-built last
-      // argument is an encoded call/address string.
+      // argument is an encoded call/address string. That is a claim about
+      // the last position only, which is all this guard can see: the
+      // transparent proxy's `initialOwner` is a second plugin-built
+      // nullable, but it rides in the MIDDLE of the constructor args, so
+      // an unconfigured sender with no `initialOwner` sails past this
+      // guard and fails later, client-side, in the host's ABI encoder.
       assertNoCheatcodeCollision(args);
       const instance = (await deployable.new(...args)) as {
         address?: unknown;
