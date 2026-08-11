@@ -98,6 +98,7 @@ export const beacon = Object.freeze({
       throw new NothingToAdoptError(
         beaconAddress,
         'an address that does not answer implementation() — not a beacon',
+        'reader',
       );
     }
     return toPublicAddress(read.address);

@@ -81,7 +81,8 @@ export function inMemoryFiles(tree: Readonly<Record<string, string>>): {
  * The reader is the seam's own — one directory listing plus at most one
  * read-and-parse per `*.output.json` entry, plus an existence probe for the
  * paired compiler-*input* file and, when the pair is present, one read-and-parse
- * of it. A missing or corrupt pair is never an error at the reader; the gate
+ * of it. A pair that is missing, corrupt, or could not be read is never an
+ * error at the reader; the gate
  * turns it into a per-candidate rejection (`input-pair-absent` /
  * `input-pair-unparseable`).
  *

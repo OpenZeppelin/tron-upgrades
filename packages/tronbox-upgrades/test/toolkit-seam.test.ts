@@ -811,8 +811,8 @@ interface SeededManifestData {
 function seedManifestImplementation(versionKey: string, address: string): void {
   const existing: SeededManifestData = fs.existsSync(REAL_SEAM_MANIFEST_FILE)
     ? (JSON.parse(fs.readFileSync(REAL_SEAM_MANIFEST_FILE, 'utf8')) as SeededManifestData)
-    // Mirrors the installed engine's `currentManifestVersion`; a drift makes
-    // the seeded record fail loudly when the engine reads it.
+    // Mirrors the installed engine's `currentManifestVersion`; revisit this
+    // literal with an engine upgrade so the seed stays on its supported version.
     : { manifestVersion: '3.2', impls: {}, proxies: [] };
   existing.impls[versionKey] = { address };
   fs.mkdirSync(path.dirname(REAL_SEAM_MANIFEST_FILE), { recursive: true });

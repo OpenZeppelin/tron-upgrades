@@ -102,7 +102,11 @@ jobs:
             fi
             sleep 2
           done
-          echo "::error::TRE never answered on :9090, or its funded-key log format changed and key extraction found nothing"
+          if curl -sf -X POST http://127.0.0.1:9090/wallet/getnowblock | grep -q blockID; then
+            echo "::error::TRE answered on :9090, but funded-key extraction found nothing; its log format may have changed"
+          else
+            echo "::error::TRE never answered on :9090"
+          fi
           docker logs tre
           exit 1
 

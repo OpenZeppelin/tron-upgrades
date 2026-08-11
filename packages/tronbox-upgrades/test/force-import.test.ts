@@ -292,9 +292,12 @@ const TRANSPARENT: Spec = {
 describe('the code check comes first, and no-code refuses by name', () => {
   it('refuses before any slot read', async () => {
     const fake = buildFake({ hasCode: false });
-    await expect(
-      runForceImport(fake.context, ADDR, abstraction(CODE)),
-    ).rejects.toBeInstanceOf(NothingToAdoptError);
+    const failure = await runForceImport(fake.context, ADDR, abstraction(CODE)).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(NothingToAdoptError);
+    expect((failure as Error).message).toContain('forceImport');
     expect(fake.log).toEqual(['proxySlots']);
   });
 });

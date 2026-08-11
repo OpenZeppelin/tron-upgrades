@@ -168,8 +168,8 @@ write capability to misuse.
 
 `readBuildInfo` is the seam's own reader: one directory listing plus at most one read-and-parse
 per `*.output.json` entry, plus an existence probe for the paired compiler-*input* file and,
-when the pair is present, one read-and-parse of it. A missing or corrupt pair is not an error
-at the reader — it becomes a per-candidate rejection at the gate.
+when the pair is present, one read-and-parse of it. A pair that is missing, corrupt, or could
+not be read is not an error at the reader — it becomes a per-candidate rejection at the gate.
 
 ---
 
