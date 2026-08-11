@@ -183,6 +183,14 @@ All operations take the migration `handles` object as their final argument
 | `forceImport(proxyAddress, Contract, opts)` | Adopt an existing proxy (or beacon) into the deployment record, verifying on-chain bytecode against the artifact. |
 | `transferProxyAdminOwnership(proxyAddress, newOwner, opts)` | Transfer ownership of a transparent proxy's ProxyAdmin, with a pre-read that turns a repeat into a declared no-op. |
 
+Two more exports round out the public surface, both cheap — no validation, no record, no spend:
+
+| Export | What it does |
+|---|---|
+| `erc1967.getImplementationAddress/getAdminAddress/getBeaconAddress(address, opts)` | Read one of the three standard ERC-1967 proxy slots directly from chain, as base58. |
+| `beacon.getImplementationAddress(beaconAddress, opts)` | Read a beacon's own `implementation()`, as base58. |
+| `silenceWarnings()` | Suppress this plugin's advisory writes for the life of the process — see the divergence below for how this differs from upstream's own control. |
+
 Options follow the
 [OpenZeppelin Upgrades API](https://docs.openzeppelin.com/upgrades-plugins/api-hardhat-upgrades)
 where the concepts coincide: `kind`, `initializer`, `constructorArgs`,
@@ -214,6 +222,65 @@ Longer-form documentation ships in the repository's `docs/` directory:
 proxy operations and their refusals, deployment and transaction semantics
 (including the `await` rule above), adopting existing deployments, and what
 the validations do and do not cover.
+
+## Divergences from the Hardhat/Truffle plugins
+
+This plugin follows the same model as OpenZeppelin's Hardhat and Truffle
+upgrades plugins, but it is not a drop-in port — TRON's own semantics, v5
+proxies, and a stricter safety posture change several behaviors on purpose.
+Every divergence below is deliberate; each states what changed, why, and how
+to adapt a migration written against the other plugins.
+
+### API shape
+
+| What changed | Why | Migration |
+|---|---|---|
+| **Handles are a mandatory argument.** Every operation takes the migration's `{ deployer, artifacts, tronWrap, waitForTransactionReceipt }` as its final argument. | Hardhat reads a live Hardhat Runtime Environment implicitly; TronBox's migration sandbox has no equivalent to read from, so there is nothing to make this optional. | Build the handles object once per migration and pass it to every call — see the Quickstart above. |
+| **Results are envelopes, not bare contract instances.** Every operation returns `{ contract, address, transaction, notes, … }` rather than the deployed/upgraded contract instance itself. | Hardhat/Truffle read `.address` and a transaction-hash accessor off the returned contract. TronBox's own accessors don't guarantee those the same way, and some results (`forceImport`) have no transaction at all — naming the fields is what lets the type say which are guaranteed. | Read `result.address` and `result.transaction.hash` (or `.implementation` where the operation reports one) instead of reading off the contract instance. |
+| **`txOverrides` does not exist.** | It has no TRON meaning: gas/gasPrice/nonce belong to a different fee model. Passing it to any operation is refused by name (`UnknownOptionError`), never silently dropped. | Configure `feeLimit`, `userFeePercentage`, etc. in `tronbox-config.js` instead. |
+| **No `admin.deployProxyAdmin`; no `admin.changeProxyAdmin`.** | A v5 transparent proxy deploys its own **immutable** `ProxyAdmin` as part of `deployProxy` itself, so there is no separate admin to deploy ahead of time, and no admin contract a proxy can be re-pointed at. | Use `transferProxyAdminOwnership(proxyAddress, newOwner, opts)` to hand off upgrade authority — it transfers the *ownership* of the per-proxy admin, scoped to one proxy, with a pre-read that turns a repeat transfer into a declared no-op rather than an on-chain revert. |
+| **`validateUpgrade` is name-vs-name only; `prepareUpgrade` is proxy-address only.** | Neither accepts a deployed beacon or bare implementation address as the reference, the way Hardhat's equivalents do. `validateUpgrade(FromContract, ToContract, opts)` compares two artifact names; `prepareUpgrade(proxyAddress, Contract, opts)` reads its reference layout from a live proxy's own 1967 slot — chain-read, never guessed from a name. | If the reference isn't a proxy you can point at, `forceImport` it first, then reference it by address. |
+| **`deployBeaconProxy` no longer accepts `kind`.** A beacon proxy has exactly one kind, so the option is refused entirely (`UnknownOptionError`), and the `DeployBeaconProxyOptions` type does not declare the field. | The old API accepted `kind` and refused only a *wrong* value; a beacon proxy's kind was never actually a choice, so accepting-then-narrowing was a signature that could not fail usefully. | Drop `kind` from `deployBeaconProxy` calls entirely — there is nothing to set. |
+| **The positional overloads are gone.** `deployProxy(Contract, opts)` and `deployBeaconProxy(beaconAddress, Contract, opts)` — options passed where the argument list belongs — are refused by name with `OptionsInArgsPositionError`, before anything spends. | The old Hardhat/Truffle-shaped API accepted options in that position when the argument list was omitted. Reinterpreting it silently here would either throw an opaque native error a few calls downstream (spreading a plain object throws) or, worse, quietly misencode the call. | Always pass the argument list — an array, or `[]` — before any options object: `deployProxy(Contract, [42], opts)`, never `deployProxy(Contract, opts)`. |
+| **`initializer: false` is unsupported.** Refused with `EmptyInitializerRefusedError`, naming the divergence, before any spend. | The ported `TRC1967Proxy` (which `TransparentUpgradeableProxy` also constructs through) reverts on **empty** initialization data for transparent and UUPS proxies — a deliberate parity break, safer than upstream's `ERC1967Proxy`, which allows an uninitialized proxy to exist. `BeaconProxy` itself does not require non-empty data, but this plugin refuses it there too, uniformly: `deployProxy` and `deployBeaconProxy` both encode their initializer through the same function, and it refuses an empty result for every kind rather than letting a beacon proxy's laxer contract carve out an exception. The same refusal covers an *omitted* initializer against a contract with no default `initialize()`, which upstream would otherwise deploy uninitialized. | Initialize in the same transaction — add an `initializer` your contract answers, for every proxy kind including beacon. |
+| **`unsafeAllow`'s closed value set comes from the installed engine, 14 members against the parity target's 9.** | `@openzeppelin/upgrades-core@1.46.0` (this plugin's installed dependency) added five members after the Hardhat plugin's own pinned revision. Mirroring the parity target's set literally would reject five values the installed engine actually accepts. | The option's *shape* still mirrors the parity target; only the closed set of accepted strings is newer. Pass any of the 14 the installed engine defines. |
+| **Conflicting `unsafeAllow` combinations are refused, not silently resolved.** Three pairs — `unsafeAllowLinkedLibraries: false` alongside `unsafeAllow: ['external-library-linking']`; `unsafeAllowCustomTypes: false` alongside `unsafeAllow: ['struct-definition', 'enum-definition']`; and `useDeployedImplementation` alongside `redeployImplementation` — each express one allowance through two channels that can disagree. | Hardhat/upstream resolves the disagreement silently, always in favor of one channel (the array, or the newer option) — so a caller who thinks they revoked an allowance through one channel keeps it anyway. This plugin refuses outright with `OptionConflictError`, naming both options and which one to drop. | Set the allowance through exactly one channel per pair; the error message names both and states which to remove. |
+
+### Behavioral divergences worth reading closely
+
+- **A hex `call` value is raw calldata; an overloaded function name is resolved by argument count, not by exact signature.** `upgradeProxy`'s `call` option, when given as a string starting with `0x`, is sent as calldata verbatim — no ABI encoding, no function lookup at all. A plain function name goes through `ethers`' own `Interface.getFunction`, which — for a name with more than one overload — resolves to whichever overload matches the argument count, and throws if more than one shares it. Hardhat's own `call` requires the exact signature string (e.g. `reinitialize(uint8)`) for an overloaded function; this plugin's arity-based resolution is looser for a non-overloaded name and stricter (a refusal, not a silent pick) when two overloads share an argument count. Pass the full signature if your target has ambiguous overloads.
+- **`upgradeProxy` always dispatches — Hardhat parity, and it includes the `call`.** The upgrade transaction is sent even when the proxy already runs the target implementation, matching Hardhat's own behavior. The consequence worth naming explicitly: a supplied `call` executes on **every** invocation, not only the first. Re-running a migration whose `call` targets a reinitializer that already ran will **revert on-chain** — the reinitializer's own one-time guard rejects the repeat, and the failure surfaces as `TransactionRevertedError`, not as a quiet skip. This is the same "always dispatch" contract that lets a `call`-less `upgradeProxy` be re-run safely when nothing changed; a `call` that targets a reinitializer is the one shape where re-running is not free.
+- **The public 1967 readers return TRON base58, never EVM hex.** `erc1967.getImplementationAddress` / `getAdminAddress` / `getBeaconAddress` and `beacon.getImplementationAddress` mirror Hardhat's own namespaces in name and in shape — but every address they answer with is base58, matching every other address this plugin's operations return, never the checksummed-hex form Hardhat's equivalents use. Convert explicitly (`tronweb`'s own `TronWeb.utils.address.toHex`) if your migration needs the hex form.
+- **`silenceWarnings()` is this plugin's own control, not a call-through to upstream's.** It mirrors upstream's exported function in name and in scope, but is backed by a local, resettable flag rather than by calling upstream's — upstream's own flag is a private module-level binding with no reset, its farewell notice bypasses TronBox's `--quiet` (it writes straight to `console.error`), and with engine-warning capture already in place upstream never writes to the terminal in the first place. Silencing here gates the plugin's own advisory emission only: it never suppresses a thrown error and never suppresses a `notes` entry on the result — every reduced-fidelity statement still reaches the caller who reads the return value, silenced or not.
+
+### Proxy provenance
+
+Every proxy contract this plugin deploys — `TransparentUpgradeableProxy`, `ProxyAdmin`, `TRC1967Proxy` (the UUPS proxy), `UpgradeableBeacon` and `BeaconProxy` — comes from **one package, `openzeppelin-tron-solidity`**, and reaches your build through **one file**, bundled with this plugin:
+
+```solidity
+import "@openzeppelin/tronbox-upgrades/contracts/Proxies.sol";
+```
+
+> ⚠️ `openzeppelin-tron-solidity` is not yet published; the version range this
+> plugin will declare against it is TBD. The import path and the set of
+> contracts it brings in are stable now — only the version constraint is
+> pending.
+
+TronBox resolves compiled artifacts by **bare contract name**, with no
+directory or package qualification. That means a proxy artifact this plugin
+needs is exactly as available as any other contract in your build — and
+exactly as exposed to a name collision: if your own project (or another
+dependency) also compiles a contract named, say, `ProxyAdmin`, TronBox's index
+cannot tell them apart. Deployment does not guess:
+
+- **Missing artifact** (the import above was never added): refused by name
+  (`ProxyArtifactMissingError`), naming the one-file remedy.
+- **Name collision** (more than one compiled contract answers to the bare
+  name): refused by name (`ProxyArtifactCollisionError`), listing every
+  colliding source path. Nothing is picked by file-order chance.
+
+Rename or remove the colliding contract, or keep the proxy contracts scoped to
+the single import file above and nowhere else in your sources.
 
 ## Validation without storage layouts
 
