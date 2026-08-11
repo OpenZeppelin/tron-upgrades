@@ -178,6 +178,12 @@
       "sourceKey": "Box.sol",
       "note": "A base contract's own function carries a modifier literally named 'reinitializer', with no '@custom:oz-upgrades-validate-as-initializer' annotation. Validating the derived contract walks the base's possible initializers and upstream's own dist/validate/run/initializer.js:getPossibleInitializers logs a Note there, unconditionally on the modifier's name and independent of the derived contract's own errors (there are none: the base's initializers map ends up empty, so the missing-initializer-call check this note's caller gates never runs). This is the corpus's one real (not synthesized) engine Note.",
       "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract ReinitBase {\n    modifier reinitializer(uint8 version) {\n        _;\n    }\n\n    function bump(uint8 version) public reinitializer(version) {}\n}\n\ncontract ReinitDerived is ReinitBase {\n    uint256 stored;\n\n    function get() external view returns (uint256) {\n        return stored;\n    }\n}\n"
+    },
+    "linked-library": {
+      "contract": "LinkedLibraryUser",
+      "sourceKey": "Box.sol",
+      "note": "A public library function (LinkedMath.double) is deployed separately and reached by DELEGATECALL, so LinkedLibraryUser's own bytecode carries an unresolved link reference for it. Declares no storage and needs no initializer, so the engine's ONLY error for this contract is the linking one — the fixture this plugin's unsafeAllow-flips-a-real-verdict test drives, through the real validateImplementation, rather than merely the resolver's own wiring.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nlibrary LinkedMath {\n    function double(uint256 x) public pure returns (uint256) {\n        return x * 2;\n    }\n}\n\ncontract LinkedLibraryUser {\n    function run(uint256 x) external pure returns (uint256) {\n        return LinkedMath.double(x);\n    }\n}\n"
     }
   },
   "measuredArithmetic": {

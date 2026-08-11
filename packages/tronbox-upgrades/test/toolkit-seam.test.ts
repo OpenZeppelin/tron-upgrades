@@ -167,6 +167,63 @@ describe('hostDeploy refuses a trailing plain-object argument before it deploys 
 });
 
 /*
+ * `unsafeAllow: ['external-library-linking']` flipping a REAL engine verdict
+ * (review §6 gap 3) — post-B1 the flag genuinely reaches
+ * `resolved.validation.unsafeAllowLinkedLibraries` (the suite above pins the
+ * wiring), and this is the behavioural proof: driven through the REAL
+ * toolkit's `validateImplementation`, over `linked-library` — a corpus
+ * contract whose bytecode carries a genuine unresolved link reference for a
+ * public library function (`test/fixtures/upgrade-pairs.json`'s
+ * `standalone.linked-library`; verified in the regenerated corpus to carry
+ * `linkReferences: { 'Box.sol': { LinkedMath: [...] } }`), refused by the
+ * engine's own `getLinkingErrors` unless the opt-out is granted.
+ */
+describe('validateImplementation — unsafeAllow flips a REAL engine verdict over a linked-library corpus contract (review §6 gap 3)', () => {
+  it('refuses the linked library by name without the opt-out, and accepts it with unsafeAllow', async () => {
+    const project = realToolkitProject({ standaloneId: 'linked-library' });
+
+    const refused = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: {},
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    // The wiring this test's behaviour rests on, asserted rather than assumed.
+    expect(refused.resolved.unsafeAllowLinkedLibraries).toBe(false);
+
+    let caught: unknown;
+    try {
+      await refused.toolkit.validateImplementation(project.contractName, refused.resolved);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain('is not upgrade-safe');
+    // The engine's own diagnosis text for THIS error kind
+    // (`upgrades-core/dist/validate/report.js`'s `external-library-linking`
+    // entry) — never a generic "is not upgrade-safe" that could equally be
+    // any other refusal this fixture happens not to trigger.
+    expect((caught as Error).message).toContain('external libraries');
+    expect((caught as Error).message).toContain('LinkedMath');
+
+    const accepted = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: { unsafeAllow: ['external-library-linking'] },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    expect(accepted.resolved.unsafeAllowLinkedLibraries).toBe(true);
+    const validated = await accepted.toolkit.validateImplementation(
+      project.contractName,
+      accepted.resolved,
+    );
+    expect(validated.name).toBe(project.contractName);
+  });
+});
+
+/*
  * The degraded-output channel, made truthful (Eric's review, r3739084431):
  * `captureEngineWarnings` had zero production callers and the two silent
  * accepts of a non-`'unique'` artifact resolution never told anyone. Both

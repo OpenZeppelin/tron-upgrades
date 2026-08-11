@@ -1,5 +1,11 @@
+// Imported FIRST, ahead of every other project import: it primes
+// `MANIFEST_DEFAULT_DIR` before `'../src/options'` below can pull in the
+// real engine and freeze the default in force. See its own doc comment.
+import { RECORD_DIR, restoreRecordDir } from './helpers/prime-record-dir';
+
+import fs from 'node:fs';
 import { Interface } from 'ethers';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import { deployProxy, runDeployProxy } from '../src/proxy/deploy-proxy';
 import { runUpgradeProxy } from '../src/proxy/upgrade-proxy';
@@ -14,6 +20,7 @@ import {
   InitialOwnerUnsupportedKindError,
   NotTransparentProxyError,
   OptionsInArgsPositionError,
+  ProxyAdminAsOwnerError,
   StaleProxyRecordError,
   UpgradeVerificationFailedError,
 } from '../src/proxy/errors';
@@ -22,12 +29,17 @@ import { OptionValueError } from '../src/options';
 import {
   assertNoCheatcodeCollision,
   CheatcodeSlotCollisionError,
+  ConfirmationIndeterminateError,
   DeployerAbsentError,
+  TransactionRevertedError,
 } from '../src/deploy';
-import { canonicalizeAddress, toBase58 } from '../src/record';
+import type { ConfirmationVerdict } from '../src/deploy';
+import { canonicalizeAddress, openRecord, toBase58 } from '../src/record';
+import type { RecordSession } from '../src/record';
 import { toTronHex } from '../src/record/address';
+import type { ChainAccess, ChainInstanceIdentity } from '../src/chain';
 import { zeroChainAddress } from '../src/chain';
-import type { ContractAbstraction } from '../src/environment';
+import type { AbsolutePath, ContractAbstraction } from '../src/environment';
 
 /*
  * The proxy operations — the ordering invariants, pinned on a recording fake
@@ -48,6 +60,20 @@ const OTHER_IMPL = 'TQ5NMqJjhpQGK7YJbESmqLZKmqSXvfRWMR';
 // exact role in `test/surface-request-response-contract.test.ts`.
 const OWNER_BASE58 = 'TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh';
 const TX_HASH = 'aa'.repeat(32);
+
+// ── The REAL record directory, primed before the engine could load ───────────
+//
+// `RECORD_DIR` and its `MANIFEST_DEFAULT_DIR` assignment come from
+// `./helpers/prime-record-dir`, imported first in this file for exactly that
+// reason. One directory for the whole file rather than one per test: the
+// assignment is a no-op after the engine's first load, so a second temp
+// directory created mid-file would be silently ignored by the engine while
+// this plugin's OWN bookkeeping pointed at it — the two byte-compare tests
+// below use distinct chain ids instead, which is what the engine keys its
+// manifest FILE name on.
+afterAll(() => {
+  restoreRecordDir();
+});
 
 interface FakeSpec {
   readonly priorAddress?: string | null;
@@ -86,6 +112,36 @@ interface FakeSpec {
    */
   readonly validateThrows?: Error;
   /**
+   * What the fake's `looksLikeProxyAdmin` answers. Defaults to `false` —
+   * every ordering test in this file keeps sailing past the check; the
+   * ProxyAdmin-as-owner suite is the one that sets it `true`.
+   */
+  readonly looksLikeAdmin?: boolean;
+  /**
+   * The verdict the fake's `confirm` resolves with. Defaults to
+   * `'confirmed-successful'`. `'reverted'`/`'indeterminate'` drive the two
+   * on-chain-settled non-success verdicts through the SAME shape
+   * `confirmTransaction` produces, so the pipeline's own `verdict.kind`
+   * branches are what is under test, not a fake's approximation of them.
+   * Ignored when `confirmThrows` is set.
+   */
+  readonly confirmOutcome?: ConfirmationVerdict['kind'];
+  /**
+   * Makes the fake's `confirm` reject outright, standing in for an
+   * interrupted run — the process dies mid-confirm, never reaching a
+   * verdict at all (unlike `'indeterminate'`, which IS a verdict the gate
+   * settled on).
+   */
+  readonly confirmThrows?: Error;
+  /**
+   * A real, disk-backed `RecordSession` in place of the fake one below.
+   * `recordProxy` still logs, but delegates to this session's own
+   * `addProxyRecord` — so a refusal that mistakenly reached `recordProxy`
+   * would leave a REAL byte trail on the fixture files a byte-compare can
+   * catch, not merely a call the fake's own log recorded.
+   */
+  readonly realSession?: RecordSession;
+  /**
    * Overrides merged over the `ResolvedForProxyOps` defaults below. The
    * defaults fix every field to its "caller said nothing" value, which is
    * exactly wrong for the kind/initializer/initialOwner/call semantics this
@@ -111,6 +167,12 @@ interface Fake {
    * request. `undefined` until an upgrade actually dispatches a call.
    */
   readonly upgradeCallData?: string | undefined;
+  /**
+   * `contractAt`'s own call, captured verbatim: the abstraction BY
+   * REFERENCE (never re-derived), and the address it was attached at.
+   * `undefined` until `contractAt` actually runs.
+   */
+  readonly contractAtCall?: { readonly abstraction: unknown; readonly address: string } | undefined;
 }
 
 const RESULT_ABI = [
@@ -151,6 +213,7 @@ function buildFake(spec: FakeSpec = {}): Fake {
   // this function reassigning a field the `Fake` interface declares readonly.
   let proxyConstructorArgs: readonly unknown[] | undefined;
   let upgradeCallData: string | undefined;
+  let contractAtCall: { readonly abstraction: unknown; readonly address: string } | undefined;
 
   const writeBack = { address: toTronHex(canonicalizeAddress(PROXY_ADDR)), transactionHash: TX_HASH };
   const currentImpl =
@@ -236,8 +299,9 @@ function buildFake(spec: FakeSpec = {}): Fake {
       };
     },
 
-    contractAt: async (_abstraction, address) => {
+    contractAt: async (abstraction, address) => {
       log.push('contractAt');
+      contractAtCall = { abstraction, address };
       return { address } as never;
     },
 
@@ -287,7 +351,7 @@ function buildFake(spec: FakeSpec = {}): Fake {
     },
     looksLikeProxyAdmin: async () => {
       log.push('looksLikeProxyAdmin');
-      return false;
+      return spec.looksLikeAdmin ?? false;
     },
 
     async fetchOrDeployImplementation(_validated, _resolved, deploy) {
@@ -321,6 +385,27 @@ function buildFake(spec: FakeSpec = {}): Fake {
 
     async confirm(transactionHash) {
       log.push('confirm');
+      if (spec.confirmThrows) {
+        throw spec.confirmThrows;
+      }
+      const outcome = spec.confirmOutcome ?? 'confirmed-successful';
+      if (outcome === 'reverted') {
+        return {
+          kind: 'reverted',
+          transactionHash,
+          vmResult: 'REVERT',
+          vmMessage: 'REVERT opcode executed',
+          receipt: {},
+        };
+      }
+      if (outcome === 'indeterminate') {
+        return {
+          kind: 'indeterminate',
+          transactionHash,
+          because: 'receipt-field-absent',
+          waitedMs: null,
+        };
+      }
       return {
         kind: 'confirmed-successful',
         transactionHash,
@@ -361,8 +446,11 @@ function buildFake(spec: FakeSpec = {}): Fake {
       return writeBack;
     },
 
-    recordProxy: async () => {
+    recordProxy: async (address, kind) => {
       log.push('recordProxy');
+      if (spec.realSession) {
+        await spec.realSession.addProxyRecord({ address, kind });
+      }
     },
   };
 
@@ -389,6 +477,9 @@ function buildFake(spec: FakeSpec = {}): Fake {
     },
     get upgradeCallData() {
       return upgradeCallData;
+    },
+    get contractAtCall() {
+      return contractAtCall;
     },
   };
 }
@@ -668,6 +759,199 @@ describe('deployProxy — the order is the contract', () => {
   });
 });
 
+/*
+ * A REAL, disk-backed `RecordSession` for the byte-compare tests below — the
+ * record layer's own preflight, run for real under `RECORD_DIR`, following
+ * `test/record-non-vacuity.test.ts`'s own byte-compare pattern. `recordProxy`
+ * in `buildFake` above delegates to this session's own `addProxyRecord` when
+ * one is supplied, so a refusal that mistakenly reached it would leave a
+ * genuine mutation on disk — not merely a call a fake's log recorded.
+ *
+ * `chainIdHex` is what the engine keys the manifest FILE name on, so each
+ * caller in this suite names a distinct chain id — one shared `RECORD_DIR`,
+ * unable to move once the engine has loaded, holds every session's own file
+ * with no cross-test interference.
+ */
+async function realRecordSession(chainIdHex: string): Promise<RecordSession> {
+  const identity: ChainInstanceIdentity = {
+    chainId: chainIdHex,
+    genesisHash: `0x${'ab'.repeat(32)}`,
+    firstBlockHash: `0x${'cd'.repeat(32)}`,
+    observedThrough: 'http://fixture.invalid/',
+  };
+  const chain: ChainAccess = {
+    get provider(): ChainAccess['provider'] {
+      throw new Error('no provider expected on this path');
+    },
+    endpoint: Object.freeze({
+      describe: identity.observedThrough,
+      origin: 'derived' as const,
+    }),
+    identity: () => Promise.resolve(identity),
+    // A throwing stub, never a value: `addresses: []` below means
+    // `reconcileProxies` never dereferences it, and a getter is what makes
+    // "never" measurable rather than merely unasserted.
+    read: {
+      hasCode: () =>
+        Promise.reject(
+          new Error('no address was named, so no code-presence read may happen'),
+        ),
+    } as unknown as ChainAccess['read'],
+  };
+  return openRecord({
+    root: RECORD_DIR as AbsolutePath,
+    // The real view, deliberately: the engine reads the SAME variable
+    // straight off `process.env`, primed above at module scope, so this
+    // plugin's own bookkeeping has to read the identical view or the two
+    // could disagree about which file is in force.
+    env: process.env,
+    chain,
+    addresses: [],
+  });
+}
+
+/** Both fixture files' current bytes, or `null` for one that does not exist. */
+function recordFixtureBytes(session: RecordSession): {
+  readonly manifest: string | null;
+  readonly fingerprint: string | null;
+} {
+  return {
+    manifest: fs.existsSync(session.manifestFile)
+      ? fs.readFileSync(session.manifestFile, 'utf8')
+      : null,
+    fingerprint: fs.existsSync(session.fingerprintFile)
+      ? fs.readFileSync(session.fingerprintFile, 'utf8')
+      : null,
+  };
+}
+
+describe('deployProxy — a refused deploy leaves the on-disk record byte-unchanged', () => {
+  it('a validation refusal never reaches recordProxy, and the manifest/fingerprint fixtures prove it', async () => {
+    const session = await realRecordSession('0x2a');
+    const before = recordFixtureBytes(session);
+
+    const fake = buildFake({
+      validateThrows: new Error('not upgrade-safe'),
+      realSession: session,
+    });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toThrow('not upgrade-safe');
+    expect(fake.log).not.toContain('recordProxy');
+
+    const after = recordFixtureBytes(session);
+    expect(after.manifest).toBe(before.manifest);
+    expect(after.fingerprint).toBe(before.fingerprint);
+  });
+
+  it('non-vacuity: the identical wiring DOES rewrite the manifest once recordProxy is actually reached', async () => {
+    // What makes the assertion above measure something rather than a fixture
+    // nobody could move: the same real session mechanism, with nothing
+    // changed but the trigger and the chain id, provably rewrites the
+    // manifest on a successful deploy.
+    const session = await realRecordSession('0x3');
+    const before = recordFixtureBytes(session);
+    const fake = buildFake({ realSession: session });
+    await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
+    expect(fake.log).toContain('recordProxy');
+
+    const after = recordFixtureBytes(session);
+    expect(after.manifest).not.toBeNull();
+    expect(after.manifest).not.toBe(before.manifest);
+  });
+});
+
+describe('deployProxy — a reverted or indeterminate confirmation is never recorded', () => {
+  it('a reverted confirmation refuses by name after BOTH deploys reached the host, and never records', async () => {
+    // The revert is discovered only at `confirm`, which runs after the
+    // implementation's hostDeploy (via `fetchOrDeployImplementation`) AND the
+    // proxy's own — so both ran, and the refusal is what stops the sender
+    // comparison and the record write that would otherwise follow.
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(TransactionRevertedError);
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
+      'hostDeploy:Box',
+      'hostDeploy:TransparentUpgradeableProxy',
+    ]);
+    expect(fake.log).not.toContain('recordProxy');
+  });
+
+  it('an indeterminate confirmation is likewise refused and never recorded', async () => {
+    const fake = buildFake({ confirmOutcome: 'indeterminate' });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(ConfirmationIndeterminateError);
+    expect(fake.log).not.toContain('recordProxy');
+  });
+});
+
+describe('deployProxy — an interrupted confirmation, and what a re-run does about it', () => {
+  it('the interrupted run throws mid-confirm after both deploys landed, with nothing recorded', async () => {
+    // Distinct from `'indeterminate'` above: the gate never SETTLED on a
+    // verdict at all here — `confirm` itself rejects, standing in for the
+    // process dying mid-confirm.
+    const interrupted = buildFake({ confirmThrows: new Error('ECONNRESET') });
+    await expect(
+      runDeployProxy(interrupted.context, fakeAbstraction({}), [42]),
+    ).rejects.toThrow('ECONNRESET');
+    expect(interrupted.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
+      'hostDeploy:Box',
+      'hostDeploy:TransparentUpgradeableProxy',
+    ]);
+    expect(interrupted.log).not.toContain('recordProxy');
+  });
+
+  it('a re-run resumes the already-deployed implementation but ALWAYS redeploys a fresh proxy — Hardhat parity, no proxy replay', async () => {
+    // `implementationReused: true` stands in for what the engine's own
+    // replay memory (`fetchOrDeployGetDeployment`) decides on a genuine
+    // re-run: the interrupted attempt's implementation deploy already landed
+    // on-chain, so the retry FETCHES it instead of deploying again — the
+    // "resume" half of the contract. The proxy carries no such memory:
+    // `deployProxy` always hostDeploys a NEW one (the reuse branch is gone,
+    // Hardhat parity), so it deploys again regardless — the "clean" half.
+    const retry = buildFake({ implementationReused: true });
+    const result = await runDeployProxy(retry.context, fakeAbstraction({}), [42]);
+    expect(retry.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
+      'hostDeploy:TransparentUpgradeableProxy',
+    ]);
+    expect(retry.log).toContain('recordProxy');
+    expect(result.address).toBe(toTronHex(canonicalizeAddress(PROXY_ADDR)));
+  });
+});
+
+describe('deployProxy — the ProxyAdmin-as-owner refusal and its escape', () => {
+  it('refuses by name when the resolved initialOwner looks like a ProxyAdmin contract', async () => {
+    const fake = buildFake({
+      looksLikeAdmin: true,
+      resolved: { initialOwner: OWNER_BASE58 },
+    });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(ProxyAdminAsOwnerError);
+    expect(fake.log).toContain('looksLikeProxyAdmin');
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('queue');
+  });
+
+  it('unsafeSkipProxyAdminCheck skips the check outright, and the deploy proceeds', async () => {
+    const fake = buildFake({
+      looksLikeAdmin: true,
+      resolved: { initialOwner: OWNER_BASE58, unsafeSkipProxyAdminCheck: true },
+    });
+    const result = await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
+    // Skipped outright — never merely overridden after running: the check
+    // never fires at all under the escape hatch.
+    expect(fake.log).not.toContain('looksLikeProxyAdmin');
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
+      'hostDeploy:Box',
+      'hostDeploy:TransparentUpgradeableProxy',
+    ]);
+    expect(result.address).toBe(toTronHex(canonicalizeAddress(PROXY_ADDR)));
+  });
+});
+
 // ---------------------------------------------------------------------------
 // upgradeProxy
 // ---------------------------------------------------------------------------
@@ -761,6 +1045,35 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     expect(fake.log.filter(entry => entry.startsWith('hostDeploy:'))).toEqual([]);
     expect(fake.log).toContain('sendUpgradeCall:admin-v5:upgradeAndCall');
     expect(fake.upgradeCallData).toBe('0x');
+    expect(fake.log).not.toContain('recordProxy');
+  });
+
+  it('the result preserves the PROXY address, and attaches the NEW abstraction there — not the old implementation', async () => {
+    const fake = buildFake();
+    const newImplementation = newImpl();
+    const result = await runUpgradeProxy(fake.context, PROXY_ADDR, newImplementation);
+
+    const canonicalProxy = canonicalizeAddress(PROXY_ADDR);
+    expect(result.address).toBe(canonicalProxy);
+    // `contractAt` is called with the PROXY's own address — never the new
+    // implementation's — and the caller's NEW abstraction (by reference),
+    // which is what lets the returned handle's ABI be the upgraded one.
+    expect(fake.contractAtCall?.address).toBe(canonicalProxy);
+    expect(fake.contractAtCall?.abstraction).toBe(newImplementation);
+    // The envelope's `implementation` field: the address the queue actually
+    // deployed/fetched, not merely "defined".
+    expect(result.implementation).toBe(toTronHex(canonicalizeAddress(NEW_IMPL)));
+  });
+
+  it('a reverted confirmation refuses after the dispatched call, before the verification read and any record', async () => {
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    await expect(
+      runUpgradeProxy(fake.context, PROXY_ADDR, newImpl()),
+    ).rejects.toBeInstanceOf(TransactionRevertedError);
+    expect(fake.log.some(e => e.startsWith('sendUpgradeCall:'))).toBe(true);
+    // The trust-but-verify read comes AFTER the confirm check in the
+    // pipeline, so a reverted confirmation never reaches it.
+    expect(fake.log).not.toContain('readImplementationAddress');
     expect(fake.log).not.toContain('recordProxy');
   });
 

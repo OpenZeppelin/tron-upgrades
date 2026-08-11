@@ -11523,6 +11523,1045 @@
      }
     }
    }
+  },
+  "linked-library": {
+   "contract": "LinkedLibraryUser",
+   "sourceKey": "Box.sol",
+   "astOnly": {
+    "input": {
+     "language": "Solidity",
+     "sources": {
+      "Box.sol": {
+       "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nlibrary LinkedMath {\n    function double(uint256 x) public pure returns (uint256) {\n        return x * 2;\n    }\n}\n\ncontract LinkedLibraryUser {\n    function run(uint256 x) external pure returns (uint256) {\n        return LinkedMath.double(x);\n    }\n}\n"
+      }
+     },
+     "settings": {
+      "outputSelection": {
+       "*": {
+        "": [
+         "ast"
+        ],
+        "*": [
+         "abi",
+         "evm.bytecode.object",
+         "evm.bytecode.sourceMap",
+         "evm.bytecode.linkReferences",
+         "evm.deployedBytecode.object",
+         "evm.deployedBytecode.sourceMap",
+         "evm.deployedBytecode.linkReferences",
+         "evm.deployedBytecode.immutableReferences",
+         "evm.methodIdentifiers",
+         "metadata"
+        ]
+       }
+      }
+     }
+    },
+    "output": {
+     "contracts": {
+      "Box.sol": {
+       "LinkedLibraryUser": {
+        "abi": [
+         {
+          "inputs": [
+           {
+            "internalType": "uint256",
+            "name": "x",
+            "type": "uint256"
+           }
+          ],
+          "name": "run",
+          "outputs": [
+           {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+           }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+         }
+        ],
+        "evm": {
+         "bytecode": {
+          "linkReferences": {
+           "Box.sol": {
+            "LinkedMath": [
+             {
+              "length": 20,
+              "start": 170
+             }
+            ]
+           }
+          },
+          "object": "6080604052348015600e575f80fd5b50d380156019575f80fd5b50d280156024575f80fd5b5061021a806100325f395ff3fe608060405234801561000f575f80fd5b50d3801561001b575f80fd5b50d28015610027575f80fd5b5060043610610041575f3560e01c8063a444f5e914610045575b5f80fd5b61005f600480360381019061005a919061012a565b610075565b60405161006c9190610164565b60405180910390f35b5f73__$7d89221f402f1ae983ed289440fd473f8b$__63eee97206836040518263ffffffff1660e01b81526004016100ad919061018c565b602060405180830381865af41580156100c8573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906100ec91906101b9565b9050919050565b5f80fd5b5f819050919050565b610109816100f7565b8114610113575f80fd5b50565b5f8135905061012481610100565b92915050565b5f6020828403121561013f5761013e6100f3565b5b5f61014c84828501610116565b91505092915050565b61015e816100f7565b82525050565b5f6020820190506101775f830184610155565b92915050565b610186816100f7565b82525050565b5f60208201905061019f5f83018461017d565b92915050565b5f815190506101b381610100565b92915050565b5f602082840312156101ce576101cd6100f3565b5b5f6101db848285016101a5565b9150509291505056fea26474726f6e5822122001a54dae6aff6374545015aadf9f6aedd16b650f4b3c806a26383f831da8745264736f6c634300081a0033",
+          "sourceMap": "173:135:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+         },
+         "deployedBytecode": {
+          "immutableReferences": {},
+          "linkReferences": {
+           "Box.sol": {
+            "LinkedMath": [
+             {
+              "length": 20,
+              "start": 120
+             }
+            ]
+           }
+          },
+          "object": "608060405234801561000f575f80fd5b50d3801561001b575f80fd5b50d28015610027575f80fd5b5060043610610041575f3560e01c8063a444f5e914610045575b5f80fd5b61005f600480360381019061005a919061012a565b610075565b60405161006c9190610164565b60405180910390f35b5f73__$7d89221f402f1ae983ed289440fd473f8b$__63eee97206836040518263ffffffff1660e01b81526004016100ad919061018c565b602060405180830381865af41580156100c8573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906100ec91906101b9565b9050919050565b5f80fd5b5f819050919050565b610109816100f7565b8114610113575f80fd5b50565b5f8135905061012481610100565b92915050565b5f6020828403121561013f5761013e6100f3565b5b5f61014c84828501610116565b91505092915050565b61015e816100f7565b82525050565b5f6020820190506101775f830184610155565b92915050565b610186816100f7565b82525050565b5f60208201905061019f5f83018461017d565b92915050565b5f815190506101b381610100565b92915050565b5f602082840312156101ce576101cd6100f3565b5b5f6101db848285016101a5565b9150509291505056fea26474726f6e5822122001a54dae6aff6374545015aadf9f6aedd16b650f4b3c806a26383f831da8745264736f6c634300081a0033",
+          "sourceMap": "173:135:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;206:100;;;;;;;;;;;;;:::i;:::-;;:::i;:::-;;;;;;;:::i;:::-;;;;;;;;;253:7;279:10;:17;297:1;279:20;;;;;;;;;;;;;;;:::i;:::-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:::i;:::-;272:27;;206:100;;;:::o;88:117:1:-;197:1;194;187:12;334:77;371:7;400:5;389:16;;334:77;;;:::o;417:122::-;490:24;508:5;490:24;:::i;:::-;483:5;480:35;470:63;;529:1;526;519:12;470:63;417:122;:::o;545:139::-;591:5;629:6;616:20;607:29;;645:33;672:5;645:33;:::i;:::-;545:139;;;;:::o;690:329::-;749:6;798:2;786:9;777:7;773:23;769:32;766:119;;;804:79;;:::i;:::-;766:119;924:1;949:53;994:7;985:6;974:9;970:22;949:53;:::i;:::-;939:63;;895:117;690:329;;;;:::o;1025:118::-;1112:24;1130:5;1112:24;:::i;:::-;1107:3;1100:37;1025:118;;:::o;1149:222::-;1242:4;1280:2;1269:9;1265:18;1257:26;;1293:71;1361:1;1350:9;1346:17;1337:6;1293:71;:::i;:::-;1149:222;;;;:::o;1377:126::-;1472:24;1490:5;1472:24;:::i;:::-;1467:3;1460:37;1377:126;;:::o;1509:238::-;1610:4;1648:2;1637:9;1633:18;1625:26;;1661:79;1737:1;1726:9;1722:17;1713:6;1661:79;:::i;:::-;1509:238;;;;:::o;1753:143::-;1810:5;1841:6;1835:13;1826:22;;1857:33;1884:5;1857:33;:::i;:::-;1753:143;;;;:::o;1902:351::-;1972:6;2021:2;2009:9;2000:7;1996:23;1992:32;1989:119;;;2027:79;;:::i;:::-;1989:119;2147:1;2172:64;2228:7;2219:6;2208:9;2204:22;2172:64;:::i;:::-;2162:74;;2118:128;1902:351;;;;:::o"
+         },
+         "methodIdentifiers": {
+          "run(uint256)": "a444f5e9"
+         }
+        },
+        "metadata": "{\"compiler\":{\"version\":\"0.8.26+commit.733b4d28\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"x\",\"type\":\"uint256\"}],\"name\":\"run\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"Box.sol\":\"LinkedLibraryUser\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":false,\"runs\":200},\"remappings\":[]},\"sources\":{\"Box.sol\":{\"keccak256\":\"0xec27d685a6f1d92cc66043b958b84f2fa5f38ed44a11f33f4191bd47cd6a529c\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://91c3688cf924ac9e10d1b3e1d5ace911c19ed93dc10ff0cdd1edc9f6254dedf0\",\"dweb:/ipfs/QmcxynADkeFHXJNoVPdZnAeN3mmKuAHnewjCg7EVZQu3ZP\"]}},\"version\":1}"
+       },
+       "LinkedMath": {
+        "abi": [
+         {
+          "inputs": [
+           {
+            "internalType": "uint256",
+            "name": "x",
+            "type": "uint256"
+           }
+          ],
+          "name": "double",
+          "outputs": [
+           {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+           }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+         }
+        ],
+        "evm": {
+         "bytecode": {
+          "linkReferences": {},
+          "object": "6101ab61004d600b8282823980515f1a6073146041577f4e487b71000000000000000000000000000000000000000000000000000000005f525f60045260245ffd5b305f52607381538281f3fe7300000000000000000000000000000000000000003014608060405260043610610034575f3560e01c8063eee9720614610038575b5f80fd5b610052600480360381019061004d91906100b4565b610068565b60405161005f91906100ee565b60405180910390f35b5f6002826100769190610134565b9050919050565b5f80fd5b5f819050919050565b61009381610081565b811461009d575f80fd5b50565b5f813590506100ae8161008a565b92915050565b5f602082840312156100c9576100c861007d565b5b5f6100d6848285016100a0565b91505092915050565b6100e881610081565b82525050565b5f6020820190506101015f8301846100df565b92915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f61013e82610081565b915061014983610081565b925082820261015781610081565b9150828204841483151761016e5761016d610107565b5b509291505056fea26474726f6e58221220c09c5ed3a96ef53e3d52d1681b4b80d9284453f08711e753b882ed6df2897b9b64736f6c634300081a0033",
+          "sourceMap": "58:113:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+         },
+         "deployedBytecode": {
+          "immutableReferences": {},
+          "linkReferences": {},
+          "object": "7300000000000000000000000000000000000000003014608060405260043610610034575f3560e01c8063eee9720614610038575b5f80fd5b610052600480360381019061004d91906100b4565b610068565b60405161005f91906100ee565b60405180910390f35b5f6002826100769190610134565b9050919050565b5f80fd5b5f819050919050565b61009381610081565b811461009d575f80fd5b50565b5f813590506100ae8161008a565b92915050565b5f602082840312156100c9576100c861007d565b5b5f6100d6848285016100a0565b91505092915050565b6100e881610081565b82525050565b5f6020820190506101015f8301846100df565b92915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f61013e82610081565b915061014983610081565b925082820261015781610081565b9150828204841483151761016e5761016d610107565b5b509291505056fea26474726f6e58221220c09c5ed3a96ef53e3d52d1681b4b80d9284453f08711e753b882ed6df2897b9b64736f6c634300081a0033",
+          "sourceMap": "58:113:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;83:86;;;;;;;;;;;;;:::i;:::-;;:::i;:::-;;;;;;;:::i;:::-;;;;;;;;;131:7;161:1;157;:5;;;;:::i;:::-;150:12;;83:86;;;:::o;88:117:1:-;197:1;194;187:12;334:77;371:7;400:5;389:16;;334:77;;;:::o;417:122::-;490:24;508:5;490:24;:::i;:::-;483:5;480:35;470:63;;529:1;526;519:12;470:63;417:122;:::o;545:139::-;591:5;629:6;616:20;607:29;;645:33;672:5;645:33;:::i;:::-;545:139;;;;:::o;690:329::-;749:6;798:2;786:9;777:7;773:23;769:32;766:119;;;804:79;;:::i;:::-;766:119;924:1;949:53;994:7;985:6;974:9;970:22;949:53;:::i;:::-;939:63;;895:117;690:329;;;;:::o;1025:126::-;1120:24;1138:5;1120:24;:::i;:::-;1115:3;1108:37;1025:126;;:::o;1157:238::-;1258:4;1296:2;1285:9;1281:18;1273:26;;1309:79;1385:1;1374:9;1370:17;1361:6;1309:79;:::i;:::-;1157:238;;;;:::o;1401:180::-;1449:77;1446:1;1439:88;1546:4;1543:1;1536:15;1570:4;1567:1;1560:15;1587:410;1627:7;1650:20;1668:1;1650:20;:::i;:::-;1645:25;;1684:20;1702:1;1684:20;:::i;:::-;1679:25;;1739:1;1736;1732:9;1761:30;1779:11;1761:30;:::i;:::-;1750:41;;1940:1;1931:7;1927:15;1924:1;1921:22;1901:1;1894:9;1874:83;1851:139;;1970:18;;:::i;:::-;1851:139;1635:362;1587:410;;;;:::o"
+         },
+         "methodIdentifiers": {
+          "double(uint256)": "eee97206"
+         }
+        },
+        "metadata": "{\"compiler\":{\"version\":\"0.8.26+commit.733b4d28\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"x\",\"type\":\"uint256\"}],\"name\":\"double\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"Box.sol\":\"LinkedMath\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":false,\"runs\":200},\"remappings\":[]},\"sources\":{\"Box.sol\":{\"keccak256\":\"0xec27d685a6f1d92cc66043b958b84f2fa5f38ed44a11f33f4191bd47cd6a529c\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://91c3688cf924ac9e10d1b3e1d5ace911c19ed93dc10ff0cdd1edc9f6254dedf0\",\"dweb:/ipfs/QmcxynADkeFHXJNoVPdZnAeN3mmKuAHnewjCg7EVZQu3ZP\"]}},\"version\":1}"
+       }
+      }
+     },
+     "sources": {
+      "Box.sol": {
+       "ast": {
+        "absolutePath": "Box.sol",
+        "exportedSymbols": {
+         "LinkedLibraryUser": [
+          28
+         ],
+         "LinkedMath": [
+          14
+         ]
+        },
+        "id": 29,
+        "license": "MIT",
+        "nodeType": "SourceUnit",
+        "nodes": [
+         {
+          "id": 1,
+          "literals": [
+           "solidity",
+           "^",
+           "0.8",
+           ".20"
+          ],
+          "nodeType": "PragmaDirective",
+          "src": "32:24:0"
+         },
+         {
+          "abstract": false,
+          "baseContracts": [],
+          "canonicalName": "LinkedMath",
+          "contractDependencies": [],
+          "contractKind": "library",
+          "fullyImplemented": true,
+          "id": 14,
+          "linearizedBaseContracts": [
+           14
+          ],
+          "name": "LinkedMath",
+          "nameLocation": "66:10:0",
+          "nodeType": "ContractDefinition",
+          "nodes": [
+           {
+            "body": {
+             "id": 12,
+             "nodeType": "Block",
+             "src": "140:29:0",
+             "statements": [
+              {
+               "expression": {
+                "commonType": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                },
+                "id": 10,
+                "isConstant": false,
+                "isLValue": false,
+                "isPure": false,
+                "lValueRequested": false,
+                "leftExpression": {
+                 "id": 8,
+                 "name": "x",
+                 "nodeType": "Identifier",
+                 "overloadedDeclarations": [],
+                 "referencedDeclaration": 3,
+                 "src": "157:1:0",
+                 "typeDescriptions": {
+                  "typeIdentifier": "t_uint256",
+                  "typeString": "uint256"
+                 }
+                },
+                "nodeType": "BinaryOperation",
+                "operator": "*",
+                "rightExpression": {
+                 "hexValue": "32",
+                 "id": 9,
+                 "isConstant": false,
+                 "isLValue": false,
+                 "isPure": true,
+                 "kind": "number",
+                 "lValueRequested": false,
+                 "nodeType": "Literal",
+                 "src": "161:1:0",
+                 "typeDescriptions": {
+                  "typeIdentifier": "t_rational_2_by_1",
+                  "typeString": "int_const 2"
+                 },
+                 "value": "2"
+                },
+                "src": "157:5:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "functionReturnParameters": 7,
+               "id": 11,
+               "nodeType": "Return",
+               "src": "150:12:0"
+              }
+             ]
+            },
+            "functionSelector": "eee97206",
+            "id": 13,
+            "implemented": true,
+            "kind": "function",
+            "modifiers": [],
+            "name": "double",
+            "nameLocation": "92:6:0",
+            "nodeType": "FunctionDefinition",
+            "parameters": {
+             "id": 4,
+             "nodeType": "ParameterList",
+             "parameters": [
+              {
+               "constant": false,
+               "id": 3,
+               "mutability": "mutable",
+               "name": "x",
+               "nameLocation": "107:1:0",
+               "nodeType": "VariableDeclaration",
+               "scope": 13,
+               "src": "99:9:0",
+               "stateVariable": false,
+               "storageLocation": "default",
+               "typeDescriptions": {
+                "typeIdentifier": "t_uint256",
+                "typeString": "uint256"
+               },
+               "typeName": {
+                "id": 2,
+                "name": "uint256",
+                "nodeType": "ElementaryTypeName",
+                "src": "99:7:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "visibility": "internal"
+              }
+             ],
+             "src": "98:11:0"
+            },
+            "returnParameters": {
+             "id": 7,
+             "nodeType": "ParameterList",
+             "parameters": [
+              {
+               "constant": false,
+               "id": 6,
+               "mutability": "mutable",
+               "name": "",
+               "nameLocation": "-1:-1:-1",
+               "nodeType": "VariableDeclaration",
+               "scope": 13,
+               "src": "131:7:0",
+               "stateVariable": false,
+               "storageLocation": "default",
+               "typeDescriptions": {
+                "typeIdentifier": "t_uint256",
+                "typeString": "uint256"
+               },
+               "typeName": {
+                "id": 5,
+                "name": "uint256",
+                "nodeType": "ElementaryTypeName",
+                "src": "131:7:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "visibility": "internal"
+              }
+             ],
+             "src": "130:9:0"
+            },
+            "scope": 14,
+            "src": "83:86:0",
+            "stateMutability": "pure",
+            "virtual": false,
+            "visibility": "public"
+           }
+          ],
+          "scope": 29,
+          "src": "58:113:0",
+          "usedErrors": [],
+          "usedEvents": []
+         },
+         {
+          "abstract": false,
+          "baseContracts": [],
+          "canonicalName": "LinkedLibraryUser",
+          "contractDependencies": [],
+          "contractKind": "contract",
+          "fullyImplemented": true,
+          "id": 28,
+          "linearizedBaseContracts": [
+           28
+          ],
+          "name": "LinkedLibraryUser",
+          "nameLocation": "182:17:0",
+          "nodeType": "ContractDefinition",
+          "nodes": [
+           {
+            "body": {
+             "id": 26,
+             "nodeType": "Block",
+             "src": "262:44:0",
+             "statements": [
+              {
+               "expression": {
+                "arguments": [
+                 {
+                  "id": 23,
+                  "name": "x",
+                  "nodeType": "Identifier",
+                  "overloadedDeclarations": [],
+                  "referencedDeclaration": 16,
+                  "src": "297:1:0",
+                  "typeDescriptions": {
+                   "typeIdentifier": "t_uint256",
+                   "typeString": "uint256"
+                  }
+                 }
+                ],
+                "expression": {
+                 "argumentTypes": [
+                  {
+                   "typeIdentifier": "t_uint256",
+                   "typeString": "uint256"
+                  }
+                 ],
+                 "expression": {
+                  "id": 21,
+                  "name": "LinkedMath",
+                  "nodeType": "Identifier",
+                  "overloadedDeclarations": [],
+                  "referencedDeclaration": 14,
+                  "src": "279:10:0",
+                  "typeDescriptions": {
+                   "typeIdentifier": "t_type$_t_contract$_LinkedMath_$14_$",
+                   "typeString": "type(library LinkedMath)"
+                  }
+                 },
+                 "id": 22,
+                 "isConstant": false,
+                 "isLValue": false,
+                 "isPure": false,
+                 "lValueRequested": false,
+                 "memberLocation": "290:6:0",
+                 "memberName": "double",
+                 "nodeType": "MemberAccess",
+                 "referencedDeclaration": 13,
+                 "src": "279:17:0",
+                 "typeDescriptions": {
+                  "typeIdentifier": "t_function_delegatecall_pure$_t_uint256_$returns$_t_uint256_$",
+                  "typeString": "function (uint256) pure returns (uint256)"
+                 }
+                },
+                "id": 24,
+                "isConstant": false,
+                "isLValue": false,
+                "isPure": false,
+                "kind": "functionCall",
+                "lValueRequested": false,
+                "nameLocations": [],
+                "names": [],
+                "nodeType": "FunctionCall",
+                "src": "279:20:0",
+                "tryCall": false,
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "functionReturnParameters": 20,
+               "id": 25,
+               "nodeType": "Return",
+               "src": "272:27:0"
+              }
+             ]
+            },
+            "functionSelector": "a444f5e9",
+            "id": 27,
+            "implemented": true,
+            "kind": "function",
+            "modifiers": [],
+            "name": "run",
+            "nameLocation": "215:3:0",
+            "nodeType": "FunctionDefinition",
+            "parameters": {
+             "id": 17,
+             "nodeType": "ParameterList",
+             "parameters": [
+              {
+               "constant": false,
+               "id": 16,
+               "mutability": "mutable",
+               "name": "x",
+               "nameLocation": "227:1:0",
+               "nodeType": "VariableDeclaration",
+               "scope": 27,
+               "src": "219:9:0",
+               "stateVariable": false,
+               "storageLocation": "default",
+               "typeDescriptions": {
+                "typeIdentifier": "t_uint256",
+                "typeString": "uint256"
+               },
+               "typeName": {
+                "id": 15,
+                "name": "uint256",
+                "nodeType": "ElementaryTypeName",
+                "src": "219:7:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "visibility": "internal"
+              }
+             ],
+             "src": "218:11:0"
+            },
+            "returnParameters": {
+             "id": 20,
+             "nodeType": "ParameterList",
+             "parameters": [
+              {
+               "constant": false,
+               "id": 19,
+               "mutability": "mutable",
+               "name": "",
+               "nameLocation": "-1:-1:-1",
+               "nodeType": "VariableDeclaration",
+               "scope": 27,
+               "src": "253:7:0",
+               "stateVariable": false,
+               "storageLocation": "default",
+               "typeDescriptions": {
+                "typeIdentifier": "t_uint256",
+                "typeString": "uint256"
+               },
+               "typeName": {
+                "id": 18,
+                "name": "uint256",
+                "nodeType": "ElementaryTypeName",
+                "src": "253:7:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "visibility": "internal"
+              }
+             ],
+             "src": "252:9:0"
+            },
+            "scope": 28,
+            "src": "206:100:0",
+            "stateMutability": "pure",
+            "virtual": false,
+            "visibility": "external"
+           }
+          ],
+          "scope": 29,
+          "src": "173:135:0",
+          "usedErrors": [],
+          "usedEvents": []
+         }
+        ],
+        "src": "32:277:0"
+       },
+       "id": 0
+      }
+     }
+    }
+   },
+   "slotLevel": {
+    "input": {
+     "language": "Solidity",
+     "sources": {
+      "Box.sol": {
+       "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nlibrary LinkedMath {\n    function double(uint256 x) public pure returns (uint256) {\n        return x * 2;\n    }\n}\n\ncontract LinkedLibraryUser {\n    function run(uint256 x) external pure returns (uint256) {\n        return LinkedMath.double(x);\n    }\n}\n"
+      }
+     },
+     "settings": {
+      "outputSelection": {
+       "*": {
+        "": [
+         "ast"
+        ],
+        "*": [
+         "abi",
+         "evm.bytecode.object",
+         "evm.bytecode.sourceMap",
+         "evm.bytecode.linkReferences",
+         "evm.deployedBytecode.object",
+         "evm.deployedBytecode.sourceMap",
+         "evm.deployedBytecode.linkReferences",
+         "evm.deployedBytecode.immutableReferences",
+         "evm.methodIdentifiers",
+         "metadata",
+         "storageLayout"
+        ]
+       }
+      }
+     }
+    },
+    "output": {
+     "contracts": {
+      "Box.sol": {
+       "LinkedLibraryUser": {
+        "abi": [
+         {
+          "inputs": [
+           {
+            "internalType": "uint256",
+            "name": "x",
+            "type": "uint256"
+           }
+          ],
+          "name": "run",
+          "outputs": [
+           {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+           }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+         }
+        ],
+        "evm": {
+         "bytecode": {
+          "linkReferences": {
+           "Box.sol": {
+            "LinkedMath": [
+             {
+              "length": 20,
+              "start": 170
+             }
+            ]
+           }
+          },
+          "object": "6080604052348015600e575f80fd5b50d380156019575f80fd5b50d280156024575f80fd5b5061021a806100325f395ff3fe608060405234801561000f575f80fd5b50d3801561001b575f80fd5b50d28015610027575f80fd5b5060043610610041575f3560e01c8063a444f5e914610045575b5f80fd5b61005f600480360381019061005a919061012a565b610075565b60405161006c9190610164565b60405180910390f35b5f73__$7d89221f402f1ae983ed289440fd473f8b$__63eee97206836040518263ffffffff1660e01b81526004016100ad919061018c565b602060405180830381865af41580156100c8573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906100ec91906101b9565b9050919050565b5f80fd5b5f819050919050565b610109816100f7565b8114610113575f80fd5b50565b5f8135905061012481610100565b92915050565b5f6020828403121561013f5761013e6100f3565b5b5f61014c84828501610116565b91505092915050565b61015e816100f7565b82525050565b5f6020820190506101775f830184610155565b92915050565b610186816100f7565b82525050565b5f60208201905061019f5f83018461017d565b92915050565b5f815190506101b381610100565b92915050565b5f602082840312156101ce576101cd6100f3565b5b5f6101db848285016101a5565b9150509291505056fea26474726f6e5822122001a54dae6aff6374545015aadf9f6aedd16b650f4b3c806a26383f831da8745264736f6c634300081a0033",
+          "sourceMap": "173:135:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+         },
+         "deployedBytecode": {
+          "immutableReferences": {},
+          "linkReferences": {
+           "Box.sol": {
+            "LinkedMath": [
+             {
+              "length": 20,
+              "start": 120
+             }
+            ]
+           }
+          },
+          "object": "608060405234801561000f575f80fd5b50d3801561001b575f80fd5b50d28015610027575f80fd5b5060043610610041575f3560e01c8063a444f5e914610045575b5f80fd5b61005f600480360381019061005a919061012a565b610075565b60405161006c9190610164565b60405180910390f35b5f73__$7d89221f402f1ae983ed289440fd473f8b$__63eee97206836040518263ffffffff1660e01b81526004016100ad919061018c565b602060405180830381865af41580156100c8573d5f803e3d5ffd5b505050506040513d601f19601f820116820180604052508101906100ec91906101b9565b9050919050565b5f80fd5b5f819050919050565b610109816100f7565b8114610113575f80fd5b50565b5f8135905061012481610100565b92915050565b5f6020828403121561013f5761013e6100f3565b5b5f61014c84828501610116565b91505092915050565b61015e816100f7565b82525050565b5f6020820190506101775f830184610155565b92915050565b610186816100f7565b82525050565b5f60208201905061019f5f83018461017d565b92915050565b5f815190506101b381610100565b92915050565b5f602082840312156101ce576101cd6100f3565b5b5f6101db848285016101a5565b9150509291505056fea26474726f6e5822122001a54dae6aff6374545015aadf9f6aedd16b650f4b3c806a26383f831da8745264736f6c634300081a0033",
+          "sourceMap": "173:135:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;206:100;;;;;;;;;;;;;:::i;:::-;;:::i;:::-;;;;;;;:::i;:::-;;;;;;;;;253:7;279:10;:17;297:1;279:20;;;;;;;;;;;;;;;:::i;:::-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;:::i;:::-;272:27;;206:100;;;:::o;88:117:1:-;197:1;194;187:12;334:77;371:7;400:5;389:16;;334:77;;;:::o;417:122::-;490:24;508:5;490:24;:::i;:::-;483:5;480:35;470:63;;529:1;526;519:12;470:63;417:122;:::o;545:139::-;591:5;629:6;616:20;607:29;;645:33;672:5;645:33;:::i;:::-;545:139;;;;:::o;690:329::-;749:6;798:2;786:9;777:7;773:23;769:32;766:119;;;804:79;;:::i;:::-;766:119;924:1;949:53;994:7;985:6;974:9;970:22;949:53;:::i;:::-;939:63;;895:117;690:329;;;;:::o;1025:118::-;1112:24;1130:5;1112:24;:::i;:::-;1107:3;1100:37;1025:118;;:::o;1149:222::-;1242:4;1280:2;1269:9;1265:18;1257:26;;1293:71;1361:1;1350:9;1346:17;1337:6;1293:71;:::i;:::-;1149:222;;;;:::o;1377:126::-;1472:24;1490:5;1472:24;:::i;:::-;1467:3;1460:37;1377:126;;:::o;1509:238::-;1610:4;1648:2;1637:9;1633:18;1625:26;;1661:79;1737:1;1726:9;1722:17;1713:6;1661:79;:::i;:::-;1509:238;;;;:::o;1753:143::-;1810:5;1841:6;1835:13;1826:22;;1857:33;1884:5;1857:33;:::i;:::-;1753:143;;;;:::o;1902:351::-;1972:6;2021:2;2009:9;2000:7;1996:23;1992:32;1989:119;;;2027:79;;:::i;:::-;1989:119;2147:1;2172:64;2228:7;2219:6;2208:9;2204:22;2172:64;:::i;:::-;2162:74;;2118:128;1902:351;;;;:::o"
+         },
+         "methodIdentifiers": {
+          "run(uint256)": "a444f5e9"
+         }
+        },
+        "metadata": "{\"compiler\":{\"version\":\"0.8.26+commit.733b4d28\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"x\",\"type\":\"uint256\"}],\"name\":\"run\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"Box.sol\":\"LinkedLibraryUser\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":false,\"runs\":200},\"remappings\":[]},\"sources\":{\"Box.sol\":{\"keccak256\":\"0xec27d685a6f1d92cc66043b958b84f2fa5f38ed44a11f33f4191bd47cd6a529c\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://91c3688cf924ac9e10d1b3e1d5ace911c19ed93dc10ff0cdd1edc9f6254dedf0\",\"dweb:/ipfs/QmcxynADkeFHXJNoVPdZnAeN3mmKuAHnewjCg7EVZQu3ZP\"]}},\"version\":1}",
+        "storageLayout": {
+         "storage": [],
+         "types": null
+        }
+       },
+       "LinkedMath": {
+        "abi": [
+         {
+          "inputs": [
+           {
+            "internalType": "uint256",
+            "name": "x",
+            "type": "uint256"
+           }
+          ],
+          "name": "double",
+          "outputs": [
+           {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+           }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+         }
+        ],
+        "evm": {
+         "bytecode": {
+          "linkReferences": {},
+          "object": "6101ab61004d600b8282823980515f1a6073146041577f4e487b71000000000000000000000000000000000000000000000000000000005f525f60045260245ffd5b305f52607381538281f3fe7300000000000000000000000000000000000000003014608060405260043610610034575f3560e01c8063eee9720614610038575b5f80fd5b610052600480360381019061004d91906100b4565b610068565b60405161005f91906100ee565b60405180910390f35b5f6002826100769190610134565b9050919050565b5f80fd5b5f819050919050565b61009381610081565b811461009d575f80fd5b50565b5f813590506100ae8161008a565b92915050565b5f602082840312156100c9576100c861007d565b5b5f6100d6848285016100a0565b91505092915050565b6100e881610081565b82525050565b5f6020820190506101015f8301846100df565b92915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f61013e82610081565b915061014983610081565b925082820261015781610081565b9150828204841483151761016e5761016d610107565b5b509291505056fea26474726f6e58221220c09c5ed3a96ef53e3d52d1681b4b80d9284453f08711e753b882ed6df2897b9b64736f6c634300081a0033",
+          "sourceMap": "58:113:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+         },
+         "deployedBytecode": {
+          "immutableReferences": {},
+          "linkReferences": {},
+          "object": "7300000000000000000000000000000000000000003014608060405260043610610034575f3560e01c8063eee9720614610038575b5f80fd5b610052600480360381019061004d91906100b4565b610068565b60405161005f91906100ee565b60405180910390f35b5f6002826100769190610134565b9050919050565b5f80fd5b5f819050919050565b61009381610081565b811461009d575f80fd5b50565b5f813590506100ae8161008a565b92915050565b5f602082840312156100c9576100c861007d565b5b5f6100d6848285016100a0565b91505092915050565b6100e881610081565b82525050565b5f6020820190506101015f8301846100df565b92915050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52601160045260245ffd5b5f61013e82610081565b915061014983610081565b925082820261015781610081565b9150828204841483151761016e5761016d610107565b5b509291505056fea26474726f6e58221220c09c5ed3a96ef53e3d52d1681b4b80d9284453f08711e753b882ed6df2897b9b64736f6c634300081a0033",
+          "sourceMap": "58:113:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;83:86;;;;;;;;;;;;;:::i;:::-;;:::i;:::-;;;;;;;:::i;:::-;;;;;;;;;131:7;161:1;157;:5;;;;:::i;:::-;150:12;;83:86;;;:::o;88:117:1:-;197:1;194;187:12;334:77;371:7;400:5;389:16;;334:77;;;:::o;417:122::-;490:24;508:5;490:24;:::i;:::-;483:5;480:35;470:63;;529:1;526;519:12;470:63;417:122;:::o;545:139::-;591:5;629:6;616:20;607:29;;645:33;672:5;645:33;:::i;:::-;545:139;;;;:::o;690:329::-;749:6;798:2;786:9;777:7;773:23;769:32;766:119;;;804:79;;:::i;:::-;766:119;924:1;949:53;994:7;985:6;974:9;970:22;949:53;:::i;:::-;939:63;;895:117;690:329;;;;:::o;1025:126::-;1120:24;1138:5;1120:24;:::i;:::-;1115:3;1108:37;1025:126;;:::o;1157:238::-;1258:4;1296:2;1285:9;1281:18;1273:26;;1309:79;1385:1;1374:9;1370:17;1361:6;1309:79;:::i;:::-;1157:238;;;;:::o;1401:180::-;1449:77;1446:1;1439:88;1546:4;1543:1;1536:15;1570:4;1567:1;1560:15;1587:410;1627:7;1650:20;1668:1;1650:20;:::i;:::-;1645:25;;1684:20;1702:1;1684:20;:::i;:::-;1679:25;;1739:1;1736;1732:9;1761:30;1779:11;1761:30;:::i;:::-;1750:41;;1940:1;1931:7;1927:15;1924:1;1921:22;1901:1;1894:9;1874:83;1851:139;;1970:18;;:::i;:::-;1851:139;1635:362;1587:410;;;;:::o"
+         },
+         "methodIdentifiers": {
+          "double(uint256)": "eee97206"
+         }
+        },
+        "metadata": "{\"compiler\":{\"version\":\"0.8.26+commit.733b4d28\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"x\",\"type\":\"uint256\"}],\"name\":\"double\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"Box.sol\":\"LinkedMath\"},\"evmVersion\":\"cancun\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":false,\"runs\":200},\"remappings\":[]},\"sources\":{\"Box.sol\":{\"keccak256\":\"0xec27d685a6f1d92cc66043b958b84f2fa5f38ed44a11f33f4191bd47cd6a529c\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://91c3688cf924ac9e10d1b3e1d5ace911c19ed93dc10ff0cdd1edc9f6254dedf0\",\"dweb:/ipfs/QmcxynADkeFHXJNoVPdZnAeN3mmKuAHnewjCg7EVZQu3ZP\"]}},\"version\":1}",
+        "storageLayout": {
+         "storage": [],
+         "types": null
+        }
+       }
+      }
+     },
+     "sources": {
+      "Box.sol": {
+       "ast": {
+        "absolutePath": "Box.sol",
+        "exportedSymbols": {
+         "LinkedLibraryUser": [
+          28
+         ],
+         "LinkedMath": [
+          14
+         ]
+        },
+        "id": 29,
+        "license": "MIT",
+        "nodeType": "SourceUnit",
+        "nodes": [
+         {
+          "id": 1,
+          "literals": [
+           "solidity",
+           "^",
+           "0.8",
+           ".20"
+          ],
+          "nodeType": "PragmaDirective",
+          "src": "32:24:0"
+         },
+         {
+          "abstract": false,
+          "baseContracts": [],
+          "canonicalName": "LinkedMath",
+          "contractDependencies": [],
+          "contractKind": "library",
+          "fullyImplemented": true,
+          "id": 14,
+          "linearizedBaseContracts": [
+           14
+          ],
+          "name": "LinkedMath",
+          "nameLocation": "66:10:0",
+          "nodeType": "ContractDefinition",
+          "nodes": [
+           {
+            "body": {
+             "id": 12,
+             "nodeType": "Block",
+             "src": "140:29:0",
+             "statements": [
+              {
+               "expression": {
+                "commonType": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                },
+                "id": 10,
+                "isConstant": false,
+                "isLValue": false,
+                "isPure": false,
+                "lValueRequested": false,
+                "leftExpression": {
+                 "id": 8,
+                 "name": "x",
+                 "nodeType": "Identifier",
+                 "overloadedDeclarations": [],
+                 "referencedDeclaration": 3,
+                 "src": "157:1:0",
+                 "typeDescriptions": {
+                  "typeIdentifier": "t_uint256",
+                  "typeString": "uint256"
+                 }
+                },
+                "nodeType": "BinaryOperation",
+                "operator": "*",
+                "rightExpression": {
+                 "hexValue": "32",
+                 "id": 9,
+                 "isConstant": false,
+                 "isLValue": false,
+                 "isPure": true,
+                 "kind": "number",
+                 "lValueRequested": false,
+                 "nodeType": "Literal",
+                 "src": "161:1:0",
+                 "typeDescriptions": {
+                  "typeIdentifier": "t_rational_2_by_1",
+                  "typeString": "int_const 2"
+                 },
+                 "value": "2"
+                },
+                "src": "157:5:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "functionReturnParameters": 7,
+               "id": 11,
+               "nodeType": "Return",
+               "src": "150:12:0"
+              }
+             ]
+            },
+            "functionSelector": "eee97206",
+            "id": 13,
+            "implemented": true,
+            "kind": "function",
+            "modifiers": [],
+            "name": "double",
+            "nameLocation": "92:6:0",
+            "nodeType": "FunctionDefinition",
+            "parameters": {
+             "id": 4,
+             "nodeType": "ParameterList",
+             "parameters": [
+              {
+               "constant": false,
+               "id": 3,
+               "mutability": "mutable",
+               "name": "x",
+               "nameLocation": "107:1:0",
+               "nodeType": "VariableDeclaration",
+               "scope": 13,
+               "src": "99:9:0",
+               "stateVariable": false,
+               "storageLocation": "default",
+               "typeDescriptions": {
+                "typeIdentifier": "t_uint256",
+                "typeString": "uint256"
+               },
+               "typeName": {
+                "id": 2,
+                "name": "uint256",
+                "nodeType": "ElementaryTypeName",
+                "src": "99:7:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "visibility": "internal"
+              }
+             ],
+             "src": "98:11:0"
+            },
+            "returnParameters": {
+             "id": 7,
+             "nodeType": "ParameterList",
+             "parameters": [
+              {
+               "constant": false,
+               "id": 6,
+               "mutability": "mutable",
+               "name": "",
+               "nameLocation": "-1:-1:-1",
+               "nodeType": "VariableDeclaration",
+               "scope": 13,
+               "src": "131:7:0",
+               "stateVariable": false,
+               "storageLocation": "default",
+               "typeDescriptions": {
+                "typeIdentifier": "t_uint256",
+                "typeString": "uint256"
+               },
+               "typeName": {
+                "id": 5,
+                "name": "uint256",
+                "nodeType": "ElementaryTypeName",
+                "src": "131:7:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "visibility": "internal"
+              }
+             ],
+             "src": "130:9:0"
+            },
+            "scope": 14,
+            "src": "83:86:0",
+            "stateMutability": "pure",
+            "virtual": false,
+            "visibility": "public"
+           }
+          ],
+          "scope": 29,
+          "src": "58:113:0",
+          "usedErrors": [],
+          "usedEvents": []
+         },
+         {
+          "abstract": false,
+          "baseContracts": [],
+          "canonicalName": "LinkedLibraryUser",
+          "contractDependencies": [],
+          "contractKind": "contract",
+          "fullyImplemented": true,
+          "id": 28,
+          "linearizedBaseContracts": [
+           28
+          ],
+          "name": "LinkedLibraryUser",
+          "nameLocation": "182:17:0",
+          "nodeType": "ContractDefinition",
+          "nodes": [
+           {
+            "body": {
+             "id": 26,
+             "nodeType": "Block",
+             "src": "262:44:0",
+             "statements": [
+              {
+               "expression": {
+                "arguments": [
+                 {
+                  "id": 23,
+                  "name": "x",
+                  "nodeType": "Identifier",
+                  "overloadedDeclarations": [],
+                  "referencedDeclaration": 16,
+                  "src": "297:1:0",
+                  "typeDescriptions": {
+                   "typeIdentifier": "t_uint256",
+                   "typeString": "uint256"
+                  }
+                 }
+                ],
+                "expression": {
+                 "argumentTypes": [
+                  {
+                   "typeIdentifier": "t_uint256",
+                   "typeString": "uint256"
+                  }
+                 ],
+                 "expression": {
+                  "id": 21,
+                  "name": "LinkedMath",
+                  "nodeType": "Identifier",
+                  "overloadedDeclarations": [],
+                  "referencedDeclaration": 14,
+                  "src": "279:10:0",
+                  "typeDescriptions": {
+                   "typeIdentifier": "t_type$_t_contract$_LinkedMath_$14_$",
+                   "typeString": "type(library LinkedMath)"
+                  }
+                 },
+                 "id": 22,
+                 "isConstant": false,
+                 "isLValue": false,
+                 "isPure": false,
+                 "lValueRequested": false,
+                 "memberLocation": "290:6:0",
+                 "memberName": "double",
+                 "nodeType": "MemberAccess",
+                 "referencedDeclaration": 13,
+                 "src": "279:17:0",
+                 "typeDescriptions": {
+                  "typeIdentifier": "t_function_delegatecall_pure$_t_uint256_$returns$_t_uint256_$",
+                  "typeString": "function (uint256) pure returns (uint256)"
+                 }
+                },
+                "id": 24,
+                "isConstant": false,
+                "isLValue": false,
+                "isPure": false,
+                "kind": "functionCall",
+                "lValueRequested": false,
+                "nameLocations": [],
+                "names": [],
+                "nodeType": "FunctionCall",
+                "src": "279:20:0",
+                "tryCall": false,
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "functionReturnParameters": 20,
+               "id": 25,
+               "nodeType": "Return",
+               "src": "272:27:0"
+              }
+             ]
+            },
+            "functionSelector": "a444f5e9",
+            "id": 27,
+            "implemented": true,
+            "kind": "function",
+            "modifiers": [],
+            "name": "run",
+            "nameLocation": "215:3:0",
+            "nodeType": "FunctionDefinition",
+            "parameters": {
+             "id": 17,
+             "nodeType": "ParameterList",
+             "parameters": [
+              {
+               "constant": false,
+               "id": 16,
+               "mutability": "mutable",
+               "name": "x",
+               "nameLocation": "227:1:0",
+               "nodeType": "VariableDeclaration",
+               "scope": 27,
+               "src": "219:9:0",
+               "stateVariable": false,
+               "storageLocation": "default",
+               "typeDescriptions": {
+                "typeIdentifier": "t_uint256",
+                "typeString": "uint256"
+               },
+               "typeName": {
+                "id": 15,
+                "name": "uint256",
+                "nodeType": "ElementaryTypeName",
+                "src": "219:7:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "visibility": "internal"
+              }
+             ],
+             "src": "218:11:0"
+            },
+            "returnParameters": {
+             "id": 20,
+             "nodeType": "ParameterList",
+             "parameters": [
+              {
+               "constant": false,
+               "id": 19,
+               "mutability": "mutable",
+               "name": "",
+               "nameLocation": "-1:-1:-1",
+               "nodeType": "VariableDeclaration",
+               "scope": 27,
+               "src": "253:7:0",
+               "stateVariable": false,
+               "storageLocation": "default",
+               "typeDescriptions": {
+                "typeIdentifier": "t_uint256",
+                "typeString": "uint256"
+               },
+               "typeName": {
+                "id": 18,
+                "name": "uint256",
+                "nodeType": "ElementaryTypeName",
+                "src": "253:7:0",
+                "typeDescriptions": {
+                 "typeIdentifier": "t_uint256",
+                 "typeString": "uint256"
+                }
+               },
+               "visibility": "internal"
+              }
+             ],
+             "src": "252:9:0"
+            },
+            "scope": 28,
+            "src": "206:100:0",
+            "stateMutability": "pure",
+            "virtual": false,
+            "visibility": "external"
+           }
+          ],
+          "scope": 29,
+          "src": "173:135:0",
+          "usedErrors": [],
+          "usedEvents": []
+         }
+        ],
+        "src": "32:277:0"
+       },
+       "id": 0
+      }
+     }
+    }
+   }
   }
  }
 }
