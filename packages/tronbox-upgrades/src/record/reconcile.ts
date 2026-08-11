@@ -102,6 +102,14 @@ export function incompleteFieldOf(
  * appears to be on. The report's cause union therefore has three members where the
  * comparator's has two, so the widening is expressed in the type and a pass-through is
  * visible as a narrowing.
+ *
+ * **The `read.kind === 'unreadable'` arm below is unreachable from `openRecord`.**
+ * `openRecord`'s session gate throws `RecordFingerprintUnreadableError` on exactly that
+ * `read`, before this function is ever called with it — refusing is now the policy for
+ * that state, not reporting it. The arm stays, and stays total, because this function
+ * is pure and a pure function that refused to answer a case would be a worse thing than
+ * one whose answer is simply never consulted; it is also what the tests that pin the
+ * mapping call directly, independent of the gate that makes it unreachable in practice.
  */
 export function instanceOutcomeOf(
   read: FingerprintRead,

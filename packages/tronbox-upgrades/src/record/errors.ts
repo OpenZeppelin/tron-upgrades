@@ -246,47 +246,82 @@ export type FingerprintUnreadableCause =
   /** The file could not be read at all, for a reason other than not existing. */
   | 'unreadable-file';
 
+/**
+ * The disposition, shared verbatim by every cause below.
+ *
+ * A fingerprint that cannot be read has nothing left to launder: unlike
+ * {@link ChainInstanceChangedError}'s own refusal — which must never let a user delete
+ * the fingerprint *alone*, because that would erase the one signal that a readable
+ * mismatch is real — an unreadable file carries no signal to erase. So the same two
+ * outcomes that refusal names are available here without that restriction: deleting
+ * the fingerprint by itself is a legitimate exit rather than a way to make the guard
+ * silently trust a wrong chain. Named identically across all seven causes so that
+ * which cause fired never changes what the user is told to *do* — only the diagnosis
+ * that precedes it does.
+ */
+const fingerprintTwoExits =
+  'If this is still the same chain, delete the fingerprint file and re-run — the ' +
+  'guard re-arms itself from the current chain. If the node was wiped, delete the ' +
+  'record file and the fingerprint together, and redeploy — the same two outcomes ' +
+  'the readable-mismatch refusal already names.';
+
 const fingerprintRemedies: Readonly<
   Record<FingerprintUnreadableCause, string>
 > = Object.freeze({
   'not-json':
-    'Delete the fingerprint file together with the manifest beside it, or ' +
-    'delete neither. The plugin will rewrite the fingerprint on this run, but a ' +
-    'fingerprint it wrote itself cannot vouch for records written before it.',
+    'The fingerprint file is not JSON, so nothing could be read from it at all — ' +
+    'not even a value to disagree with. ' +
+    fingerprintTwoExits,
   'not-an-object':
-    'The fingerprint file holds a JSON value that is not an object. Delete it ' +
-    'together with the manifest beside it if the records in that manifest ' +
-    'describe a chain you no longer have.',
+    'The fingerprint file holds a JSON value that is not an object, so there is ' +
+    'no field in it to compare against. ' +
+    fingerprintTwoExits,
   'unrecognised-schema':
-    'The fingerprint was written by a newer version of this plugin. Upgrade the ' +
-    'plugin rather than deleting the file: an older version rewriting it loses ' +
-    'whatever the newer one recorded.',
+    'The fingerprint was written by a newer version of this plugin. Upgrading is ' +
+    'the exit that loses nothing: an older version rewriting the file loses ' +
+    'whatever the newer one recorded. If upgrading is not possible right now, ' +
+    'the fingerprint is still unreadable to this version, so the same two exits ' +
+    'apply as to any other unreadable one. ' +
+    fingerprintTwoExits,
   'chain-id-unusable':
     'The fingerprint names no usable chain id, so there is nothing to compare ' +
     'against. This is what a hand-edited file most often looks like; restore it ' +
-    'from version control if you have it.',
+    'from version control if you have it, or take one of the two exits below. ' +
+    fingerprintTwoExits,
   'hash-field-unusable':
     'One of the fingerprint\'s hashes is present but is not a 32-byte hash. ' +
     'Clearing a field does not clear the check it feeds — it turns the check ' +
-    'off, which is why this is reported rather than ignored. Delete the whole ' +
-    'file, or restore it, rather than blanking a field in it.',
+    'off, which is why this is reported rather than ignored. ' +
+    fingerprintTwoExits,
   'unexpected-keys':
     'The fingerprint file carries fields this plugin does not write, so it was ' +
-    'not written by this plugin. Move it aside rather than editing it.',
+    'not written by this plugin. ' +
+    fingerprintTwoExits,
   'unreadable-file':
     'The fingerprint file exists and could not be read — check its permissions ' +
-    'and the permissions of the directory holding it.',
+    'and the permissions of the directory holding it, and once it is readable ' +
+    'again the check runs normally with no further action needed. If fixing ' +
+    'permissions is not an option right now: ' +
+    fingerprintTwoExits,
 });
 
 /**
  * The fingerprint exists and cannot be used.
  *
- * **Declared, and never thrown.** An unusable fingerprint is behaviourally
- * identical to an absent one, and an absent one must never refuse — it is the
- * state every existing project is in on its first run after this ships. So the
- * disposition is proceed, rewrite, and report; this class exists so that the state
- * has a name, a code and a remedy per cause, rather than being the one silently
- * ignored condition in a sub-feature whose whole subject is silent failure.
+ * **Thrown by exactly one caller, and before any write: `openRecord`'s session
+ * gate, at the read that precedes the chain-instance comparison.** An unusable
+ * fingerprint used to be treated as behaviourally identical to an absent one —
+ * proceed, rewrite, report — on the reasoning that an absent fingerprint must
+ * never refuse, since that is the state every existing project is in on its
+ * first run. The flaw in that reasoning is that absence and corruption are not
+ * the same evidence: absence says nothing has happened yet, and corruption says
+ * something already has — a hand-edit, a merge conflict, a half-written file
+ * from a process that died mid-write — and any of those can just as easily have
+ * happened to the *chain* the fingerprint exists to guard. Proceeding past that
+ * is the silent continue this sub-feature exists to close, so this class is now
+ * the record layer's second refusal, alongside `ChainInstanceChangedError`:
+ * named by `because`, with a remedy per cause, and every one of those remedies
+ * resolves to the two exits that refusal already names.
  */
 export class RecordFingerprintUnreadableError extends Error {
   readonly code = 'TRON_RECORD_FINGERPRINT_UNREADABLE' as const;

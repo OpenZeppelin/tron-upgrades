@@ -17,7 +17,9 @@
  * Covered: never-truncated hashes, `firstBlockHash` (explicit, never
  * omitted), the atomic sidecar write, `indeterminate` (never refuses, three
  * causes), refusal preceding any write, and the refusal that names both
- * files — plus the sidecar read gate, asserted from both sides.
+ * files — plus the sidecar read gate, asserted from both sides, and the
+ * gate's own refusal: a corrupt fingerprint refuses, before any write and
+ * with both exits named, while an absent one still proceeds.
  *
  * Every induced failure is restored in a `finally`, and the sections run serially:
  * two concurrent induction batches clobber each other's restores and both results
@@ -61,6 +63,11 @@ import {
   openRecord,
   type RecordDeps,
 } from '../src/record';
+import {
+  RecordFingerprintUnreadableError,
+  recordRemedyTables,
+  type FingerprintUnreadableCause,
+} from '../src/record/errors';
 import {
   FINGERPRINT_SCHEMA,
   type FingerprintFile,
@@ -584,11 +591,22 @@ const indeterminateRoutes: readonly IndeterminateRoute[] = Object.freeze([
   },
 ] as const satisfies readonly IndeterminateRoute[]);
 
+/**
+ * **What this section is now a fixture for, and what it is not.** `instanceOutcomeOf`
+ * is kept total over `read.kind === 'unreadable'` — it is a pure function, and a pure
+ * function with a case it refuses to answer is a worse thing than one whose answer is
+ * simply never consulted. So the loop below still drives all three routes through it
+ * directly and still gets `indeterminate` back for the third. What changed is who
+ * calls it: `openRecord` never reaches this classification for the third route, because
+ * its session gate refuses on `read.kind === 'unreadable'` before comparing anything —
+ * see "refuses a non-JSON sidecar" below, which drives the *same* on-disk bytes through
+ * `openRecord` itself and gets a refusal, not a report.
+ */
 describe('`indeterminate` never refuses, and its three causes are reached by three distinct routes', () => {
   const observed = identityFor(mainnetFirstBlockHash);
 
   for (const route of indeterminateRoutes) {
-    it(`proceeds on ${route.label}, reporting ${route.cause}`, async () => {
+    it(`the pure classifier reports ${route.cause} on ${route.label}`, async () => {
       await inTempDir(async dir => {
         const file = path.join(dir, 'fingerprint.instance.json');
         await route.place(file);
@@ -1001,33 +1019,168 @@ describe('the sidecar read gate — both halves, because a bypass never shown to
       );
       expect(outcome.instanceBecause).toBe('fingerprint-unreadable');
       expect(outcome.instanceBecause).not.toBe('no-recorded-identity');
+
+      // This is the classifier's answer in isolation, and it is unchanged: the
+      // classifier is still total. `openRecord` never puts these exact bytes in
+      // front of it — its session gate refuses on `read.kind === 'unreadable'`
+      // first. The describe block below drives the same shape of bytes through
+      // `openRecord` itself and pins the refusal, not this report.
     });
   });
+});
 
-  it('end to end: a corrupt fingerprint proceeds, is rewritten at full width, and is reported as unreadable rather than absent', async () => {
+/**
+ * **The property this section pins: corrupt refuses, absent proceeds.** Both are
+ * fingerprints `instanceOutcomeOf` would call `indeterminate` if it were ever asked —
+ * but only one of them is ever asked. `openRecord`'s session gate reads the sidecar
+ * before it compares anything, and it refuses on `read.kind === 'unreadable'` — a file
+ * that exists and cannot be used — while letting `read.kind === 'absent'` fall through
+ * to the classifier exactly as before. The two are not the same evidence: absence says
+ * nothing has happened yet, and every existing project is in that state on its first
+ * run; corruption says something already went wrong with a file this plugin owns, and
+ * a chain that wiped and restarted is one candidate explanation among others. Proceeding
+ * past that — reporting it honestly, but proceeding — is the silent continue this
+ * section used to pin as correct and now pins as fixed.
+ */
+describe('the session gate refuses a corrupt fingerprint before any write, naming both exits — and still proceeds on an absent one', () => {
+  it('refuses a non-JSON sidecar, naming both exits, and touches neither file', async () => {
     await fs.mkdir(RECORD_DIR, { recursive: true });
-    await writeRawSidecar(SIDECAR_FILE, CORRUPT_SIDECAR);
+    const bytes = 'not json at all\n';
+    await fs.writeFile(SIDECAR_FILE, bytes, 'utf8');
     try {
-      const session = await openRecord(depsFor(identityFor(mainnetFirstBlockHash)));
+      const failure = await openRecord(
+        depsFor(identityFor(mainnetFirstBlockHash)),
+      ).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(failure).toBeInstanceOf(RecordFingerprintUnreadableError);
+      const refusal = failure as RecordFingerprintUnreadableError;
+      expect(refusal.because).toBe('not-json');
+      expect(refusal.file).toBe(SIDECAR_FILE);
 
-      // Never refuses: a corrupt fingerprint behaves as an absent one, and an absent
-      // one is the state every existing project is in on its first run.
-      expect(session.report.instance).toBe('indeterminate');
-      expect(session.report.instanceBecause).toBe('fingerprint-unreadable');
+      // Both exits, in the readable-mismatch refusal's own wording: same chain,
+      // delete the fingerprint alone and re-run; node wiped, delete the record and
+      // the fingerprint together and redeploy.
+      expect(refusal.message).toContain('delete the fingerprint file and re-run');
+      expect(refusal.message).toContain(
+        'delete the record file and the fingerprint',
+      );
+      expect(refusal.message).toContain('redeploy');
 
-      const rewritten = await readFingerprint(SIDECAR_FILE);
-      expect(rewritten.kind).toBe('record');
-      expect(recordOf(rewritten)?.genesisHash).toBe(mainnetGenesisHash);
-
-      const parsed = JSON.parse(await fs.readFile(SIDECAR_FILE, 'utf8')) as Record<
-        string,
-        unknown
-      >;
-      expect('firstBlockHash' in parsed).toBe(true);
-      expect(parsed['firstBlockHash']).toBe(mainnetFirstBlockHash);
-      expect(Object.keys(parsed).sort()).toEqual([...fingerprintKeys].sort());
+      // Nothing was written: the sidecar is exactly the bytes this test wrote, and
+      // no manifest was ever created to write it into.
+      expect(await fs.readFile(SIDECAR_FILE, 'utf8')).toBe(bytes);
+      await expect(fs.readFile(MANIFEST_FILE, 'utf8')).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
     } finally {
       await clearRecordFixtures();
     }
+  });
+
+  it('refuses on a hash-field-unusable sidecar too, so the gate is not specific to one cause', async () => {
+    await fs.mkdir(RECORD_DIR, { recursive: true });
+    const bytes = await writeRawSidecar(SIDECAR_FILE, CORRUPT_SIDECAR);
+    try {
+      const failure = await openRecord(
+        depsFor(identityFor(mainnetFirstBlockHash)),
+      ).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(failure).toBeInstanceOf(RecordFingerprintUnreadableError);
+      expect((failure as RecordFingerprintUnreadableError).because).toBe(
+        'hash-field-unusable',
+      );
+
+      // Never rewritten: what the old behaviour did here — proceed, and rewrite
+      // the sidecar at full width — is exactly what this refusal withholds.
+      expect(await fs.readFile(SIDECAR_FILE, 'utf8')).toBe(bytes);
+      expect(await readFingerprint(SIDECAR_FILE)).toEqual({
+        kind: 'unreadable',
+        because: 'hash-field-unusable',
+      });
+    } finally {
+      await clearRecordFixtures();
+    }
+  });
+
+  it('refuses ahead of the canonicalization migration too, leaving a manifest with pending rewrites byte-unchanged', async () => {
+    await fs.mkdir(RECORD_DIR, { recursive: true });
+    const manifestBytes = `${JSON.stringify(NON_CANONICAL_MANIFEST, null, 2)}\n`;
+    await fs.writeFile(MANIFEST_FILE, manifestBytes, 'utf8');
+    const sidecarBytes = await writeRawSidecar(SIDECAR_FILE, CORRUPT_SIDECAR);
+    try {
+      const failure = await openRecord(
+        depsFor(identityFor(mainnetFirstBlockHash)),
+      ).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(failure).toBeInstanceOf(RecordFingerprintUnreadableError);
+
+      // The migration that would have rewritten the stored addresses to their
+      // canonical form never runs: both files are exactly what this test wrote,
+      // which is what "before any write" has to mean when a rewrite is pending.
+      expect(await fs.readFile(MANIFEST_FILE, 'utf8')).toBe(manifestBytes);
+      expect(await fs.readFile(SIDECAR_FILE, 'utf8')).toBe(sidecarBytes);
+    } finally {
+      await clearRecordFixtures();
+    }
+  });
+
+  it('non-vacuity: an absent sidecar still proceeds, so the refusal above is about corruption and not mere absence', async () => {
+    await fs.mkdir(RECORD_DIR, { recursive: true });
+    try {
+      await expect(fs.readFile(SIDECAR_FILE, 'utf8')).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+
+      const session = await openRecord(depsFor(identityFor(mainnetFirstBlockHash)));
+      expect(session.report.instance).toBe('indeterminate');
+      expect(session.report.instanceBecause).toBe('no-recorded-identity');
+
+      // Proceeding means writing the current chain's fingerprint, so the guard has
+      // something to compare against on the next run.
+      const written = await readFingerprint(SIDECAR_FILE);
+      expect(written.kind).toBe('record');
+      expect(recordOf(written)?.genesisHash).toBe(mainnetGenesisHash);
+    } finally {
+      await clearRecordFixtures();
+    }
+  });
+});
+
+describe('the fingerprint remedy table names both exits for every cause', () => {
+  const causes = Object.keys(
+    recordRemedyTables.fingerprint,
+  ) as FingerprintUnreadableCause[];
+
+  it('has seven causes, so the audit below is not vacuously short', () => {
+    expect(causes).toHaveLength(7);
+  });
+
+  it('names both exits in every cause\'s remedy, in the readable-mismatch refusal\'s own wording', () => {
+    for (const because of causes) {
+      const remedy = recordRemedyTables.fingerprint[because];
+      expect(remedy, `remedy for ${because}`).toContain(
+        'delete the fingerprint file and re-run',
+      );
+      expect(remedy, `remedy for ${because}`).toContain(
+        'delete the record file and the fingerprint',
+      );
+      expect(remedy, `remedy for ${because}`).toContain('redeploy');
+    }
+  });
+
+  it('renders a distinct message per cause, so the audit is not passing by coincidence', () => {
+    const messages = new Set(
+      causes.map(
+        because =>
+          new RecordFingerprintUnreadableError(SIDECAR_FILE, because).message,
+      ),
+    );
+    expect(messages.size).toBe(causes.length);
   });
 });

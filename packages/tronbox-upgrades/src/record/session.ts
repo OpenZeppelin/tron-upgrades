@@ -15,12 +15,18 @@
  *    engine's own probes are what delete a record: on a wiped chain its implementation
  *    store clears the entry and writes the manifest *before* rethrowing. So the
  *    comparison has to precede the first of those, and it is cheap to arrange because
- *    the comparator is pure and total.
- * 5. **Refuse here, before any write.** The refusal message promises *"Nothing has been
- *    changed or removed."* If the refusal came after step 6 it would already have
- *    rewritten the manifest's address casing and the promise would be false. The chain
- *    seam could not have guaranteed this — it has no filesystem access at all — which
- *    is why the guarantee is this module's.
+ *    the comparator is pure and total. **A file that exists and cannot be used refuses
+ *    right here, before the comparison it would otherwise feed.** An unusable
+ *    fingerprint is not an absent one — absence is the state every existing project is
+ *    in on its first run, and must never refuse; corruption is evidence something has
+ *    already gone wrong with a file this plugin owns, and proceeding past it is exactly
+ *    the silent continue this refusal exists to close. It needs no record count and
+ *    takes no lock, so it is cheaper than the refusal in step 5, not merely earlier.
+ * 5. **Refuse on a changed instance, before any write.** The refusal message promises
+ *    *"Nothing has been changed or removed."* If the refusal came after step 6 it would
+ *    already have rewritten the manifest's address casing and the promise would be
+ *    false. The chain seam could not have guaranteed this — it has no filesystem access
+ *    at all — which is why the guarantee is this module's.
  * 6. **One lock, and only when there is something to write: fingerprint first, then the
  *    address migration.** The engine writes the manifest inside its *own* lock and a
  *    nested lock throws, so these two writes cannot be made atomic with the engine's; a
@@ -42,6 +48,7 @@ import type {
   ProxyDeployment,
 } from '@openzeppelin/upgrades-core';
 import { canonicalizeAddress } from './address';
+import { RecordFingerprintUnreadableError } from './errors';
 import { assertRecordLocation, configureRecordLocation } from './location';
 import {
   canonicalizeStoredAddresses,
@@ -70,6 +77,10 @@ import type { RecordDeps, RecordSession } from './types';
  * @throws {RecordLocationUnusableError} the anchor is not absolute, or the resolved
  *   record path is not under it — including the case where something loaded the engine
  *   before the anchor was set, which is otherwise silent.
+ * @throws {RecordFingerprintUnreadableError} the fingerprint sidecar exists and cannot
+ *   be used — corrupt, not merely absent. Raised before the manifest is read at all, so
+ *   it is the cheapest of this function's refusals as well as the earliest. An absent
+ *   sidecar is a different state and never reaches this throw.
  * @throws {ChainInstanceChangedError} the chain reports a different instance than the
  *   records were written against. The chain seam owns that message and never throws it;
  *   deciding that refusal is the policy is this layer's act. **Nothing has been written
@@ -98,6 +109,15 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
 
   // Step 4.
   const read = await readFingerprint(fingerprintFile);
+
+  // A file that exists and cannot be used is refused here, before the manifest is
+  // ever touched — this throw sits ahead of `manifest.read()` below, so it needs
+  // no record count and takes no lock. An absent fingerprint is not this: `read.kind`
+  // is `'record'` or `'absent'` from here on, and both still reach the comparator.
+  if (read.kind === 'unreadable') {
+    throw new RecordFingerprintUnreadableError(fingerprintFile, read.because);
+  }
+
   const comparison = compareChainInstance(
     read.kind === 'record' ? read.record : undefined,
     identity,

@@ -893,6 +893,11 @@ describe('applied to the real tree', () => {
     // actually needs is unchanged and asserted below: the runtime closure
     // reaches the engine ZERO times statically — the toolkit's engine access
     // is a dynamic import, recorded as a deferred edge, never a static one.
+    //
+    // Re-pinned again for `./record/errors`: the one record-layer edge the entry
+    // now carries, for `RecordFingerprintUnreadableError`. Still a VALUE edge —
+    // consumers need the real class, not its type, to write a `catch` — and still
+    // engine-free, because `errors.ts` is the module that imports nothing.
     expect(entry?.moduleSpecifiers.map(edge => edge.specifier).sort()).toEqual([
       './admin',
       './admin/errors',
@@ -903,6 +908,7 @@ describe('applied to the real tree', () => {
       './options/types',
       './proxy',
       './proxy',
+      './record/errors',
       './results/types',
       './standalone',
     ]);
@@ -1369,7 +1375,7 @@ describe('the face is `openRecord` plus four named values, and everything else i
     );
   });
 
-  it('the report type is internal in this version: the entry module re-exports nothing from the record layer', () => {
+  it('the report type is internal in this version: the entry module re-exports nothing from the record layer\'s operations, and exactly one thing from its errors', () => {
     // "Internal in v1" is a statement about the package's public API, not about this
     // directory's own face — the report type is on the internal face, because the
     // preflight returns it. Re-pinned when the entry module gained its type-only
@@ -1380,16 +1386,35 @@ describe('the face is `openRecord` plus four named values, and everything else i
     // exports — the operations and the two refusal families — so the live
     // guard is the ROUTE: nothing is re-exported from the record layer, and
     // none of the record face's five values appears among the exported names.
+    //
+    // Re-pinned again for `RecordFingerprintUnreadableError`: `openRecord` throws it
+    // directly, so a caller has to be able to catch it, and `./record`'s own face
+    // (asserted above) deliberately exports it as a type only — a consumer is meant
+    // to distinguish record-layer errors by `code`, not by importing constructors.
+    // This one class is the sanctioned exception, named explicitly below rather
+    // than matched by a prefix, so a second `./record/*` edge — or a route to any
+    // of the five operational values — still fails here by name.
+    const SANCTIONED_RECORD_EDGE = './record/errors';
     for (const edge of entry.moduleSpecifiers) {
+      if (edge.specifier === SANCTIONED_RECORD_EDGE) {
+        continue;
+      }
       expect(
         edge.specifier.startsWith('./record'),
         `${edge.specifier} reaches the record layer from the entry module`,
       ).toBe(false);
     }
+    expect(
+      entry.moduleSpecifiers.some(
+        edge => edge.specifier === SANCTIONED_RECORD_EDGE,
+      ),
+      `${SANCTIONED_RECORD_EDGE} should be the one sanctioned record-layer edge`,
+    ).toBe(true);
     const exportedNames = new Set(faceExports(entry).map(entry_ => entry_.name));
     for (const recordValue of FACE_VALUES) {
       expect(exportedNames.has(recordValue), `${recordValue} escaped`).toBe(false);
     }
+    expect(exportedNames.has('RecordFingerprintUnreadableError')).toBe(true);
   });
 
   it('non-vacuity: the export reader distinguishes a value re-export from a type one', () => {

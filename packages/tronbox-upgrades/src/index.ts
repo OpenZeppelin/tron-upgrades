@@ -105,3 +105,11 @@ export {
   StaleTransactionIdentityError,
   CheatcodeSlotCollisionError,
 } from './deploy';
+// The one record-layer error a consumer must be able to catch: `openRecord` throws
+// it directly, on a fingerprint sidecar it cannot use. The rest of the record
+// layer's errors are internal to `./record`, whose own face exports this class as a
+// type only — deliberately, so a consumer distinguishes by `code` rather than by
+// importing constructors. This export is the one exception, made here rather than
+// there, because catching it is how a caller tells "corrupt" from "the chain
+// instance changed", the only other refusal `openRecord` itself raises.
+export { RecordFingerprintUnreadableError } from './record/errors';
