@@ -708,6 +708,20 @@ export async function createOperationToolkit(request: {
             // `ImplementationNotPreviouslyDeployedError`'s own doc comment
             // for the read `hardhat-tron-upgrades` source this wraps the
             // same way.
+            // Fine print, honest rather than papered over: this throw is
+            // reached only when the engine's OWN cache lookup already
+            // decided "nothing valid to reuse" — which is also the verdict
+            // for a RECORDED-but-invalid entry (no code at the stored
+            // address, or its stored transaction hash is unfindable) on a
+            // non-development network. There, upstream's own
+            // `validateStoredDeployment` throws `InvalidDeployment` before
+            // this callback is ever invoked, and the catch block below
+            // (`redeployImplementation === 'never'` already suppresses its
+            // retry) re-throws it as-is — the engine's own "No contract at
+            // address … (Removed from manifest)", never this named class.
+            // The distinguishing fact for a caller reading either message:
+            // ours means no record ever existed for this version; the
+            // engine's means one existed and failed revalidation.
             if (resolvedOptions.redeployImplementation === 'never') {
               throw new ImplementationNotPreviouslyDeployedError(validated.name);
             }

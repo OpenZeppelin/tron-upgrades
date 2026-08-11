@@ -1,14 +1,23 @@
-import { describe, expect, it } from 'vitest';
+// Imported FIRST, ahead of every other project import — see its own doc
+// comment. This file's new "real seam" suite below is the first in
+// `toolkit-seam.test.ts` to open a real record session (every earlier suite
+// here runs in `validate-only` mode, which opens none), so it is the first
+// suite in this file for which the ordering matters.
+import { restoreRecordDir } from './helpers/prime-record-dir';
+
+import { afterAll, describe, expect, it } from 'vitest';
 
 import { assertNoOptionsInArgsPosition, createOperationToolkit } from '../src/proxy/toolkit';
 import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
 import { UPGRADE_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/upgrade-proxy';
 import { BEACON_ACCEPTED_OPTIONS } from '../src/beacon';
-import { OptionsInArgsPositionError } from '../src/proxy/errors';
+import { forceImport } from '../src/adopt';
+import { ImplementationNotPreviouslyDeployedError, OptionsInArgsPositionError } from '../src/proxy/errors';
 import { UnknownOptionError } from '../src/options';
 import { CheatcodeSlotCollisionError, LinkVerificationFailedError } from '../src/deploy';
 import { migrateShapedHandles } from './helpers/handles';
 import { realToolkitProject } from './helpers/toolkit-project';
+import { MAINNET_CHAIN_ID, mainnetFirstBlockHash, mainnetGenesisHash } from './helpers/chain-fixtures';
 
 /*
  * The toolkit seam, exercised through the REAL `createOperationToolkit` —
@@ -378,4 +387,178 @@ describe('assertNoOptionsInArgsPosition — the dropped positional-overloads sha
     expect(caught).toBeInstanceOf(OptionsInArgsPositionError);
     expect(caught?.looksLikeOptions).toBe(false);
   });
+});
+
+/*
+ * `fetchOrDeployImplementation`'s `redeployImplementation: 'never'` gate —
+ * driven through the REAL `createOperationToolkit`, the REAL
+ * `@openzeppelin/upgrades-core` engine, and a REAL (in-process, no
+ * filesystem-adjacent-to-a-live-node) record session — never the recording
+ * fake `test/proxy-operations.test.ts` uses for its own ordering pins.
+ *
+ * That fake reimplements the gate's intended contract as a second,
+ * independent piece of logic (documented on its own `fetchOrDeployImplementation`
+ * doc comment); it is a faithful mirror, but it cannot catch a defect in the
+ * ONE line of production code the gate actually is
+ * (`proxy/toolkit.ts`'s `fetchOrDeployImplementation`) — deleting that line
+ * leaves every fake-driven test green. This suite exists to close exactly
+ * that gap, with the narrowest reasonable pin: one refusal, through the real
+ * seam, over an empty record.
+ */
+/**
+ * A minimal, in-memory chain handle answering exactly the JSON-RPC methods
+ * the real-seam suites below need before they ever reach the code under
+ * test: `eth_chainId` (both `createChainAccess`'s own construction-time
+ * probe and, later, the engine's own `Manifest.forNetwork` inside
+ * `fetchOrDeployGetDeployment`) and `eth_getBlockByNumber` at `'0x0'` and
+ * `'0x1'` (`openRecord`'s own preflight step 2, the chain-identity read
+ * `src/record/session.ts` performs before the manifest is ever touched).
+ * The mainnet genesis/first-block hashes are the same fixture
+ * `chain-instance-identity.test.ts` uses, chosen because their last four
+ * bytes agree with `MAINNET_CHAIN_ID` — the identity read's own
+ * genesis/chain-id cross-check would otherwise refuse this pair as two
+ * disagreeing chains. No other method is answered, deliberately: neither
+ * suite below reaches `eth_getTransactionByHash`, the dev-network probes, or
+ * anything else a *positive*-arm or retry-suppression seam test would need.
+ * (Those wider arms are a separate, already-scoped test batch — these are
+ * one pin apiece.)
+ */
+function realSeamChainHandle(): { tronWrap: unknown } {
+  return {
+    tronWrap: {
+      trx: {},
+      fullNode: {
+        host: 'http://real-seam-never-gate.invalid:8090',
+        request: async (
+          _url: string,
+          payload: unknown,
+          httpMethod: 'get' | 'post',
+        ): Promise<unknown> => {
+          if (httpMethod === 'get') {
+            return {};
+          }
+          const envelope = payload as {
+            readonly id: unknown;
+            readonly method: string;
+            readonly params?: readonly unknown[];
+          };
+          const respond = (result: unknown): unknown => ({
+            jsonrpc: '2.0',
+            id: envelope.id,
+            result,
+          });
+          if (envelope.method === 'eth_chainId') {
+            return respond(MAINNET_CHAIN_ID);
+          }
+          if (envelope.method === 'eth_getBlockByNumber') {
+            const tag = envelope.params?.[0];
+            if (tag === '0x0') {
+              return respond({ hash: mainnetGenesisHash });
+            }
+            if (tag === '0x1') {
+              return respond({ hash: mainnetFirstBlockHash });
+            }
+            return respond(null);
+          }
+          throw new Error(
+            `real-seam fixture has no answer for ${envelope.method} — ` +
+              'this test is meant to reach nothing else before its own throw',
+          );
+        },
+      },
+    },
+  };
+}
+
+// Shared by both real-seam suites below; runs once for the whole file.
+afterAll(() => {
+  restoreRecordDir();
+});
+
+describe("fetchOrDeployImplementation's 'never' gate — the REAL production seam", () => {
+  it('refuses by name, through the real seam, before the real deploy thunk ever runs — nothing recorded for this version', async () => {
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: { ...shape.handles, ...realSeamChainHandle() },
+      rawOptions: { redeployImplementation: 'never' },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      // The REAL view, deliberately (unlike every `validate-only` test
+      // above, which passes a fresh `{}` because it never opens a record):
+      // the engine reads `MANIFEST_DEFAULT_DIR` straight off `process.env`,
+      // primed above at module scope, so `configureRecordLocation`'s own
+      // bookkeeping has to read the identical view or the two disagree
+      // about which directory is in force — `RecordLocationUnusableError`,
+      // measured hitting this exact mismatch while writing this test.
+      processEnv: process.env,
+    });
+    expect(context.resolved.redeployImplementation).toBe('never');
+
+    let deployCalled = false;
+    const validated = {
+      name: 'RealSeamNeverGateBox',
+      input: {} as never,
+      validations: {},
+      // A key this suite's fresh, redirected `MANIFEST_DEFAULT_DIR` cannot
+      // already hold a deployment for — the empty-record arm this test pins.
+      version: { linkedWithoutMetadata: 'real-seam-never-gate' },
+      layout: {},
+      encodedArgs: '0x',
+    };
+
+    await expect(
+      context.toolkit.fetchOrDeployImplementation(
+        validated as never,
+        context.resolved,
+        async () => {
+          deployCalled = true;
+          return {
+            address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+            transactionHash: 'aa'.repeat(32),
+          };
+        },
+      ),
+    ).rejects.toBeInstanceOf(ImplementationNotPreviouslyDeployedError);
+    // The real deploy thunk — the stand-in for `hostDeploy` — never ran.
+    expect(deployCalled).toBe(false);
+  });
+});
+
+/*
+ * The 'never' gate is inert for adoption on two independent grounds (see
+ * `ImplementationNotPreviouslyDeployedError`'s own doc comment): neither
+ * `redeployImplementation` nor `useDeployedImplementation` is in
+ * `FORCE_IMPORT_ACCEPTED_OPTIONS`, and `runForceImport` overrides the field
+ * unconditionally on the two calls it does make. This suite pins the FIRST
+ * ground's public face — the PUBLIC `forceImport(...)`, not `runForceImport`
+ * against an already-built context — because that is the one a caller
+ * actually calls, and the one that has to refuse before adoption's own logic
+ * (the on-chain code comparison, the replay/conflict checks) ever runs at
+ * all. Driven through the real seam for the same reason the suite above is:
+ * `forceImport` always builds its toolkit in `state-changing` mode (it takes
+ * no `mode` option), so there is no lighter-weight way to reach the option
+ * resolver it calls through.
+ */
+describe('forceImport refuses either redeploy-policy spelling before adoption runs', () => {
+  it.each(['redeployImplementation', 'useDeployedImplementation'] as const)(
+    '%s is not in FORCE_IMPORT_ACCEPTED_OPTIONS, so the public forceImport refuses it with UnknownOptionError before runForceImport is ever reached',
+    async key => {
+      const shape = migrateShapedHandles();
+      const rawOptions =
+        key === 'redeployImplementation'
+          ? { redeployImplementation: 'never' }
+          : { useDeployedImplementation: true };
+
+      await expect(
+        forceImport(
+          'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+          // Never inspected: the resolver's unknown-key check is the FIRST
+          // check step, and it throws before `runForceImport` reads
+          // anything off this abstraction (its own `nameOf` call, the code
+          // comparison, all of it).
+          { contractName: 'Box', abi: [] } as never,
+          { ...shape.handles, ...realSeamChainHandle(), ...rawOptions } as never,
+        ),
+      ).rejects.toBeInstanceOf(UnknownOptionError);
+    },
+  );
 });
