@@ -2,6 +2,8 @@ const { deployProxy, upgradeProxy } = require('@openzeppelin/tronbox-upgrades');
 
 const BoxUUPS = artifacts.require('BoxUUPS');
 const BoxUUPSV2 = artifacts.require('BoxUUPSV2');
+const BoxUUPSAuto = artifacts.require('BoxUUPSAuto');
+const BoxZeroInit = artifacts.require('BoxZeroInit');
 const BoxOptions = artifacts.require('BoxOptions');
 const BoxOptionsV2 = artifacts.require('BoxOptionsV2');
 const BoxOwned = artifacts.require('BoxOwned');
@@ -59,6 +61,56 @@ module.exports = async function (deployer) {
     'uups value()',
   );
   console.log('E2E m6.uupsValueAfter=' + uupsAfter);
+
+  // kind OMITTED on the DEPLOY of a UUPS-shaped implementation: deployProxy
+  // must INFER uups from the public upgrade entry point — the harness reads
+  // this proxy's 1967 admin slot from the node and requires it EMPTY, which
+  // a kind defaulted to transparent fails. A separate contract so the
+  // scenario owns its replay memory.
+  const auto = await deployProxy(BoxUUPSAuto, [42], handles);
+  console.log('E2E m6.autoProxy=' + auto.address);
+  const autoValue = await readBig(() => auto.contract.value());
+  // Exactly the initializer's value, first run and replay both: nothing
+  // increments this proxy, so a reused deploy answers the same 42.
+  if (autoValue !== 42n) {
+    throw new Error('e2e: inferred-kind initializer value wrong: ' + autoValue);
+  }
+  console.log('E2E m6.autoValue=' + autoValue);
+
+  // initialOwner with kind:'uups' is refused BY NAME before anything spends:
+  // a UUPS proxy has no admin for the option to configure. The refusal is
+  // deterministic — it fires ahead of the replay decision — so it replays
+  // identically even though BoxUUPSAuto's proxy is recorded above.
+  let ownerRefusal = null;
+  try {
+    await deployProxy(BoxUUPSAuto, [42], {
+      ...handles,
+      kind: 'uups',
+      initialOwner: params.newOwner,
+    });
+  } catch (error) {
+    ownerRefusal = error;
+  }
+  if (!ownerRefusal || ownerRefusal.code !== 'initial-owner-unsupported-kind') {
+    throw new Error(
+      'e2e: initialOwner with uups was not refused by name; saw: ' +
+        (ownerRefusal
+          ? `${ownerRefusal.code}: ${ownerRefusal.message}`
+          : 'a successful deploy'),
+    );
+  }
+  console.log('E2E m6.ownerRefusalCode=' + ownerRefusal.code);
+
+  // initializer OMITTED with zero args: the TRY-FIRST rule must find the
+  // zero-argument initialize() in the ABI and deploy INITIALIZED — the value
+  // below is the initializer's own constant, asserted exactly.
+  const zero = await deployProxy(BoxZeroInit, [], handles);
+  console.log('E2E m6.zeroProxy=' + zero.address);
+  const zeroValue = await readBig(() => zero.contract.value());
+  if (zeroValue !== 7n) {
+    throw new Error('e2e: zero-arg initialize() did not run: ' + zeroValue);
+  }
+  console.log('E2E m6.zeroValue=' + zeroValue);
 
   // call: { fn, args } — the post-upgrade call must land through the
   // upgrade dispatch itself: store() exists only on the new implementation,

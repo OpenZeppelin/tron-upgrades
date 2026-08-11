@@ -16,8 +16,10 @@
  *   5. migrate — six migrations: proxy deploy + upgrade, the standalone
  *      validate/prepare pair, the authority transfer, the beacon trio,
  *      adoption from a set-aside record, and the non-default option surface
- *      (kind: 'uups', an inferred-kind upgrade, call, initialOwner, and the
- *      initializer:false refusal).
+ *      (kind: 'uups', an inferred-kind upgrade, an inferred-kind DEPLOY of a
+ *      UUPS shape, the initialOwner-with-uups refusal, a zero-argument
+ *      omitted initializer, call, initialOwner, and the initializer:false
+ *      refusal).
  *   6. verify — independent reads against the node itself; the migrations'
  *      own asserts are trusted only after the chain agrees.
  *   7. replay — the SAME migrations again: reruns must reuse, declare their
@@ -335,6 +337,11 @@ async function main() {
     'm6.uupsProxy',
     'm6.uupsImpl',
     'm6.uupsValueAfter',
+    'm6.autoProxy',
+    'm6.autoValue',
+    'm6.ownerRefusalCode',
+    'm6.zeroProxy',
+    'm6.zeroValue',
     'm6.callProxy',
     'm6.callValue',
     'm6.ownedProxy',
@@ -343,6 +350,16 @@ async function main() {
   ];
   for (const key of required) {
     if (!(key in report1)) die(`first run reported no ${key}`);
+  }
+  // The initializer value, exactly: on the FIRST run nothing has incremented
+  // the m1 proxy yet, so anything but the literal 42 means initialize(42)
+  // did not run as asked — a `>= 42` reading would let a double-initialized
+  // or replayed value slip through.
+  if (BigInt(report1['m1.valueBefore']) !== 42n) {
+    die(
+      `the m1 initializer value must be exactly 42 on the first run, ` +
+        `saw ${report1['m1.valueBefore']}`,
+    );
   }
   if (report1['m3.alreadyHeld'] !== 'false') {
     die(`first transfer expected alreadyHeld=false, saw ${report1['m3.alreadyHeld']}`);
@@ -430,6 +447,66 @@ async function main() {
       `implementation ${report1['m6.uupsImpl']}`,
   );
 
+  // kind OMITTED on a UUPS-shaped implementation — the kind must be
+  // INFERRED: the admin slot must be EMPTY, exactly as for the explicit
+  // kind above. A defaulted-to-transparent deploy fails this read.
+  const autoHex = bareAddress(workdir, report1['m6.autoProxy']);
+  const autoAdmin = await rpc('eth_getStorageAt', [
+    `0x${autoHex}`,
+    ADMIN_SLOT,
+    'latest',
+  ]);
+  if (!zeroWord(autoAdmin)) {
+    die(
+      `the kind-omitted UUPS deploy produced a proxy with a non-empty 1967 ` +
+        `admin slot (${autoAdmin}) — the kind was not inferred`,
+    );
+  }
+  const autoValue = await post('/wallet/triggerconstantcontract', {
+    owner_address: senderHex,
+    contract_address: `41${autoHex}`,
+    function_selector: 'value()',
+  });
+  if (BigInt(`0x${autoValue.constant_result[0]}`) !== 42n) {
+    die('the chain disagrees about the kind-omitted proxy initializer value');
+  }
+  say(
+    `chain agrees: kind-omitted proxy ${report1['m6.autoProxy']} inferred ` +
+      `uups — empty admin slot, value() = 42`,
+  );
+
+  if (report1['m6.ownerRefusalCode'] !== 'initial-owner-unsupported-kind') {
+    die(
+      `initialOwner with kind:'uups' expected the ` +
+        `initial-owner-unsupported-kind refusal, saw ${report1['m6.ownerRefusalCode']}`,
+    );
+  }
+
+  // initializer OMITTED with zero args — the zero-argument initialize() must
+  // have RUN: value() answers exactly the initializer's constant, and the
+  // inferred-transparent proxy's admin slot is set.
+  const zeroHex = bareAddress(workdir, report1['m6.zeroProxy']);
+  const zeroAdmin = await rpc('eth_getStorageAt', [
+    `0x${zeroHex}`,
+    ADMIN_SLOT,
+    'latest',
+  ]);
+  if (zeroWord(zeroAdmin)) {
+    die('the zero-arg-initializer proxy has an empty 1967 admin slot — not transparent');
+  }
+  const zeroValue = await post('/wallet/triggerconstantcontract', {
+    owner_address: senderHex,
+    contract_address: `41${zeroHex}`,
+    function_selector: 'value()',
+  });
+  if (BigInt(`0x${zeroValue.constant_result[0]}`) !== 7n) {
+    die(
+      `the zero-argument initialize() did not run: value() answers ` +
+        `${BigInt(`0x${zeroValue.constant_result[0]}`)} instead of 7`,
+    );
+  }
+  say('chain agrees: the omitted initializer found and ran initialize()');
+
   // call: { fn: 'store', args: [99] } — retrieve() must answer 99 through
   // the transparent proxy, whose admin slot must be set.
   const callHex = bareAddress(workdir, report1['m6.callProxy']);
@@ -511,6 +588,8 @@ async function main() {
     'm2.impl',
     'm6.uupsProxy',
     'm6.uupsImpl',
+    'm6.autoProxy',
+    'm6.zeroProxy',
     'm6.callProxy',
     'm6.ownedProxy',
   ];
@@ -530,6 +609,21 @@ async function main() {
       `replayed initializer:false expected the same refusal, ` +
         `saw ${report2['m6.refusalCode']}`,
     );
+  }
+  // The uups+initialOwner refusal fires ahead of the replay decision, so it
+  // must replay identically even against the recorded proxy; the two
+  // initializer values are untouched by any replayed step, so exactly again.
+  if (report2['m6.ownerRefusalCode'] !== 'initial-owner-unsupported-kind') {
+    die(
+      `replayed initialOwner+uups expected the same refusal, ` +
+        `saw ${report2['m6.ownerRefusalCode']}`,
+    );
+  }
+  if (report2['m6.autoValue'] !== '42') {
+    die(`replay changed the kind-omitted proxy value: ${report2['m6.autoValue']}`);
+  }
+  if (report2['m6.zeroValue'] !== '7') {
+    die(`replay changed the zero-arg-initializer value: ${report2['m6.zeroValue']}`);
   }
   if (report2['m6.callValue'] !== '99') {
     die(`replay lost the upgrade-borne store(99): ${report2['m6.callValue']}`);
