@@ -3,9 +3,12 @@
 // `toolkit-seam.test.ts` to open a real record session (every earlier suite
 // here runs in `validate-only` mode, which opens none), so it is the first
 // suite in this file for which the ordering matters.
-import { restoreRecordDir } from './helpers/prime-record-dir';
+import { RECORD_DIR, restoreRecordDir } from './helpers/prime-record-dir';
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { InvalidDeployment } from '@openzeppelin/upgrades-core';
 
 import { assertNoOptionsInArgsPosition, createOperationToolkit } from '../src/proxy/toolkit';
 import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
@@ -470,7 +473,144 @@ function realSeamChainHandle(): { tronWrap: unknown } {
   };
 }
 
-// Shared by both real-seam suites below; runs once for the whole file.
+/**
+ * The engine's own manifest file for `realSeamChainHandle`'s and
+ * `realSeamRetryChainHandle`'s shared `MAINNET_CHAIN_ID` — `unknown-<decimal
+ * chain id>.json`, per `Manifest`'s own naming (`dist/manifest.js`) and
+ * `src/chain/instance.ts`'s doc comment, which names the identical decimal
+ * for mainnet. Every real-seam suite below that seeds a stored implementation
+ * writes into this one file, directly, bypassing the engine's own lock —
+ * safe because Vitest runs this file's tests sequentially and each seed runs
+ * before the toolkit call that reads it.
+ */
+const REAL_SEAM_MANIFEST_FILE = path.join(
+  RECORD_DIR,
+  `unknown-${String(parseInt(MAINNET_CHAIN_ID.slice(2), 16))}.json`,
+);
+
+interface SeededManifestData {
+  manifestVersion: string;
+  impls: Record<string, { address: string }>;
+  proxies: unknown[];
+}
+
+/**
+ * Seeds (read-merge, never overwrite) an implementation entry for
+ * `versionKey` at `address`, with no `txHash` — the shape that drives the
+ * engine's `validateStoredDeployment` down its "no code" branch rather than
+ * its "look up the transaction" one. Read-merge because every real-seam
+ * suite below shares this one manifest file for the run.
+ */
+function seedManifestImplementation(versionKey: string, address: string): void {
+  const existing: SeededManifestData = fs.existsSync(REAL_SEAM_MANIFEST_FILE)
+    ? (JSON.parse(fs.readFileSync(REAL_SEAM_MANIFEST_FILE, 'utf8')) as SeededManifestData)
+    : { manifestVersion: '3.2', impls: {}, proxies: [] };
+  existing.impls[versionKey] = { address };
+  fs.mkdirSync(path.dirname(REAL_SEAM_MANIFEST_FILE), { recursive: true });
+  fs.writeFileSync(REAL_SEAM_MANIFEST_FILE, JSON.stringify(existing, null, 2));
+}
+
+/**
+ * A wider real-seam chain handle for the removed-retry suites below —
+ * `realSeamChainHandle` above answers only what an EMPTY record needs, and
+ * says so; a stored (and here, invalid) entry needs more, traced by running
+ * the suites below against progressively answered fixtures until nothing
+ * else threw:
+ *
+ * - `web3_clientVersion`: `isDevelopmentNetwork`'s second read
+ *   (`dist/provider.js:104`), reached once `validateStoredDeployment`'s
+ *   no-code check has already thrown `InvalidDeployment` for the stored
+ *   entry, and again from `checkForAddressClash` after a successful retry
+ *   deploy (`dist/impl-store.js:156`). Answered with a client string naming
+ *   neither Hardhat, Anvil nor TestRPC, so the network reads as non-dev on
+ *   both call sites — the real-world case this plugin runs against, and the
+ *   one where an invalid entry is a hard refusal rather than a silent
+ *   redeploy.
+ * - `eth_getCode`, per address: the no-code check itself
+ *   (`dist/deployment.js:107-110`) for a stored address, and later
+ *   `hasCode`'s post-deploy confirmation (`dist/deployment.js:174-184`) for a
+ *   freshly deployed one. Unlisted addresses answer `'0x'` — absence IS "no
+ *   code", so a stale stored address needs no entry of its own.
+ * - `eth_getTransactionReceipt`: the same post-deploy confirmation's
+ *   transaction-mined poll (`dist/deployment.js:146-159`), reached only after
+ *   a retry's deploy thunk actually ran. Unlisted transaction hashes throw
+ *   rather than hang the poll loop, on the same "answer minimally, name what
+ *   was not expected" principle as the fallthrough below.
+ */
+function realSeamRetryChainHandle(options: {
+  readonly codeByAddress?: Readonly<Record<string, string>>;
+  readonly receiptStatusByTxHash?: Readonly<Record<string, string>>;
+}): { tronWrap: unknown } {
+  const codeByAddress = options.codeByAddress ?? {};
+  const receiptStatusByTxHash = options.receiptStatusByTxHash ?? {};
+  return {
+    tronWrap: {
+      trx: {},
+      fullNode: {
+        host: 'http://real-seam-retry-gate.invalid:8090',
+        request: async (
+          _url: string,
+          payload: unknown,
+          httpMethod: 'get' | 'post',
+        ): Promise<unknown> => {
+          if (httpMethod === 'get') {
+            return {};
+          }
+          const envelope = payload as {
+            readonly id: unknown;
+            readonly method: string;
+            readonly params?: readonly unknown[];
+          };
+          const respond = (result: unknown): unknown => ({
+            jsonrpc: '2.0',
+            id: envelope.id,
+            result,
+          });
+          if (envelope.method === 'eth_chainId') {
+            return respond(MAINNET_CHAIN_ID);
+          }
+          if (envelope.method === 'eth_getBlockByNumber') {
+            const tag = envelope.params?.[0];
+            if (tag === '0x0') {
+              return respond({ hash: mainnetGenesisHash });
+            }
+            if (tag === '0x1') {
+              return respond({ hash: mainnetFirstBlockHash });
+            }
+            return respond(null);
+          }
+          // `anvil_metadata` / `hardhat_metadata` — `Manifest.forNetwork`'s
+          // own dev-instance probe — are refused LOCALLY by the chain
+          // layer's policy table, before any request is built, so this
+          // fixture is never asked for either one.
+          if (envelope.method === 'web3_clientVersion') {
+            return respond('TronNode/v1.0');
+          }
+          if (envelope.method === 'eth_getCode') {
+            const address = String(envelope.params?.[0] ?? '').toLowerCase();
+            return respond(codeByAddress[address] ?? '0x');
+          }
+          if (envelope.method === 'eth_getTransactionReceipt') {
+            const txHash = String(envelope.params?.[0] ?? '');
+            const status = receiptStatusByTxHash[txHash];
+            if (status === undefined) {
+              throw new Error(
+                `real-seam retry fixture has no receipt configured for ${txHash}`,
+              );
+            }
+            return respond({ status });
+          }
+          throw new Error(
+            `real-seam retry fixture has no answer for ${envelope.method} — ` +
+              'name it here if a traced test genuinely needs it',
+          );
+        },
+      },
+    },
+  };
+}
+
+// Shared by every real-seam suite below; runs once for the whole file.
 afterAll(() => {
   restoreRecordDir();
 });
@@ -520,6 +660,191 @@ describe("fetchOrDeployImplementation's 'never' gate — the REAL production sea
     ).rejects.toBeInstanceOf(ImplementationNotPreviouslyDeployedError);
     // The real deploy thunk — the stand-in for `hostDeploy` — never ran.
     expect(deployCalled).toBe(false);
+  });
+});
+
+/*
+ * The removed-retry branch itself (`proxy/toolkit.ts`'s `fetchOrDeployImplementation`,
+ * the catch consulting `(error as {removed?: boolean}).removed`) — driven
+ * through the same REAL seam as the 'never' gate suite above, never a fake
+ * that throws `{removed: true}` or reimplements the gate as a second piece of
+ * logic. A stale, no-code stored entry is what makes the engine itself throw
+ * `InvalidDeployment` and set `removed = true` on it (`dist/impl-store.js`'s
+ * `fetchOrDeployGeneric` catch), which is the only way this branch is
+ * genuinely exercised rather than assumed.
+ */
+describe("fetchOrDeployImplementation's removed-retry branch — the REAL production seam", () => {
+  it('retries exactly once after the engine removes an invalid stored entry, and the real deploy thunk runs on that retry alone', async () => {
+    const versionKey = 'real-seam-retry-gate';
+    const staleAddress = '0x1111111111111111111111111111111111111111';
+    const newAddress = '0x2222222222222222222222222222222222222222';
+    const newTxHash = 'bb'.repeat(32);
+    // No `txHash` on the seeded entry: `validateStoredDeployment` takes the
+    // "no code" branch (`dist/deployment.js:106-111`), not the
+    // "look up the transaction" one.
+    seedManifestImplementation(versionKey, staleAddress);
+
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: {
+        ...shape.handles,
+        ...realSeamRetryChainHandle({
+          codeByAddress: { [newAddress.toLowerCase()]: '0x6080604052' },
+          receiptStatusByTxHash: { [newTxHash]: '0x1' },
+        }),
+      },
+      rawOptions: {},
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: process.env,
+    });
+    // The retry is only reachable when the policy is not `'never'` — see the
+    // no-retry suite below for that arm. The default is `'onchange'`.
+    expect(context.resolved.redeployImplementation).toBe('onchange');
+
+    const validated = {
+      name: 'RealSeamRetryGateBox',
+      input: {} as never,
+      validations: {},
+      version: { linkedWithoutMetadata: versionKey },
+      layout: {},
+      encodedArgs: '0x',
+    };
+
+    let deployCalls = 0;
+    const address = await context.toolkit.fetchOrDeployImplementation(
+      validated as never,
+      context.resolved,
+      async () => {
+        deployCalls += 1;
+        return { address: newAddress, transactionHash: newTxHash };
+      },
+    );
+
+    expect(address).toBe(newAddress);
+    // Traced before pinning, not assumed: the FIRST `fetch()` fails entirely
+    // inside the engine — `validateStoredDeployment` throws over the stale,
+    // no-code entry before the engine ever reaches ITS OWN `deploy` argument
+    // (this plugin's `'never'`-gate closure, `proxy/toolkit.ts`), which is
+    // the only thing that can call the REAL thunk passed in above. So the
+    // thunk runs on the retry alone — once, never twice.
+    expect(deployCalls).toBe(1);
+  });
+});
+
+/*
+ * The two arms `fetchOrDeployImplementation`'s catch refuses to retry —
+ * "refuse" here meaning the ORIGINAL error propagates unchanged, through the
+ * same real seam. The second arm doubles as the field-shape canary (audit's
+ * own framing): it asserts directly against the installed engine's
+ * `InvalidDeployment` that `removed` really does read `true` after the
+ * engine's own removal path, which is the exact predicate the wrapper's catch
+ * reads — so an upstream rename of that field fails this suite loudly rather
+ * than silently disabling the retry above. Reproducing that assertion a
+ * second time, standalone, would delete-and-retry the SAME stored entry the
+ * suite above pins the wrapper's retry over, which would undermine that
+ * pin rather than duplicate it safely — so it lives here instead, on the arm
+ * that already needs it.
+ */
+describe("fetchOrDeployImplementation's no-retry arms — the REAL production seam", () => {
+  it('an error without removed:true propagates immediately — the real deploy thunk runs exactly once, no retry', async () => {
+    const versionKey = 'real-seam-plain-error-gate';
+    // No stored entry for this key: the engine calls the real thunk directly
+    // on the FIRST `fetch()`, never through `InvalidDeployment` at all.
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: { ...shape.handles, ...realSeamChainHandle() },
+      rawOptions: {},
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: process.env,
+    });
+    expect(context.resolved.redeployImplementation).toBe('onchange');
+
+    const validated = {
+      name: 'RealSeamPlainErrorGateBox',
+      input: {} as never,
+      validations: {},
+      version: { linkedWithoutMetadata: versionKey },
+      layout: {},
+      encodedArgs: '0x',
+    };
+
+    const thrown = new Error('the real deploy thunk failed for reasons of its own');
+    let deployCalls = 0;
+    let caught: unknown;
+    try {
+      await context.toolkit.fetchOrDeployImplementation(
+        validated as never,
+        context.resolved,
+        async () => {
+          deployCalls += 1;
+          throw thrown;
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBe(thrown);
+    expect((caught as { removed?: boolean }).removed).not.toBe(true);
+    expect(deployCalls).toBe(1);
+  });
+
+  it("redeployImplementation: 'never' over an already-invalid stored entry: the engine's own InvalidDeployment escapes as-is, never retried and never the plugin's named refusal", async () => {
+    const versionKey = 'real-seam-never-removed-gate';
+    const staleAddress = '0x3333333333333333333333333333333333333333';
+    seedManifestImplementation(versionKey, staleAddress);
+
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: { ...shape.handles, ...realSeamRetryChainHandle({}) },
+      rawOptions: { redeployImplementation: 'never' },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: process.env,
+    });
+    expect(context.resolved.redeployImplementation).toBe('never');
+
+    const validated = {
+      name: 'RealSeamNeverRemovedGateBox',
+      input: {} as never,
+      validations: {},
+      version: { linkedWithoutMetadata: versionKey },
+      layout: {},
+      encodedArgs: '0x',
+    };
+
+    let deployCalls = 0;
+    let caught: unknown;
+    try {
+      await context.toolkit.fetchOrDeployImplementation(
+        validated as never,
+        context.resolved,
+        async () => {
+          deployCalls += 1;
+          return {
+            address: '0x4444444444444444444444444444444444444444',
+            transactionHash: 'cc'.repeat(32),
+          };
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    // The field-shape canary: the engine's removal path really does set
+    // `removed` to `true`, non-enumerably, on its own `InvalidDeployment`
+    // instance (`dist/impl-store.js`'s `fetchOrDeployGeneric` catch) —
+    // asserted directly against the installed engine, not a
+    // reimplementation of its predicate.
+    expect(caught).toBeInstanceOf(InvalidDeployment);
+    expect((caught as { removed?: boolean }).removed).toBe(true);
+    expect((caught as Error).message).toContain('No contract at address');
+    expect((caught as Error).message).toContain('(Removed from manifest)');
+    // Never the plugin's own named refusal: that class fires only over an
+    // EMPTY record (the 'never' gate suite above). Here the engine's own
+    // cache lookup already rejects a recorded-but-invalid entry before the
+    // plugin's closure — the only thing that can throw that named class — is
+    // ever invoked, which is the nuance `proxy/toolkit.ts`'s own comment
+    // names and this assertion now executes.
+    expect(caught).not.toBeInstanceOf(ImplementationNotPreviouslyDeployedError);
+    expect(deployCalls).toBe(0);
   });
 });
 

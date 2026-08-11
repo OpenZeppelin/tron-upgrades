@@ -166,6 +166,49 @@ describe('the pre-read answers, nothing sends', () => {
   });
 });
 
+/*
+ * The foreign-holder refusal (`src/admin/index.ts` ~:69-79) fires only when
+ * `currentOwner !== null` AND `sender.kind === 'resolved'`. Both conditions
+ * disarm it independently, and today's disposition for either disarmed state
+ * is the same: nothing refuses pre-spend, the doomed `transferOwnership` IS
+ * sent, and the failure surfaces post-hoc — here, through the verify re-read,
+ * because this fake's `confirm` always answers `'confirmed-successful'` and
+ * its `ownerOf` never reports the sender as having become the holder. Pinned
+ * as today's behaviour, not endorsed: a pre-spend refusal in either disarmed
+ * state is a stricter alternative and a deliberate future decision, not
+ * implemented here.
+ */
+describe('the foreign-holder refusal disarms when the sender is unconfigured or owner() never answers', () => {
+  it('unconfigured sender + a foreign holder: the spend is sent anyway and fails post-hoc', async () => {
+    const other = '0x1111111111111111111111111111111111111111';
+    const fake = buildFake({ owners: [other], senderAddress: null });
+    let caught: AuthorityVerificationFailedError | undefined;
+    try {
+      await runTransferProxyAdminOwnership(fake.context, PROXY, NEW_OWNER);
+    } catch (error) {
+      caught = error as AuthorityVerificationFailedError;
+    }
+    expect(fake.log).toContain('queue');
+    expect(fake.log).toContain('callThroughFacade:transferOwnership');
+    expect(caught).toBeInstanceOf(AuthorityVerificationFailedError);
+    expect(caught?.observed).toBe(canonicalizeAddress(other));
+  });
+
+  it('owner() never answers (currentOwner null): the spend is sent anyway, regardless of the sender, and fails post-hoc the same way', async () => {
+    const fake = buildFake({ owners: [null], senderAddress: SENDER });
+    let caught: AuthorityVerificationFailedError | undefined;
+    try {
+      await runTransferProxyAdminOwnership(fake.context, PROXY, NEW_OWNER);
+    } catch (error) {
+      caught = error as AuthorityVerificationFailedError;
+    }
+    expect(fake.log).toContain('queue');
+    expect(fake.log).toContain('callThroughFacade:transferOwnership');
+    expect(caught).toBeInstanceOf(AuthorityVerificationFailedError);
+    expect(caught?.observed).toBe('nothing that answers owner()');
+  });
+});
+
 describe('the transfer path: one queued step, confirm, verify', () => {
   it('sends transferOwnership through the ProxyAdmin facade and verifies the new owner', async () => {
     const fake = buildFake({
