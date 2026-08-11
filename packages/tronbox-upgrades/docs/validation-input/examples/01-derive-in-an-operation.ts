@@ -1,17 +1,17 @@
 /**
- * The fresh path: derive the validation input inside the operation that needs it,
- * and on a tree the host has just built, compile nothing.
+ * The primary pattern: derive the validation input inside the operation that
+ * needs it, and compile nothing — because nothing here can compile.
  *
  * Three facts this file exists to make executable:
  *
  *  1. `deriveValidationInput` returns an **outcome**. A refusal is a value, so the
  *     operation boundary — not this module — decides whether to throw it or carry
- *     it (`src/validation-input/pipeline.ts:243`).
- *  2. When the host's own build record for the target verifies against the
- *     artifact's deployed bytecode, the layout is reconstructed from the ASTs that
- *     record already carries and **no compiler is located, loaded or run**. § 4
- *     passes a `loadCompiler` that raises if it is ever called; on this path it is
- *     not called.
+ *     it (`src/validation-input/pipeline.ts`).
+ *  2. The layout is reconstructed from the ASTs the host's own build record
+ *     already carries, after that record content-verifies against the artifact's
+ *     deployed bytecode. **No compiler is located, loaded or run, on any path** —
+ *     the dependency surface (§ 4) has no compiler member to inject, so a compile
+ *     is unrepresentable rather than merely avoided.
  *  3. The input says so about itself. `provenance.basis.kind` is
  *     `'build-record-ast'`, and `fidelity.kind` is `'declaration-order-only'` with
  *     a non-empty `missingFor`. Neither is inferred by a consumer — both are
@@ -23,15 +23,15 @@
  * reordering, renames, retypes and deletions are all still detected. Exactly two
  * shapes need slot positions — consuming a `__gap` array, and inserting into
  * unused padding inside an existing slot — and both are **refused rather than
- * accepted**, so it fails in the correct direction. Read
- * [`../README.md`](../README.md#what-the-fresh-path-actually-costs) before writing
- * a sentence about it.
+ * accepted**, so it fails in the correct direction. Read the README's
+ * "Validation without storage layouts" section before writing a sentence about
+ * it.
  */
+import { fileSystemBuildInfoReader } from '../../../src/environment';
 import {
   deriveValidationInput,
   ValidationInputRefusedError,
   type Cause,
-  type CompilerHandle,
   type Diagnosis,
   type ValidationInput,
   type ValidationInputEnvironment,
@@ -42,13 +42,14 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Nothing is cached at module scope, and nothing needs to be: the fresh path
- * costs zero compiles, which is what makes re-deriving per operation affordable.
+ * Nothing is cached at module scope, and nothing needs to be: a derivation is a
+ * directory listing and a handful of file reads — never a compile — which is
+ * what makes re-deriving per operation affordable.
  *
  * An input is a snapshot of the source tree, the artifact and the build record at
  * the moment of the call, and nothing in it is invalidated when the tree changes.
- * The compile memo is created per call and the production `deps` defaults are
- * resolved inside the call, so there is no module-scope state to reuse anyway.
+ * The production `deps` defaults are resolved inside the call, so there is no
+ * module-scope state to reuse anyway.
  */
 export async function inputFor(
   contract: string,
@@ -57,9 +58,9 @@ export async function inputFor(
   const outcome = await deriveValidationInput({ contract, env });
 
   if (outcome.kind === 'refused') {
-    // The one rendering (`src/validation-input/errors.ts:85`). The constructor
+    // The one rendering (`src/validation-input/errors.ts`). The constructor
     // takes no `string`, so composing a sentence here is a compile error rather
-    // than a review finding — eleven causes cannot become thirty-three messages
+    // than a review finding — seven causes cannot become twenty-one messages
     // across the consuming operations.
     throw new ValidationInputRefusedError(outcome.cause, outcome.diagnosis);
   }
@@ -93,41 +94,47 @@ export async function verdictFor(
 }
 
 // ---------------------------------------------------------------------------
-// 2. What a fresh input reports about itself
+// 2. What a produced input reports about itself
 // ---------------------------------------------------------------------------
 
 /**
- * The fresh gate's whole record: which file verified, and how many candidates
- * were examined to find it.
+ * The fresh gate's whole record: which file verified, how many candidates were
+ * examined to find it, and which paired compiler-input file became `solcInput`.
  *
  * `candidates` counts work done rather than records held — candidates after the
  * one that verified are never read. `compilerLongVersion` is the artifact's own
- * long version, and it is trustworthy on this path for a specific reason: the
- * build record that verified against the artifact by deployed bytecode was
- * produced by that compiler, by content rather than by claim. There is no
- * `CompilerIdentity` here because no compiler was reached.
+ * long version, and it is trustworthy for a specific reason: the build record
+ * that verified against the artifact by deployed bytecode was produced by that
+ * compiler, by content rather than by claim. No compiler identity is recorded
+ * because no compiler was reached.
+ *
+ * `basis` is a single-member union — the Foundry model has exactly one producing
+ * step — so there is nothing to narrow before reading it. The discriminant is
+ * kept so a future second basis (TronBox emitting `storageLayout`, say) arrives
+ * as an added member rather than a reshaping.
  */
-export function describeFreshInput(input: ValidationInput): string | null {
+export function describeFreshInput(input: ValidationInput): string {
   const basis = input.provenance.basis;
-  if (basis.kind !== 'build-record-ast') {
-    return null;
-  }
   return [
     `verified record: ${basis.gate.file}`,
     `candidates read: ${basis.gate.candidates}`,
+    `solc input from: ${basis.inputFile}`,
     `compiler:        ${basis.compilerLongVersion} (never loaded)`,
     `sources:         ${input.provenance.partition.closure.length} in closure`,
   ].join('\n');
 }
 
 /**
- * The two fields that come as a pair on this path, and the reason they do.
+ * The two fields that come as a pair on every produced input, and the reason.
  *
- * The pipeline asserts the biconditional on its way out: the fresh path reports
- * `declaration-order-only` with a non-empty `missingFor`, and the three compiling
- * paths report `slot-level`. An unconditional `slot-level` claim — which this
- * pipeline once carried — is a permissive mislabel, and it is the bug the fidelity
- * detector was rewritten to remove.
+ * The pipeline asserts on its way out that the one producing step reports
+ * `declaration-order-only` with a non-empty `missingFor` — no build record
+ * carries storage positions, because TronBox does not request them. The
+ * `slot-level` branch below is not producible today; it stays in the union so
+ * that the day the host starts emitting layouts, the change arrives as a
+ * detector answer rather than a stale claim. An unconditional `slot-level`
+ * claim — which this pipeline once carried — is a permissive mislabel, and it
+ * is the bug the fidelity detector was rewritten to remove.
  */
 export function positionsMissingFor(
   input: ValidationInput,
@@ -138,17 +145,19 @@ export function positionsMissingFor(
 }
 
 // ---------------------------------------------------------------------------
-// 3. `solcInput` exists on this path too, and is needed
+// 3. `solcInput` is the recorded pair, verbatim
 // ---------------------------------------------------------------------------
 
 /**
- * `solcInput` is reconstructed from the contracts directory on **every** path,
- * including the fresh one where nothing was compiled from it.
+ * `solcInput` is the paired `<hash>.json` compiler input TronBox wrote next to
+ * the verified build record — the exact input that produced `solcOutput` —
+ * narrowed at the gate and handed on untouched.
  *
- * That is deliberate rather than wasteful: the engine reads
- * `sources[key].content` for its own namespace-annotation version check, and
- * would throw on a key the output carries and the input does not.
- * `provenance.basis` is what says whether anything compiled it.
+ * Deliberately **not** reconstructed from the contracts directory: source text
+ * on disk can drift from what was compiled while the deployed bytecode still
+ * verifies, and a consumer decoding the output's AST spans against drifted text
+ * reads the wrong characters. The pair is the one input whose spans match this
+ * output by construction.
  *
  * `sources[key].content` is also the only place in this module where Solidity
  * source text exists at all — no cause payload, no diagnosis and no degraded note
@@ -159,38 +168,39 @@ export function sourceKeysInOrder(input: ValidationInput): readonly string[] {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Zero compiles, demonstrated rather than asserted
+// 4. The dependency surface has no compiler member, demonstrated
 // ---------------------------------------------------------------------------
 
 /**
- * A `loadCompiler` that raises if it is reached.
+ * The one non-filesystem dependency is `readBuildInfo` — the build-record
+ * reader, which is a real member of `ValidationInputDependencies` and the seam
+ * the whole gate is decided through.
  *
- * On the fresh path this is never called, and neither is `deps.homeDirectory` —
- * the gate inside the compiler step decides whether the machine is read at all,
- * and on this path it is not read once. So a project whose `~/.tronbox` cache was
- * never populated still validates on a freshly built tree, and cause 1
- * (`compiler-absent`) is unreachable there.
+ * Wrapping the production reader, as here, changes nothing about behaviour; it
+ * makes the pipeline's cost model observable. One consultation per derivation
+ * is the whole record-side I/O budget — and there is no `loadCompiler`, no
+ * compiler handle, and no compiler cache anywhere on the surface to wrap,
+ * because the pipeline has nothing to do with a compiler.
  *
- * `deps.exists` and `deps.readSource` *are* called on every path — the source
- * closure is resolved before the gate, because a project with an unreadable
- * import has that problem whether or not it also lacks a cached compiler.
- *
- * The full seam, and what each member is for, is
+ * `deps.exists` and `deps.readSource` are the other two members, called on
+ * every derivation: the source closure is resolved before the gate, because a
+ * project with an unreadable import has that problem whether or not it also
+ * lacks a build record. The full seam, and what each member is for, is
  * [`02-supply-your-own-dependencies.ts`](./02-supply-your-own-dependencies.ts).
  */
-export async function deriveWithoutAnyCompiler(
+export async function deriveCountingRecordReads(
   contract: string,
   env: ValidationInputEnvironment,
-): Promise<ValidationInput> {
+): Promise<{ readonly input: ValidationInput; readonly consultations: number }> {
+  let consultations = 0;
+
   const outcome = await deriveValidationInput({
     contract,
     env,
     deps: {
-      loadCompiler: (soljsonPath: string): CompilerHandle => {
-        throw new Error(
-          `the fresh path loaded a compiler (${soljsonPath}), which it must ` +
-            `not: the layout came from the build record's ASTs.`,
-        );
+      readBuildInfo: directory => {
+        consultations += 1;
+        return fileSystemBuildInfoReader.read(directory);
       },
     },
   });
@@ -198,7 +208,7 @@ export async function deriveWithoutAnyCompiler(
   if (outcome.kind === 'refused') {
     throw new ValidationInputRefusedError(outcome.cause, outcome.diagnosis);
   }
-  return outcome.input;
+  return { input: outcome.input, consultations };
 }
 
 /*
@@ -209,7 +219,7 @@ export async function deriveWithoutAnyCompiler(
  * There is no `policy` member on `ValidationInputDependencies` and there must not
  * be. An injectable table restores per-call-site variation through the back door,
  * and the whole point of one policy call site is that a leniency decision is made
- * in one table rather than eleven times at eleven call sites. There is no writer
+ * in one table rather than seven times at seven call sites. There is no writer
  * on the seam either: this module persists nothing, so the injected surface has no
  * write capability to misuse.
  */

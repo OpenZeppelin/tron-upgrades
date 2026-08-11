@@ -1,15 +1,13 @@
 # Integration guide
 
-Four patterns, in the order a consumer meets them, and then the mistakes worth naming.
-[`examples/`](./examples) holds **type-checked counterparts for patterns 1 and 3**, and the
-injectable-dependency shape both rely on. **Patterns 2 and 4 — escalating once, and telling a
-slot-data refusal apart from a real incompatibility — do not yet have example modules**, so
-follow their snippets here rather than expecting a file.
+Three patterns, in the order a consumer meets them, and then the mistakes worth naming.
+[`examples/`](./examples) holds **type-checked counterparts for patterns 1 and 2**, and the
+injectable-dependency shape both rely on. **Pattern 3 — validating under `tronbox test` — has
+no example module**, so follow its section here rather than expecting a file.
 
 - [Pattern 1 — derive inside the operation](#pattern-1--derive-inside-the-operation)
-- [Pattern 2 — escalate once, on any non-empty report](#pattern-2--escalate-once-on-any-non-empty-report)
-- [Pattern 3 — state what was checked](#pattern-3--state-what-was-checked)
-- [Pattern 4 — expect to compile under `tronbox test`](#pattern-4--expect-to-compile-under-tronbox-test)
+- [Pattern 2 — state what was checked](#pattern-2--state-what-was-checked)
+- [Pattern 3 — expect validation to work under `tronbox test`](#pattern-3--expect-validation-to-work-under-tronbox-test)
 - [Six mistakes](#six-mistakes)
 
 ---
@@ -46,67 +44,17 @@ Two decisions in that function are the whole pattern.
 precisely so the operation boundary can decide. An `upgradeProxy` that must not proceed should
 throw; a `validate --dry-run` that wants to report every contract's verdict should carry.
 
-**Switch on `cause.kind` only when you act differently.** If all eleven causes end the same way
+**Switch on `cause.kind` only when you act differently.** If all seven causes end the same way
 for your operation, the diagnosis is already rendered and there is nothing to switch on. Reach
-for `cause.kind` when a category genuinely changes behaviour — cause 9 (`layout-vacuous`) is the
-one that is *the plugin's* fault, and an operation that collects bug reports may want to say so.
+for `cause.kind` when a category genuinely changes behaviour — causes 5 and 6
+(`build-record-absent`, `build-record-stale`) are the pair an operation might want to treat as
+"recompile and retry", because both remedies are the same `tronbox compile --all`. There is no
+second, higher-fidelity derivation to re-ask for after a refusal: the pipeline never compiles,
+so the remedy is the user's to run.
 
 ---
 
-## Pattern 2 — escalate once, on any non-empty report
-
-The fresh path hands you an input whose layout carries no slot positions. That is enough to
-decide every upgrade shape except two, and when the engine's report comes back non-empty you do
-not yet know which situation you are in. So you re-ask.
-
-```ts
-const first = await deriveValidationInput({ contract, env });
-if (first.kind === 'refused') { /* … */ }
-
-let input = first.input;
-let report = runEngineReport(input);      // yours — the standalone operations'
-
-// Escalate on ANY non-empty report, with no predicate of your own.
-if (!report.pass && input.provenance.basis.kind === 'build-record-ast') {
-  const escalated = await deriveValidationInput({
-    contract,
-    env,
-    escalateFrom: input,
-  });
-  if (escalated.kind === 'refused') { /* … */ }
-
-  input = escalated.input;               // basis is now 'plugin-compile'
-  report = runEngineReport(input);        // and this report carries slot data
-}
-
-if (!report.pass) {
-  // Refuse *here*, with positions in hand — so the message can name the number.
-}
-```
-
-**Do not write a predicate.** The obvious gate — escalate only where every flagged operation is
-explicable by missing positions — was specified and then measured unimplementable
-(measured with a live gate-observability probe). A genuinely safe intra-slot padding change
-and a genuine mid-layout insert produce reports identical in every field a gate could key on: one
-`insert` op each, the same `originalLabel: null`, the same absent positions, the same
-`changeUncertain: null`. The only difference is the name of the inserted variable, and no gate
-may be built on a user-chosen identifier. The position half of such a predicate is worse than
-useless — it is a tautology in AST-only mode, scoring true on every genuine reject too.
-
-**The guard is `basis.kind`, not a counter of your own.** Escalation accepts only a
-`'build-record-ast'` input and produces a `'plugin-compile'` one, so a second escalation of the
-same chain raises `ValidationInputInvariantError`. Reading `basis.kind` before you escalate is
-how you avoid provoking a bug report from your own retry logic; a `while` loop around this is
-unrepresentable rather than merely discouraged.
-
-**Escalate before you refuse, not after.** This is the part worth being deliberate about. Where
-the refusal stands, the escalated report is what makes upstream's `> Set __gap array to size 47`
-hint possible, because that number is computed from slot data. Refusing on the AST-only report
-does not merely refuse less precisely — it refuses without the one instruction the user needs.
-
----
-
-## Pattern 3 — state what was checked
+## Pattern 2 — state what was checked
 
 Every degraded statement this module makes is recorded on the channel you passed in. Put
 `channel.recorded` on the operation's result; do not re-derive the statements from `fidelity`.
@@ -124,12 +72,18 @@ const result = {
 ```ts
 switch (input.fidelity.kind) {
   case 'slot-level':
-    break;                                   // positions available
+    break;                                   // not producible today; see below
   case 'declaration-order-only':
     input.fidelity.missingFor;                // non-empty, fully-qualified names
     break;
 }
 ```
+
+Every input the pipeline produces today reports `declaration-order-only` — no supported TronBox
+requests `storageLayout`, so no build record carries positions — and the pipeline asserts that
+at its return boundary. The `slot-level` arm stays in the union (and in your switch) because
+the detector scans every output's real positions rather than assuming: the day TronBox emits
+layouts into its records, that member is how the change arrives.
 
 **The record is the guarantee and the log write is a courtesy.** TronBox replaces the log
 channel with a no-op under `--quiet` and `--silent`, and passes a no-op throughout
@@ -138,43 +92,41 @@ discharged its degraded-mode obligation through a log line would be silent for e
 
 **Two statements, both meaning something specific:**
 
-| `code` | Means | Which paths |
+| `code` | Means | When |
 |---|---|---|
-| `storage-layout-unavailable` | the flat layout was reconstructed from the AST, so it carries declaration order and not positions | `fresh` only |
-| `namespaced-ast-only` | this contract declares namespaced storage, whose members carry no positions in **either** mode | every path where a namespace is found |
+| `storage-layout-unavailable` | the flat layout was reconstructed from the build record's AST, so it carries declaration order and not positions | every produced input |
+| `namespaced-ast-only` | this contract declares namespaced storage, whose members carry no positions | every produced input where a namespace is found |
 
-The second one surprises people, so it is worth saying plainly: it is not a fresh-path artefact.
-Namespace members get positions only from a second compilation with a storage variable injected
-per namespaced struct, which this version does not perform — so a compiled input is in the same
-state, and upstream reports nothing because its only slot-absence branch reads the flat
-`storage` list, which for a purely namespaced contract is empty. Every OpenZeppelin 5.x contract
-is in that state.
+The second one surprises people, so it is worth saying plainly: namespace members get positions
+only from a second compilation with a storage variable injected per namespaced struct, which
+this plugin never performs — and upstream reports nothing about it because its only
+slot-absence branch reads the flat `storage` list, which for a purely namespaced contract is
+empty. Every OpenZeppelin 5.x contract is in that state.
 
 ---
 
-## Pattern 4 — expect to compile under `tronbox test`
+## Pattern 3 — expect validation to work under `tronbox test`
 
 `tronbox test` copies the artifact tree into a temporary directory and points
 `contracts_build_directory` at the copy (`build/lib/commands/test.js`) — and it does **not**
-redirect `build_info_directory`. So under the test command a build record for your contract is
-frequently *present and describing a different build* than the artifacts the run is using.
-
-That is exactly what the content check is for. The record's deployed bytecode does not match the
-artifact's, the candidate is rejected as `deployed-bytecode-differs`, the gate reports `stale`,
-and the ladder compiles that one contract. Validation runs.
+redirect `build_info_directory`. The copied artifact and the build record still describe the
+same compile, so the record's deployed bytecode matches the artifact's, the gate reports
+`fresh`, and validation runs from the record exactly as it does under `tronbox migrate`.
 
 **Two things follow for a consumer:**
 
-1. **Do not treat "under `tronbox test`" as a reason to skip validation.** Refusing there — or
-   proceeding unvalidated — would break the workflow for every user of upgradeable contracts,
-   which is the reason the ladder falls through to a compile instead of to a refusal.
-2. **Budget for one compile per validated contract in a test run, not zero.** The fresh path's
-   zero-compile figure describes `tronbox migrate` against a tree the host just built. A test
-   run's steady state is one compile of one contract's closure per validation.
+1. **Do not treat "under `tronbox test`" as a reason to skip validation.** The content check is
+   what makes the record trustworthy there: a record whose deployed bytecode matches the
+   artifact describes these exact compiled bytes, whichever directory the artifact was copied
+   into.
+2. **Budget zero compiles, on every command.** The pipeline never invokes a compiler — not
+   under `tronbox migrate`, not under `tronbox test`, not on any refusal path. A missing or
+   never-populated `~/.tronbox` compiler cache is invisible to validation.
 
-It also means cause 1 (`compiler-absent`) is *reachable* under `tronbox test` where it is not on
-a fresh path — the compile arm loads a compiler, and a project whose `~/.tronbox` cache was
-never populated will hear about it there.
+If the record genuinely does not describe the artifacts a test run is using — a tree copied
+from a different build, a pruned build-info directory — the outcome is a
+`build-record-stale` or `build-record-absent` refusal whose remedy is `tronbox compile --all`,
+not a silent fallback.
 
 ---
 
@@ -192,50 +144,51 @@ traded two false positives for the whole check. It is a **last resort** — the 
 has in the Hardhat plugin's own documentation — and it is deliberately the *only* storage-check
 opt-out: there is no narrower slot-data flag, ruled rather than pending (2026-08-04).
 
-The path is: **escalate first**. If the escalated, slot-level check still refuses, the
-incompatibility is real and the message can name the `__gap` size to set.
+The two shapes that need slot positions — consuming a `__gap` array, and inserting into unused
+padding inside an existing slot — are refused conservatively rather than silently accepted, and
+this version has no path that produces positions. The safe move is to restructure the change as
+an append (new variables at the end, `__gap` left in place) rather than to disable the check.
 
 ### 2. Paraphrasing the diagnosis
 
 `diagnosis.headline` and `diagnosis.remedy` are the rendering, and
-`ValidationInputRefusedError`'s constructor takes no `string` so that they stay it. Eleven causes
-becoming thirty-three sentences across three consuming sub-features is the failure that
+`ValidationInputRefusedError`'s constructor takes no `string` so that they stay it. Seven causes
+becoming twenty-one sentences across three consuming sub-features is the failure that
 constraint exists to prevent. If a diagnosis reads wrongly for your operation, fix it in
 `diagnose.ts` where all consumers get the fix.
 
 ### 3. Caching a validation input
 
 An input is a snapshot of the source tree, the artifact and the build record at the moment of
-the call. Nothing in it is invalidated when the tree changes. Re-derive per operation; the fresh
-path costs zero compiles, which is what makes re-deriving affordable.
+the call. Nothing in it is invalidated when the tree changes. Re-derive per operation; a
+derivation is a directory listing and a handful of file reads — never a compile — which is what
+makes re-deriving affordable.
 
-There is no module-scope state to reuse anyway: the compile memo is created per call, and
-production defaults for `deps` are resolved inside the call rather than captured at module
-scope.
+There is no module-scope state to reuse anyway: production defaults for `deps` are resolved
+inside the call rather than captured at module scope.
 
-### 4. Branching on whether a compile happened
+### 4. Branching on provenance
 
-`provenance.basis` exists to be *reported*, not to be gated on. There is no supported way to
-request or forbid a compile, and an operation that behaves differently depending on which path
-ran is an operation whose behaviour depends on whether the user recently ran `tronbox compile`.
-
-The one legitimate read is the escalation guard in Pattern 2 — `basis.kind === 'build-record-ast'`
-— which asks *"is there anything to escalate to"* rather than *"did we compile"*.
+`provenance.basis` exists to be *reported*, not to be gated on. It is a single-member union
+today — every produced input's basis is `'build-record-ast'` — so a branch on it decides
+nothing, and a future second basis (TronBox emitting `storageLayout` into its records) will
+arrive as an added member for consumers that *report*, not as a behaviour switch for consumers
+that gate.
 
 ### 5. Treating `declaration-order-only` as "unchecked"
 
 It is not, and a message that says so would be false. A reconstructed layout is **stricter**
 than none and than most people expect: 0 false negatives over the nine measured upgrade pairs,
-with the two false positives being safe shapes refused. See
-[what the fresh path actually costs](./README.md#what-the-fresh-path-actually-costs) before
-writing a sentence about it.
+with the two false positives being safe shapes refused. See the README section
+"Validation without storage layouts" for what that mode can and cannot decide, before writing
+a sentence about it.
 
 ### 6. Catching `ValidationInputInvariantError` to keep going
 
 It means the plugin broke one of its own rules, and its message says so and asks for a report.
-Swallowing it converts a reproducible bug report into a mystery. The same applies to
-`CompilerRetiredError`: a retired compiler is never reused because emscripten's abort poisons
-the module, so retrying past it turns one contract's memory ceiling into every later contract's.
+Swallowing it converts a reproducible bug report into a mystery. Every *user* condition — a
+stale record, an unreadable source, an out-of-range compiler — arrives as a refusal value, so
+there is nothing a catch here could legitimately be waiting for.
 
 ---
 
@@ -243,9 +196,10 @@ the module, so retrying past it turns one contract's memory ceiling into every l
 
 For richer fixtures than the examples here, read the suite.
 
-- `test/ladder-paths.test.ts` drives all four paths and asserts the compile count for each,
-  from a stub for `deps.loadCompiler`. It is the executable form of the ladder table.
-- `test/helpers/ladder-fixtures.ts` ships the fixture builders, the CBOR metadata split, and the
-  compile-counting loader stub.
+- The pipeline suite under `test/` drives both gate outcomes — fresh, and every per-candidate
+  rejection reason — plus the refusal causes, from stubs for `deps.readBuildInfo`, and asserts
+  that no path compiles.
+- `test/helpers/` ships the fixture builders, the recorded upgrade-pair corpus, and the
+  build-record readers the stubs are made from.
 - `test/fixtures/` holds the extracted upgrade pairs, including the `__gap` consumption and the
-  intra-slot padding pair — the two shapes the fresh path refuses though they are safe.
+  intra-slot padding pair — the two shapes the pipeline refuses though they are safe.

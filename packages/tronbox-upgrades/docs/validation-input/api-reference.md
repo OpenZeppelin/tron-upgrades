@@ -1,7 +1,7 @@
 # API reference — `src/validation-input`
 
 Every export of [`src/validation-input/index.ts`](../../src/validation-input/index.ts), with
-full signatures. One function, one constant, three error classes, and the types.
+full signatures. One function, one constant, two error classes, and the types.
 
 Signatures are transcribed from the source; where a doc comment and the source disagree, the
 source is right and the disagreement is a documentation bug worth reporting.
@@ -17,18 +17,18 @@ function deriveValidationInput(
 ```
 
 The whole module. Resolves the artifact, resolves the import closure, consults the build
-record, and either produces an input or returns a refusal.
+record, and either produces an input or returns a refusal. **Validation never compiles**: the
+one producing path reads the build record TronBox already wrote, content-verifies it against
+the artifact, and hands on the record's paired compiler input verbatim. The work behind the
+returned promise is a directory listing and a handful of file reads.
 
-**Throws only on plugin bugs** — `ValidationInputInvariantError` and `CompilerRetiredError`.
-Every user-facing condition is one of eleven causes, returned as a value.
+**Throws only on plugin bugs** — `ValidationInputInvariantError`, plus the environment seam's
+own `ArtifactNameAmbiguousError` for an operation that skipped its ambiguity decision. Every
+user-facing condition is one of seven causes, returned as a value.
 
-**Async, and the compile inside it is not.** `solidity_compile` is a synchronous `cwrap` that
-blocks the event loop for its whole duration; the returned promise carries no wall-clock bound
-and no cancellation, and a signature that suggested otherwise would be promising something the
-implementation cannot deliver.
-
-**No option selects a path.** Whether a compile happens is decided by the state of the project
-— see [the ladder](./README.md#the-ladder).
+**No option selects a path.** Whether the fresh path produces an input or a refusal fires is
+decided by the state of the build-info directory — a record either verifies or it does not —
+and the remedy for both refusals is the same `tronbox compile --all`.
 
 ---
 
@@ -39,14 +39,16 @@ const SUPPORTED_SOLC: { readonly min: '0.8.0'; readonly max: '0.8.26' };
 ```
 
 The verified compiler range, declared once and read by both the gate and the message that
-reports being outside it. The gate is on the **version**, not on whether the output happened to
-carry a layout: a sub-0.5.13 compiler accepts a `storageLayout` request with zero diagnostics
-of any severity and simply omits the key, so an output-shaped gate would report a plugin bug
-for a user's compiler choice.
+reports being outside it. **No compiler is ever loaded** — the range gates which solc *output*
+this plugin interprets: the build record the pipeline validates from was produced by the
+project's compiler, and this plugin's reading of that output is verified only across the
+declared range. The gate is on the **version**, not on whether the output happened to carry a
+layout: a sub-0.5.13 compiler accepts a `storageLayout` request with zero diagnostics of any
+severity and simply omits the key, so an output-shaped gate would report a plugin bug for a
+user's compiler choice.
 
-The range is applied on **every** path, including the fresh one where no compiler is ever
-loaded. Honouring a declared support range only when a compile happens to be needed would make
-the range a property of the compiler-cache state rather than of the plugin.
+The gate is applied before any work — an out-of-range project refuses before a record is read,
+with the range named.
 
 ---
 
@@ -64,20 +66,6 @@ class ValidationInputInvariantError extends Error {
 A broken invariant — always a plugin bug, never a user condition. The message says so and asks
 for a report naming the contract.
 
-### `CompilerRetiredError`
-
-```ts
-class CompilerRetiredError extends Error {
-  readonly code: 'COMPILER_RETIRED';
-  readonly retiredBy: string;
-  constructor(retiredBy: string);
-}
-```
-
-A `CompilerHandle` was used after its `compile` threw. Loud on purpose: emscripten's abort
-poisons the module, so a silently reused handle turns one contract's memory ceiling into every
-later contract's.
-
 ### `ValidationInputRefusedError`
 
 ```ts
@@ -94,11 +82,15 @@ decides whether carrying a refusal or throwing it is right for its own contract.
 
 **The constructor takes no `string`, and that absence is the enforcement.** A consumer cannot
 word its own refusal sentence — that is a compile error rather than a review finding — so
-eleven causes cannot become thirty-three messages as the proxy operations, the standalone
+seven causes cannot become twenty-one messages as the proxy operations, the standalone
 operations and adoption (forceImport) are written.
 
 The cause is exposed as `refusedCause` rather than `cause` because ES2022's `Error.cause` means
 *the error this one wraps*, and a `Cause` is not an error.
+
+> There used to be a third class, `CompilerRetiredError`, guarding reuse of a poisoned wasm
+> compiler handle. It was **deleted** with the embedded compiler (the Foundry-model decision,
+> 2026-08-07): the pipeline never loads one, so there is no handle to retire.
 
 ---
 
@@ -111,7 +103,6 @@ interface ValidationInputRequest {
   readonly contract: string;
   readonly env: ValidationInputEnvironment;
   readonly deps?: ValidationInputDependencies;
-  readonly escalateFrom?: ValidationInput;
 }
 ```
 
@@ -119,8 +110,7 @@ interface ValidationInputRequest {
 |---|---|
 | `contract` | The artifact name as the user named it. Ambiguity is the seam's resolver's problem, not this module's. |
 | `env` | Exactly what this module needs from the environment seam, and no more. |
-| `deps` | The wasm, the filesystem, and nothing else. Every member optional; production defaults are resolved **inside** the call. |
-| `escalateFrom` | The AST-only input whose report came back non-empty. Must have `provenance.basis.kind === 'build-record-ast'` and the same target, or it raises. |
+| `deps` | The filesystem, and nothing else. Every member optional; production defaults are resolved **inside** the call. |
 
 ### `ValidationInputEnvironment`
 
@@ -136,43 +126,38 @@ interface ValidationInputEnvironment {
 }
 ```
 
-Four things, and two deliberate omissions:
+Four things, and the boundaries worth naming:
 
+- **`buildInfoDirectory` is the pipeline's whole subject.** The record read out of it is
+  content evidence — a record whose deployed bytecode matches the artifact describes these
+  exact compiled bytes whatever its age or provenance — and its paired `<hash>.json` compiler
+  input is what consumers receive as `solcInput`.
 - **`contractsBuildDirectory` is not picked.** Every artifact fact this module needs — both
   bytecodes, the source, the source path, the long compiler version — arrives off
   `ArtifactAccess.record`, with no filesystem access at all. Declaring the path would be a
   dependency claim with no reader behind it.
+- **`compiler` is read for one field**: `resolvedVersion`, which the range gate checks against
+  `SUPPORTED_SOLC` before any work. No compiler is ever located or loaded.
 - **`output` is the operation's own channel.** A reduced-fidelity note has to ride the
   operation's returned result, and a result's notes are exactly one channel's `recorded`. Pass
   the channel the operation will read `recorded` off; a channel minted here would write notes
   that reach no result.
 
-`buildInfoDirectory` **is** picked, and that reverses an earlier decision rather than relaxing
-one. A build record can never supply a storage layout — TronBox's `outputSelection` requests
-`'': ['ast']` plus ten contract-level outputs and `storageLayout` is not among them — which is
-exactly why the fresh path is AST-only. What that measurement does not support is the
-conclusion that a record is therefore useless: the AST is what the engine reconstructs a layout
-from, and a record whose deployed bytecode matches the artifact is evidence about *content*.
-
 ### `ValidationInputDependencies`
 
 ```ts
 interface ValidationInputDependencies {
-  readonly loadCompiler?: (soljsonPath: string) => CompilerHandle;
   readonly readSource?: (candidate: string) => string;
   readonly exists?: (candidate: string) => boolean;
   readonly readBuildInfo?: BuildInfoReader['read'];
-  readonly homeDirectory?: () => string;
 }
 ```
 
 | Member | Default | Why it is injectable |
 |---|---|---|
-| `loadCompiler` | the module's own `loadCompiler` | Compile counting is the ladder's primary observable, and a stub is how you count. |
-| `readSource` | `fs.readFileSync(_, 'utf8')` | Drives causes 4 and 5 without arranging a broken tree on disk. |
-| `exists` | `fs.existsSync` | Drives cause 1 with no `~/.tronbox` populated. |
-| `readBuildInfo` | `fileSystemBuildInfoReader.read` | The three-way `absent` / `unreadable` / `files` result has to be drivable without a corrupt build tree. |
-| `homeDirectory` | `() => os.homedir()` | On this surface because the seam that owns the `~/.tronbox` convention reads no ambient module, and `compiler.ts` must not decide where its own resolver points. |
+| `readSource` | `fs.readFileSync(_, 'utf8')` | Drives causes 2 and 3 without arranging a broken tree on disk. |
+| `exists` | `fs.existsSync` | Read by the same import walk; the other half of driving causes 2 and 3. |
+| `readBuildInfo` | `fileSystemBuildInfoReader.read` | The three-way `absent` / `unreadable` / `files` result has to be drivable without a corrupt build tree — it is what decides the gate, and with it causes 5 and 6. |
 
 **There is no `policy` member and there must not be.** An injectable table restores
 per-call-site variation through the back door — one operation passes a lenient table "just for
@@ -182,7 +167,9 @@ this check" and the single-policy-point guarantee becomes nominal.
 write capability to misuse.
 
 `readBuildInfo` is the seam's own reader: one directory listing plus at most one read-and-parse
-per `*.output.json` entry, with the paired `*.input.json` never read.
+per `*.output.json` entry, plus an existence probe for the paired compiler-*input* file and,
+when the pair is present, one read-and-parse of it. A missing or corrupt pair is not an error
+at the reader — it becomes a per-candidate rejection at the gate.
 
 ---
 
@@ -221,9 +208,9 @@ Frozen, as is its `provenance`.
 
 | Field | Notes |
 |---|---|
-| `solcInput` | Reconstructed from the contracts directory on **every** path, including the fresh one. The engine reads `sources[key].content` for its own namespace-annotation version check and would throw on a key the output carries and the input does not. Its `settings.outputSelection` describes what this plugin asks for *when it compiles*; on the fresh path nothing was compiled from it. |
-| `solcOutput` | Either the host's build record, projected onto the closure, or this plugin's compile. `provenance.basis` says which. |
-| `solcVersion` | **Long** form, e.g. `0.8.26+commit.733b4d28.Emscripten.clang`. On the fresh path it is the artifact's own, verified by the bytecode match rather than by a version string. |
+| `solcInput` | **Verbatim from the paired `<hash>.json` file TronBox wrote next to the verified build record** — the exact input that produced `solcOutput`, narrowed and handed on untouched. Deliberately not reconstructed from the contracts directory: source text on disk can drift from what was compiled while the deployed bytecode still verifies, and a consumer decoding the output's AST spans against drifted text reads the wrong characters (the ex-M2 wrong-span hazard). |
+| `solcOutput` | The host's own build record, projected onto the target's closure. |
+| `solcVersion` | **Long** form, e.g. `0.8.26+commit.733b4d28.Emscripten.clang`. The artifact's own, verified by the bytecode match rather than by a version string. |
 | `fidelity` | Never optional. A function of the step that produced the input, asserted at the return boundary. |
 | `provenance` | What happened, not what was expected. |
 
@@ -239,9 +226,16 @@ type LayoutFidelity =
     };
 ```
 
-`declaration-order-only` on the fresh path, with `missingFor` holding every
+Every produced input reports `declaration-order-only`, with `missingFor` holding every
 `<source key>:<contract>` the output carries — a build record carries positions for none of
-them, ever. `slot-level` on the three compiling paths.
+them, because no supported TronBox requests `storageLayout` in its `outputSelection`. The
+pipeline asserts exactly that on its way out.
+
+The `slot-level` member is **not currently producible** and stays in the union on purpose: the
+detector scans every produced output's real positions rather than assuming, so the day TronBox
+starts emitting `storageLayout` into its build records, the detector's answer changes and the
+return-boundary assertion fails loudly — at the moment the claim changes, instead of a stale
+fidelity label shipping silently.
 
 `missingFor` is documented never-empty, and the pipeline asserts it: a
 `declaration-order-only` claim with an empty list would be a fidelity statement about nothing.
@@ -250,63 +244,39 @@ them, ever. `slot-level` on the three compiling paths.
 
 ```ts
 interface InputProvenance {
-  readonly reconstructedFrom: 'contracts-directory';
   readonly basis: InputBasis;
   readonly partition: PartitionRecord;
   readonly sourceKeys: readonly string[];
 }
 ```
 
-`reconstructedFrom` describes `solcInput`'s origin, which is the contracts directory on every
-path. It is `solcOutput`'s origin that varies, and `basis` carries it.
+`sourceKeys` is every source key in `solcInput`, **in the input's own order** — the paired
+file's whole key set, which is a superset of `partition.closure` (the record was the
+whole-project compile in the common case). The audit trail.
 
-`sourceKeys` is every source key in the input, in the input's own order — the audit trail. The
-order is sorted rather than the host's graph-walk order, so two calls over an unchanged tree
-produce byte-identical inputs.
-
-### `InputBasis` — the field that tells the four paths apart
+### `InputBasis`
 
 ```ts
-type InputBasis =
-  | {
-      readonly kind: 'build-record-ast';
-      readonly gate: Extract<BuildRecordGate, { kind: 'fresh' }>;
-      readonly compilerLongVersion: string;
-    }
-  | {
-      readonly kind: 'plugin-compile';
-      readonly reason: CompileReason;
-      readonly gate: BuildRecordGate;
-      readonly compiler: CompilerIdentity;
-      readonly identity: ArtifactIdentityComparison;
-    };
-
-type CompileReason =
-  | 'build-record-stale'
-  | 'build-record-absent'
-  | 'ast-only-escalation';
+type InputBasis = {
+  readonly kind: 'build-record-ast';
+  readonly gate: Extract<BuildRecordGate, { kind: 'fresh' }>;
+  /** `ArtifactRecord.longCompilerVersion`, verified by the bytecode match. */
+  readonly compilerLongVersion: string;
+  /** The paired `<hash>.json` file `solcInput` was read from. The audit trail. */
+  readonly inputFile: string;
+};
 ```
 
-A closed union rather than a set of optional fields, so *"which compiler ran"* and *"which
-record verified"* can be neither both absent nor both present.
+A single-member union on purpose: the Foundry model has exactly one producing step, and keeping
+the discriminant means a future second basis (TronBox emitting `storageLayout`, say) is an
+added member rather than a reshaping — a consumer switching on `kind` today is already total.
 
-On an escalation, `gate` is the `fresh` gate of the input being escalated — the record of
-*escalated from a verified record*. That is why no separate flag is needed to read the path off
-a produced input:
+No compiler is located, loaded or read on the way to a produced input: `compilerLongVersion` is
+the artifact's own, and the build record that verified against it by deployed bytecode was
+produced by that compiler, by content rather than by claim.
 
-| `basis.kind` | `basis.reason` | Path |
-|---|---|---|
-| `'build-record-ast'` | — | `fresh` |
-| `'plugin-compile'` | `'build-record-stale'` | `stale` |
-| `'plugin-compile'` | `'build-record-absent'` | `absent` |
-| `'plugin-compile'` | `'ast-only-escalation'` | `escalated` |
-
-> **`InputBasis`, `BuildRecordGate`, `BuildRecordRejection` and `CompileReason` are reachable
-> but not on the face.** `index.ts` exports `InputProvenance`, so `provenance.basis.kind`
-> narrows structurally and a `switch` over it needs no import. Naming one of them in your own
-> signature currently requires a deep import from `../validation-input/pipeline`. Prefer
-> structural narrowing; if you need the name, that is worth raising rather than working around
-> quietly.
+`InputBasis`, `BuildRecordGate` and `BuildRecordRejection` are all exported from the face, so a
+consumer can name them in its own signatures without a deep import.
 
 ### `BuildRecordGate`
 
@@ -328,21 +298,31 @@ interface BuildRecordRejection {
     | 'deployed-bytecode-differs'
     | 'nothing-to-compare'
     | 'ast-closure-incomplete'
-    | 'target-definition-absent';
+    | 'target-definition-absent'
+    | 'input-pair-absent'
+    | 'input-pair-unparseable'
+    | 'input-pair-unusable';
 }
 ```
+
+Why the gate sent this call down the path it took. A `fresh` gate rides the produced input's
+`basis`; a `stale` gate's `rejected` list becomes `build-record-stale`'s payload, and an
+`absent` gate's `because` becomes `build-record-absent`'s.
 
 `candidates` counts records examined including the one that verified — records after it are
 never read, so it is a count of *work done*, not of records held.
 
-The four rejection reasons, in the order the gate can reach them:
+The seven rejection reasons, in the order the gate decides them per candidate:
 
 | `reason` | The candidate |
 |---|---|
-| `nothing-to-compare` | held an entry for the pair with no `evm.deployedBytecode` to compare, or both sides were empty (an interface or abstract contract) |
+| `nothing-to-compare` | held an entry for the pair with no deployed bytecode to compare, or both sides were empty (an interface or abstract contract: `'0x'` against `''` is a match of two absences, not evidence) |
 | `deployed-bytecode-differs` | described a different compile |
 | `ast-closure-incomplete` | verified, but does not carry an AST for every source in the closure |
 | `target-definition-absent` | verified with a complete closure, but its AST for the target source declares no such contract — so the reconstructed layout would be empty against a contract that is not |
+| `input-pair-absent` | verified, but the paired `<hash>.json` compiler input does not exist next to it |
+| `input-pair-unparseable` | the pair exists and is not valid JSON |
+| `input-pair-unusable` | the pair parses but is not the solc standard-JSON input of this output: wrong shape, or missing a source the record's own output covers |
 
 A file holding no entry for the pair at all is **not** a rejection: a record of some other
 compile is not a stale record of this one. That distinction is what separates `stale` from
@@ -360,43 +340,22 @@ interface PartitionRecord {
 `target` is a **source key**, not a contract name — it names something a user can open, and it
 is what `closure` is asserted to contain.
 
-### `ArtifactIdentityComparison`
-
-```ts
-interface ArtifactIdentityComparison {
-  readonly withoutMetadataMatches: boolean;
-  readonly withMetadataMatches: boolean;
-  /** Present iff the two disagree: the code is identical, the metadata is not. */
-  readonly metadataOnlyDifference?: true;
-}
-```
-
-Present on `basis` only for `'plugin-compile'`. On a `metadataOnlyDifference` the pipeline
-records the flag **and** writes an advisory note — validation proceeds, because upgrade safety
-is decided from the code and the code is identical.
-
-On the refusal side, cause 7 (`artifact-stale`) carries **only the contract name**, and
-deliberately: the comparison record is constant on that path (`{ false, false }` with
-`metadataOnlyDifference` absent), so it would carry no information a message could name.
-
 ---
 
 ## Refusals
 
 ### `Cause`
 
-The closed union of eleven members. Pure data — no policy, no rendering, no I/O. Every payload
-field is a scalar or a closed union, so no source string, settings object, host handle or
-upstream `Error` can be assigned to one.
+The closed union of seven members. Pure data — no policy, no rendering, no I/O. Every payload
+field is a scalar, a closed union, or a list of records made of exactly those, so no source
+string, settings object, host handle or upstream `Error` can be assigned to one. The one
+non-scalar payload, cause 6's `rejected` list, is a `readonly` array of `BuildRecordRejection`
+— a file path plus a closed-union reason — and carries the same property member-wise.
 
 ```ts
 type Cause =
-  | { kind: 'compiler-absent'; requestedVersion: string; soljsonPath: string;
-      family: 'tvm' | 'evm' }
   | { kind: 'compiler-unsupported'; resolvedVersion: string;
       viaLegacyFlag?: 'useZeroFourCompiler' | 'useZeroFiveCompiler' }
-  | { kind: 'compiler-mismatched'; loadedLongVersion: string;
-      artifactLongVersion: string; family: 'tvm' | 'evm' }
   | { kind: 'source-unreadable'; sourceKey: string; path: string;
       because: 'missing' | 'unreadable' }
   | { kind: 'import-unresolvable'; importedBy: string; specifier: string }
@@ -404,44 +363,43 @@ type Cause =
       missingField: 'compiler.version' | 'source' | 'sourcePath' | 'bytecode'
         | 'deployedBytecode';
       providedSince: string }
-  | { kind: 'artifact-stale'; contract: string }
-  | { kind: 'compiler-resource-exhausted'; target: string; closureSize: number;
-      raised: WasmAbort }
-  | { kind: 'layout-vacuous'; contract: string; declaredStateVariables: number }
+  | { kind: 'build-record-absent';
+      because: 'directory-absent' | 'directory-unreadable'
+        | 'no-record-for-target' }
+  | { kind: 'build-record-stale'; rejected: readonly BuildRecordRejection[] }
   | { kind: 'library-name-unsupported'; libraryName: string; length: number;
-      band: '37-38' | '>=39' }
-  | { kind: 'sources-do-not-compile'; target: string; errorCount: number };
-
-type WasmAbort = 'memory-access-out-of-bounds' | 'other-wasm-abort';
+      band: '37-38' | '>=39' };
 ```
 
 (All fields are `readonly`; the modifier is elided above for width.)
 
+This union used to have eleven members, four of them about the plugin's own embedded compiler.
+The Foundry-model decision (2026-08-07) **deleted** `compiler-absent`, `compiler-mismatched`,
+`compiler-resource-exhausted` and `sources-do-not-compile` — no plugin compile exists —
+**absorbed** `artifact-stale` into `build-record-stale`, and **deleted** `layout-vacuous`,
+whose only producer was the compile arm; on the record path the same hazard is decided per
+candidate at the gate (`target-definition-absent`) and flows into `build-record-stale`.
+
 Notes on the members whose payloads are easy to misread:
 
-- **`compiler-mismatched` compares the long version**, not a triple.
-  `~/.tronbox/solc/soljson_v0.8.26.js` reports `0.8.26+commit.733b4d28.Emscripten.clang` and
-  `~/.tronbox/evm-solc/soljson_v0.8.26.js` reports `0.8.26+commit.8a97fa7a.Emscripten.clang` —
-  same filename, different compilers, different bytecode. `family` is carried for the remedy,
-  never for the comparison.
-- **`compiler-resource-exhausted` fires by catching, not by timing**, and `raised` is a closed
-  union so nothing quotes the wasm's own abort text. It is terminal: one contract's closure is
-  the smallest input there is, so there is nothing smaller to retry with.
-- **`layout-vacuous` is a cause and not an invariant throw**, even though it means the plugin
-  has a bug, because letting it through is a measured *silent accept*:
-  `getStorageUpgradeErrors(EMPTY_original, real_updated)` returns no errors and
-  `assertStorageUpgradeSafe(EMPTY, real)` does not throw, so an empty reference layout
-  classifies every variable in the new contract as a safe append. `declaredStateVariables` is
-  what makes the refusal honest rather than paranoid — a contract that genuinely declares
-  nothing has an empty layout legitimately.
+- **`compiler-unsupported` fires with no compiler loaded.** The range gates which solc output
+  this plugin interprets, and it is checked before any record is read. `viaLegacyFlag` is
+  carried so the remedy can name the config flag that produced the version.
+- **`build-record-absent`'s three `because` values are three situations with one remedy**: the
+  build-info directory is not there, it could not be read, or it is there and readable and
+  simply holds no record naming this source-key/contract pair. All three mean the same thing —
+  there is nothing to validate from — and `tronbox compile --all` regenerates the record
+  unconditionally, because the `--all` flag forces recompilation of unchanged sources.
+- **`build-record-stale`'s payload is the gate's own per-file evidence**: which record failed
+  and why, one `BuildRecordRejection` per candidate examined. The common single-candidate case
+  is `deployed-bytecode-differs` — the record no longer describes the compiled artifact — and
+  the remedy is the same `tronbox compile --all`, which regenerates both sides of the
+  comparison at once.
 - **`library-name-unsupported`'s two bands are two different failures.** TronBox builds
   `'__' + name`, pads with `_` to 40 and splices over a 40-character window without truncating,
   while upgrades-core normalizes on `/__\w{36}__/g`. At 37–38 characters the artifact is intact
   and hashing throws; at ≥ 39 the artifact's own bytecode is longer than the compiler produced
   and every following byte has shifted. Cap library names at **36** characters.
-- **`sources-do-not-compile` carries the count, never the text.** solc's error strings are
-  unbounded and routinely carry absolute filesystem paths, and TronBox already prints them in
-  full — so the remedy points at `tronbox compile` instead of reproducing them.
 - **`artifact-shape-unsupported`'s `providedSince` is `4.8.0`**, the oldest TronBox verified to
   write all five fields into every artifact. Deliberately not the package's declared peer range.
 
@@ -460,46 +418,13 @@ Both fields required, both non-empty — a blank one raises rather than renderin
 Rendering is unconditional and independent of policy: `diagnose.ts` does not import `policy.ts`,
 so a leniency change provably cannot alter what a refusal says.
 
+Every remedy is distinct across the seven. The pair that makes that rule earn its keep is 5
+versus 6: both are fixed by running `tronbox compile --all`, and the remedy is what tells the
+user which situation they are in — no record was ever written for this contract, or every
+record found no longer describes the compiled artifact.
+
 **Render these; do not paraphrase them.** `ValidationInputRefusedError`'s message is
 `` `${diagnosis.headline} ${diagnosis.remedy}` ``, which is the intended rendering.
-
----
-
-## Compiler types
-
-### `CompilerHandle`
-
-```ts
-interface CompilerHandle {
-  readonly longVersion: string;
-  /** Throws `CompilerRetiredError` if called after a previous throw. */
-  compile(input: SolcStandardInput): SolcStandardOutput;
-}
-```
-
-`compile` is **synchronous**, and that is structural rather than incidental:
-`solidity_compile` is a synchronous `cwrap` that blocks the event loop for its whole duration,
-so `Promise.race` and `AbortSignal` cannot bound it. A promise-returning signature would imply
-a wall-clock bound this version does not have and cannot have without a worker thread or a
-child process.
-
-Single-use-after-failure: once `compile` throws, the handle is retired.
-
-### `CompilerIdentity`
-
-```ts
-interface CompilerIdentity {
-  readonly family: 'tvm' | 'evm';
-  /** The triple the config resolved to. Used to *locate*, never to compare. */
-  readonly requestedVersion: string;
-  /** What `version()` returned. This is what cause 3 compares. */
-  readonly longVersion: string;
-  readonly soljsonPath: string;
-}
-```
-
-Present on `basis` only for `'plugin-compile'`. On the fresh path no compiler is located,
-loaded or read, so there is no identity to record.
 
 ---
 
@@ -523,21 +448,21 @@ type SolcStandardOutput = SolcOutput; // upstream's own
 `SolcStandardInput` is pinned assignable to upstream's `SolcInput` by a type-level assertion,
 so `validate`'s fourth argument and `solcInputOutputDecoder`'s first accept it without a cast.
 
-`settings` spreads the project's own solc settings and then overwrites `outputSelection` — the
-same shape TronBox itself uses, plus `storageLayout`. Note the direction: TronBox's own literal
-comes *after* its user-settings spread, so a user-supplied `outputSelection` is overwritten by
-the host rather than merely not extended. That single omission of `storageLayout` from the
-host's list is why this module exists.
+**Nothing is assembled into this shape any more.** The input a consumer receives is the paired
+`<hash>.json` compiler input TronBox wrote next to the verified build record, narrowed to this
+shape at the gate and handed on verbatim. Nothing is copied, defaulted or repaired: a pair that
+fails any check rejects the candidate, because a repaired input is no longer the input that
+produced the output — which is the whole property the fresh path exists to preserve.
 
 ---
 
 ## Not on the face, and why
 
-`policy`, `diagnose`, `sourceKey`, `detectFidelity`, `positionShortfall`, `buildSolcInput`,
-`resolveSourceGraph`, `cutPartition` and `openCompiler` are deliberately **not** exported from
-`index.ts`. If they were, a consumer could assemble a validation input from the parts plus its
-own compile and bypass the policy point entirely — and the single-call-site scan that pins
-`policy` would still pass, because that second pipeline would never call `policy` at all.
+`policy`, `diagnose`, `sourceKey`, `detectFidelity`, `resolveSourceGraph` and `cutPartition`
+are deliberately **not** exported from `index.ts`. If they were, a consumer could assemble a
+validation input from the parts and bypass the policy point entirely — and the
+single-call-site scan that pins `policy` would still pass, because that second pipeline would
+never call `policy` at all.
 
 They stay reachable by direct module import, which is how the tests see them. Reaching for one
 from a sibling sub-feature is a signal that something belongs on the face; raise it rather than

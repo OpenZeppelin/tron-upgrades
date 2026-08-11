@@ -195,6 +195,46 @@ proxy operations and their refusals, deployment and transaction semantics
 (including the `await` rule above), adopting existing deployments, and what
 the validations do and do not cover.
 
+## Validation without storage layouts
+
+Upgrade-safety validation reads the build record TronBox already wrote —
+the `<hash>.output.json` / `<hash>.json` pair under your build-info directory
+— after verifying by content that it describes the compiled artifact. The
+plugin never runs a compiler of its own; this is the same model Foundry's
+upgrades plugin uses.
+
+TronBox does not ask solc for storage layouts, so the record carries none and
+the layout is reconstructed from the record's own AST. That comparison works
+by **name, type and declaration order**, without slot positions, and it is
+stricter than it may sound:
+
+- **Still detected and refused:** renaming a variable, changing its type,
+  reordering variables, and deleting one.
+- **Still accepted:** appending new variables at the end, which is the safe
+  upgrade shape — appends are structurally exempt from position questions.
+- **Cannot be decided, so refused conservatively:** the two shapes that need
+  slot arithmetic — shrinking a `__gap` array to absorb a new variable, and
+  repacking variables inside a slot's existing padding. Both are *safe when
+  done correctly*, but without positions the check cannot verify the
+  arithmetic, and this plugin never accepts what it cannot verify. If you use
+  either pattern, expect a refusal and restructure the change as an append.
+
+When the build record for a contract is **absent** (never compiled here, or a
+cleaned build directory) or **stale** (it no longer matches the compiled
+artifact), validation refuses and names the remedy:
+
+```console
+tronbox compile --all
+```
+
+The `--all` flag forces recompilation of unchanged sources, so the remedy
+always works — a fresh build record and artifact are written together even
+when TronBox considers the project up to date.
+
+When TronBox can emit `storageLayout` into its build records, the same
+record read will carry real slot positions and the two undecidable shapes
+above become decidable — no change to your project is needed to benefit.
+
 ## Known limitation: custom storage layouts
 
 Solidity 0.8.29's `layout at` custom storage location is not seen by the
