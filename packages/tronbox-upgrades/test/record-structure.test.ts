@@ -898,14 +898,26 @@ describe('applied to the real tree', () => {
     // now carries, for `RecordFingerprintUnreadableError`. Still a VALUE edge —
     // consumers need the real class, not its type, to write a `catch` — and still
     // engine-free, because `errors.ts` is the module that imports nothing.
+    //
+    // Re-pinned again for the cheap public additions: `./output/silence`
+    // (`silenceWarnings`, exact-specifier sanctioned — the face and its two
+    // engine-reaching leaves stay unreachable), `./erc1967` (the public 1967
+    // readers, engine-free by construction: it reaches only `./environment`,
+    // `./chain`, `./record` and `./adopt/errors`), and `./chain` (the two
+    // 1967 reader errors, `ChainImplementationNotFoundError` and
+    // `ChainBeaconNotFoundError` — real classes, for the same reason
+    // `./record/errors` is: a consumer needs them to write a `catch`).
     expect(entry?.moduleSpecifiers.map(edge => edge.specifier).sort()).toEqual([
       './admin',
       './admin/errors',
       './adopt',
       './adopt/errors',
       './beacon',
+      './chain',
       './deploy',
+      './erc1967',
       './options/types',
+      './output/silence',
       './proxy',
       './proxy',
       './record/errors',
@@ -1490,16 +1502,19 @@ function recordImportsFromOutside(
 describe('`openRecord` is the only way in; the consumers that would test it do not exist yet', () => {
   it('the consumer census is exact: the deployment seam, importing through the face', () => {
     // Originally asserted as zero consumers, recorded as a measured state rather
-    // than a satisfied rule. The first consumer has now appeared, so the measured
-    // state is re-pinned exactly: the sender module takes the mint and its brand,
-    // both through the face. A second consumer, or a route change, edits this
-    // list deliberately or fails here.
+    // than a satisfied rule. Consumers have appeared since — most recently
+    // `erc1967.ts`, which takes the mint and the base58 conversion, both
+    // through the face, to answer the public 1967 readers in TRON's own
+    // address form. A new consumer, or a route change, edits this list
+    // deliberately or fails here.
     expect(recordImportsFromOutside(allSources())).toEqual([
       `${path.join('admin', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('adopt', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('beacon', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('deploy', 'sender.ts')} -> canonicalizeAddress`,
       `${path.join('deploy', 'sender.ts')} -> CanonicalAddress`,
+      `erc1967.ts -> canonicalizeAddress`,
+      `erc1967.ts -> toBase58`,
       `${path.join('proxy', 'deploy-proxy.ts')} -> canonicalizeAddress`,
       `${path.join('proxy', 'replay.ts')} -> canonicalizeAddress`,
       `${path.join('proxy', 'replay.ts')} -> CanonicalAddress`,

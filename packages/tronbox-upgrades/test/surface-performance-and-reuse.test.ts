@@ -828,15 +828,26 @@ describe('the public surface is additive across minors', () => {
     // exports — deployProxy, upgradeProxy, and the two refusal families —
     // which is the deliberate widening the earlier pin existed to make
     // deliberate. What still cannot appear, asserted on specifier positions
-    // rather than prose: a re-export of `./output` (its channel factory and
-    // engine capture are reached per operation, never at import time) and a
+    // rather than prose: a re-export of the `./output` FACE, or of
+    // `./output/engine` or `./output/channel` (the engine capture and the
+    // channel factory are reached per operation, never at import time), and a
     // static edge to `./options/resolve` (the package's engine value-import),
     // and the one-mutable-binding rule (the test-only reset stays off the
     // surface) travels with it.
+    //
+    // Re-pinned again for `silenceWarnings`: `./output/silence` is the one
+    // sanctioned exception, by exact specifier, matching the earlier
+    // `./record/errors` sanction's pattern — `silence.ts` carries no engine
+    // import of its own (verified by the entry-closure guard test), so this
+    // one path under `./output` is safe to re-export directly while the face
+    // and the two engine-reaching leaves stay unreachable.
     const entry = fs.readFileSync(path.join(srcDir, 'index.ts'), 'utf8');
     expect(entry).toContain('export type {');
     expect(entry).toContain("export { deployProxy, upgradeProxy } from './proxy';");
-    expect(/from '\.\/output/.test(entry)).toBe(false);
+    const outputSpecifiers = [...entry.matchAll(/from '(\.\/output[^']*)'/g)].map(
+      match => match[1],
+    );
+    expect(outputSpecifiers).toEqual(['./output/silence']);
     expect(/from '\.\/options\/resolve/.test(entry)).toBe(false);
     expect(entry).not.toContain('resetSilenceForTests');
   });

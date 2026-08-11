@@ -152,15 +152,23 @@ export type DeployImplementationOptions = StandaloneOptions;
 export type DeployBeaconOptions = StandaloneOptions;
 export type UpgradeBeaconOptions = UpgradeOptions;
 /**
- * **A recorded divergence from the parity target:** this includes `DeployOpts`
- * where the parity target omits it. That omission is an upstream inconsistency
- * — the Hardhat plugin's equivalent does include it — harmless in Truffle
- * where the fields are inert, but on TRON it would leave one operation with no
- * confirmation control, which is itself a second recorded divergence.
+ * **Two recorded divergences from the parity target, both in this one type:**
+ *
+ * 1. It includes `DeployOpts` where the parity target omits it. That omission
+ *    is an upstream inconsistency — the Hardhat plugin's equivalent does
+ *    include it — harmless in Truffle where the fields are inert, but on
+ *    TRON it would leave one operation with no confirmation control, which is
+ *    itself a second recorded divergence.
+ * 2. It omits `ProxyKindOption`, where the parity-shaped type would include
+ *    it. A beacon proxy has exactly one kind, so `deployBeaconProxy`'s own
+ *    accepted-options list (`beacon/index.ts:BEACON_ACCEPTED_OPTIONS`) refuses
+ *    `kind` outright rather than accepting and narrowing it — this type omits
+ *    the option for the same reason, rather than typing one the runtime
+ *    refuses by name whatever value it is given. The old API's behaviour was
+ *    narrower still: it refused only a WRONG value; the new one refuses the
+ *    option entirely.
  */
-export type DeployBeaconProxyOptions = ProxyKindOption &
-  InitializerOption &
-  DeployOpts;
+export type DeployBeaconProxyOptions = InitializerOption & DeployOpts;
 export type ForceImportOptions = ProxyKindOption;
 export type ValidateImplementationOptions = StandaloneValidationOptions;
 export type ValidateUpgradeOptions = ValidationOptions;

@@ -116,16 +116,21 @@ describe('the option surface composes upstream types and never re-declares a mem
     const asUpstreamValidation: ValidationOptions = upgradeShaped;
 
     const beaconProxyShaped: DeployBeaconProxyOptions = {
-      kind: 'beacon',
       initializer: 'initialize',
       timeout: 0,
     };
-    const asUpstreamKind: ProxyKindOption = beaconProxyShaped;
-    // A recorded divergence from the parity target: `DeployOpts` is composed in
-    // where the parity target omits it, because on TRON confirmation is real
-    // (also a recorded divergence) and the omission would leave one operation
-    // with no confirmation control.
+    // A recorded divergence from the parity target, in two directions on one
+    // type: `DeployOpts` is composed in where the parity target omits it,
+    // because on TRON confirmation is real (also a recorded divergence) and
+    // the omission would leave one operation with no confirmation control —
+    // and `ProxyKindOption` is deliberately NOT composed in, unlike the
+    // parity-shaped type, because `deployBeaconProxy` refuses `kind` by name
+    // rather than accepting and narrowing it (a beacon proxy has exactly one
+    // kind). `{ kind: 'beacon' }` does not compile against this type, which is
+    // the type-level half of that refusal; `@ts-expect-error` pins it below.
     const beaconProxyDeployOpts: DeployOpts = beaconProxyShaped;
+    // @ts-expect-error `kind` is not a member: the runtime refuses the option entirely (`OPTION_UNKNOWN`), never narrows a wrong value.
+    const beaconProxyRefusesKind: DeployBeaconProxyOptions = { kind: 'beacon' };
 
     const forceImportShaped: ForceImportOptions = { kind: 'uups' };
     const asUpstreamKindAgain: ProxyKindOption = forceImportShaped;
@@ -147,7 +152,6 @@ describe('the option surface composes upstream types and never re-declares a mem
     expect(asUpstreamStandalone.kind).toBe('uups');
     expect(asUpstreamDeployOpts.timeout).toBe(1000);
     expect(asUpstreamValidation.unsafeAllowRenames).toBe(true);
-    expect(asUpstreamKind.kind).toBe('beacon');
     expect(beaconProxyDeployOpts.timeout).toBe(0);
     expect(asUpstreamKindAgain.kind).toBe('uups');
     expect(asUpstreamStandaloneAgain.unsafeAllow).toEqual(['delegatecall']);
