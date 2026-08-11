@@ -713,21 +713,45 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     ).resolves.toBeDefined();
   });
 
-  it('already-current is a no-op — no queue, no send, and the result names the implementation', async () => {
+  it('already-current still dispatches the upgrade and its encoded call', async () => {
     const fake = buildFake({
       priorAddress: NEW_IMPL,
       currentImplementation: toTronHex(canonicalizeAddress(NEW_IMPL)),
+      implementationReused: true,
+      existingProxyRecord: true,
+      resolved: { call: { fn: 'migrate', args: [7] } },
     });
-    const result = await runUpgradeProxy(
+    await runUpgradeProxy(
       fake.context,
       PROXY_ADDR,
       fakeAbstraction({ priorAddress: NEW_IMPL }),
     );
-    expect(fake.log).not.toContain('queue');
-    expect(fake.log.some(entry => entry.startsWith('sendUpgradeCall:'))).toBe(false);
-    expect(canonicalizeAddress(result.implementation)).toBe(
-      canonicalizeAddress(NEW_IMPL),
+    expect(fake.log).toContain('queue');
+    expect(fake.log.filter(entry => entry.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).toContain('sendUpgradeCall:admin-v5:upgradeAndCall');
+    expect(fake.upgradeCallData).toBe(
+      new Interface(RESULT_ABI as never).encodeFunctionData('migrate', [7]),
     );
+    expect(fake.log).not.toContain('recordProxy');
+  });
+
+  it('already-current still dispatches the upgrade without a call', async () => {
+    const fake = buildFake({
+      priorAddress: NEW_IMPL,
+      currentImplementation: toTronHex(canonicalizeAddress(NEW_IMPL)),
+      implementationReused: true,
+      existingProxyRecord: true,
+    });
+    await runUpgradeProxy(
+      fake.context,
+      PROXY_ADDR,
+      fakeAbstraction({ priorAddress: NEW_IMPL }),
+    );
+    expect(fake.log).toContain('queue');
+    expect(fake.log.filter(entry => entry.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).toContain('sendUpgradeCall:admin-v5:upgradeAndCall');
+    expect(fake.upgradeCallData).toBe('0x');
+    expect(fake.log).not.toContain('recordProxy');
   });
 
   it('records only when no record existed', async () => {

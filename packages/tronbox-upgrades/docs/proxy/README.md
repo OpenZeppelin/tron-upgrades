@@ -74,9 +74,9 @@ The two operations declare very different things about a rerun:
   longer vouch for (the node was wiped, the record was deleted, or something else deployed
   there), the operation refuses and names which investigation comes first — it will not
   layer a new, correctly-recorded deploy beside one it can no longer account for.
-- **`upgradeProxy` recognizes already-current.** If the proxy already runs the target
-  implementation — compared by address identity, whatever spelling either side uses — the
-  operation is a no-op: nothing is sent and nothing is re-recorded.
+- **`upgradeProxy` always dispatches.** The upgrade transaction is sent even if the proxy
+  already runs the target implementation, matching Hardhat behavior. A supplied `call`
+  therefore executes on every invocation.
 
 ## Refusals you may meet, and what they mean
 

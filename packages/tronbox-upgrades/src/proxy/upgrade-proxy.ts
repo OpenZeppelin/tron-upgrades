@@ -2,10 +2,9 @@
  * `upgradeProxy` — the ordered pipeline over the operation toolkit, with the
  * orderings the sibling adaptation measured and this sub-feature's invariants
  * pin: the beacon check before kind processing, the current layout
- * keyed by chain-read address, the already-current no-op recognized
- * canonically, the authority resolved and the dispatch planned BEFORE
- * the new implementation deploys, one queued step, and the
- * trust-but-verify slot re-read after the upgrade call.
+ * keyed by chain-read address, the authority resolved and the dispatch
+ * planned BEFORE the new implementation deploys, one queued step, and
+ * the trust-but-verify slot re-read after the upgrade call.
  */
 
 import { Interface } from 'ethers';
@@ -31,7 +30,6 @@ import {
   createOperationToolkit,
   handlesFrom,
   HANDLE_OPTION_KEYS,
-  readWriteBackHash,
   encodeInitializer,
   type OperationContext,
   type RawOperationOptions,
@@ -130,31 +128,13 @@ export async function runUpgradeProxy(
   //     about what runs now; the manifest supplies the layout FOR that address.
   const currentImplementation = slots.implementation;
 
-  // 6 — the already-current no-op, recognized canonically.
-  const targetByRecord = toolkit.priorDeployedAddress(contract);
-  if (
-    targetByRecord !== null &&
-    isAlreadyCurrent(currentImplementation, targetByRecord)
-  ) {
-    return Object.freeze({
-      contract: await toolkit.contractAt(contract, proxyAddress),
-      address: proxyAddress,
-      transaction: transactionIdentity(
-        readWriteBackHash(contract),
-        'upgradeProxy (already current)',
-      ),
-      implementation: currentImplementation as string,
-      notes: operationNotes(toolkit.channel.recorded),
-    });
-  }
-
-  // 7 — storage compatibility against the stored layout for the LIVE
+  // 6 — storage compatibility against the stored layout for the LIVE
   //     implementation, before any spend, in keeping with validate-first
   //     (scenario 2).
   const currentLayout = await toolkit.storedLayoutFor(currentImplementation);
   await toolkit.assertStorageCompatible(currentLayout, validated, resolved);
 
-  // 8 — authority and dispatch BEFORE the new implementation deploys:
+  // 7 — authority and dispatch BEFORE the new implementation deploys:
   //     a mis-routed proxy fails without leaving an orphan implementation.
   const abi = (contract as { abi?: readonly unknown[] }).abi ?? [];
   const callData = encodeCall(abi, resolved.call);
@@ -174,7 +154,7 @@ export async function runUpgradeProxy(
     hasCallData: callData !== '0x',
   });
 
-  // 9 — ONE queued step: deploy the implementation, send the dispatched call,
+  // 8 — ONE queued step: deploy the implementation, send the dispatched call,
   //     confirm, and re-read the slot.
   const outcome = await toolkit.queue(deployer, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
@@ -214,7 +194,7 @@ export async function runUpgradeProxy(
     return { writeBack, implementationAddress };
   });
 
-  // 10 — record only when no record existed.
+  // 9 — record only when no record existed.
   const existing = await toolkit.session.getProxyRecord(proxyAddress);
   if (existing === undefined) {
     await toolkit.recordProxy(proxyAddress, kind);

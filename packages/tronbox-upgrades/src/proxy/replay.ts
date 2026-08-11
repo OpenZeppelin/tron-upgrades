@@ -74,10 +74,8 @@ export function decideDeployReplay(
 }
 
 /**
- * The already-current recognition: the upgrade target is already the live
- * implementation. Canonical on both sides — a spelling variant of the same
- * address must be recognized, or every replayed migration re-upgrades and
- * pays for it.
+ * Canonical implementation identity comparison. Post-dispatch verification
+ * must accept spelling variants of the same address.
  */
 export function isAlreadyCurrent(
   liveImplementation: string,

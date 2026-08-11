@@ -75,7 +75,7 @@ describe('the deploy replay decision', () => {
   });
 });
 
-describe('already-current recognition is identity, never spelling', () => {
+describe('implementation identity comparison is canonical, never spelling', () => {
   it('recognizes the same implementation across all three encodings', () => {
     const canonical = canonicalizeAddress(PROXY);
     expect(isAlreadyCurrent(toTronHex(canonical), toBase58(canonical))).toBe(true);

@@ -117,9 +117,8 @@ module.exports = async function (deployer) {
   // call: { fn, args } — the post-upgrade call must land through the
   // upgrade dispatch itself: store() exists only on the new implementation,
   // and retrieve() must answer 99 afterwards. `opts` is a fresh proxy every
-  // run (deployProxy never reuses one), so on replay this is never an
-  // already-current no-op: the same upgrade-with-call runs again from
-  // scratch, and 99 must still hold because the call executed again.
+  // run (deployProxy never reuses one): the same upgrade-with-call runs again
+  // from scratch, and 99 must still hold because the call executed again.
   const opts = await deployProxy(BoxOptions, [7], handles);
   console.log('E2E m6.callProxy=' + opts.address);
   await upgradeProxy(opts.address, BoxOptionsV2, {
