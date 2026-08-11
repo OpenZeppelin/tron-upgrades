@@ -62,13 +62,18 @@ new implementation is an error, not a success.
 
 ## Running a migration twice
 
-Both operations declare what a replay does:
+The two operations declare very different things about a rerun:
 
-- **`deployProxy` reconciles.** If this migration already deployed a proxy on this chain and
-  the deployment record vouches for it, you get the recorded proxy back — no second deploy,
-  no second record entry. If the record *cannot* vouch for it (the node was wiped, the
-  record was deleted, or something else deployed there), the operation refuses and names
-  which investigation comes first — it never deploys a duplicate beside a stale record.
+- **`deployProxy` always deploys.** Every call deploys a fresh proxy, exactly like Hardhat's
+  `deployProxy` and the removed Truffle plugin — it never returns a proxy it deployed on an
+  earlier run, so calling it twice for the same contract gives you two proxies, and rerunning
+  a migration deploys a new one every time. If you need the *same* proxy address across runs,
+  keep it yourself (the migration's own logic, the artifact's per-network address, or a
+  manifest lookup) and call `upgradeProxy` instead. The one thing `deployProxy` still checks
+  before spending: if the artifact names an *earlier* proxy the deployment record can no
+  longer vouch for (the node was wiped, the record was deleted, or something else deployed
+  there), the operation refuses and names which investigation comes first — it will not
+  layer a new, correctly-recorded deploy beside one it can no longer account for.
 - **`upgradeProxy` recognizes already-current.** If the proxy already runs the target
   implementation — compared by address identity, whatever spelling either side uses — the
   operation is a no-op: nothing is sent and nothing is re-recorded.
@@ -85,7 +90,7 @@ Both operations declare what a replay does:
 | unknown proxy generation | the reported `UPGRADE_INTERFACE_VERSION` is outside what this plugin knows; nothing was sent |
 | empty initializer | the ported TRC1967Proxy rejects uninitialized deployment for both kinds; add an initializer or use a beacon proxy |
 | `initialOwner` is a ProxyAdmin | the v5 transparent proxy deploys its own admin; passing an existing ProxyAdmin is almost always a v4 habit — the message names the skip option if you really mean it |
-| stale proxy record | a prior deployment's record cannot vouch for a replay; see above |
+| stale proxy record | a prior deployment's record cannot vouch for the address the artifact already names; see above |
 
 ## Administering upgrade authority
 

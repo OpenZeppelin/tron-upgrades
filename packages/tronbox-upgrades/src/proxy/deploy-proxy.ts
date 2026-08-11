@@ -136,9 +136,9 @@ export async function runDeployProxy(
   //      would silently drop the one thing the caller asked for, so it takes
   //      the parity target's own refusal (see the error class) — whether the
   //      kind was explicit or inferred just above, and deterministically:
-  //      before the replay decision, so a rerun refuses identically instead
-  //      of reusing past an option that can never be honoured. Beacon was
-  //      refused by the narrowing already.
+  //      before the corrupt-record refusal below, so a rerun refuses
+  //      identically regardless of what the record decides about a prior
+  //      deployment. Beacon was refused by the narrowing already.
   if (kind === 'uups' && resolved.initialOwner !== undefined) {
     throw new InitialOwnerUnsupportedKindError(kind);
   }
@@ -146,29 +146,15 @@ export async function runDeployProxy(
   // 4 — only now may the context's missing deployer refuse.
   const deployer = toolkit.requireDeployer();
 
-  // 5 — replay recognition, before any spend.
+  // 5 — the corrupt-record refusal, before any spend. `deployProxy` always
+  //     deploys a fresh proxy — Hardhat parity; a prior recorded address is
+  //     never reused — but if the artifact names a prior address the record
+  //     layer cannot vouch for, that refuses rather than letting a new
+  //     deploy get recorded beside an already-unaccountable entry.
   const prior = toolkit.priorDeployedAddress(contract);
   const decision = decideDeployReplay(prior, toolkit.replayVerdicts());
   if (decision.kind === 'refuse') {
     throw new StaleProxyRecordError(decision.address, decision.because);
-  }
-  if (decision.kind === 'reuse') {
-    // The recorded proxy IS the result. The transaction identity is the prior
-    // deployment's, read from the host's own write-back memory — and if the
-    // artifact does not carry one, `transactionIdentity` refuses rather than
-    // fabricating a field a caller would read as this run's.
-    const priorHash = readWriteBackHash(contract);
-    return Object.freeze({
-      contract: await toolkit.contractAt(contract, decision.address),
-      // The artifact's own spelling, not the record's canonical form: the
-      // result pins `address` tool-verbatim, and a replayed run
-      // answering a different spelling than the run it replays would fail
-      // any caller comparing the two. `prior` is non-null on this branch —
-      // a `reuse` decision exists only for a named prior address.
-      address: prior as string,
-      transaction: transactionIdentity(priorHash, 'deployProxy (reused)'),
-      notes: operationNotes(toolkit.channel.recorded),
-    });
   }
 
   // 6 — pre-queue refusals that need no chain.

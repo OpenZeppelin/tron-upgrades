@@ -22,8 +22,14 @@
  *      refusal).
  *   6. verify — independent reads against the node itself; the migrations'
  *      own asserts are trusted only after the chain agrees.
- *   7. replay — the SAME migrations again: reruns must reuse, declare their
- *      no-ops, and change nothing they should not.
+ *   7. replay — the SAME migrations again: `deployProxy` always deploys a
+ *      fresh proxy on every run (Hardhat parity — a prior recorded address
+ *      is never reused), so every proxy address a migration deploys
+ *      directly must DIFFER between the two runs; what must still hold is
+ *      implementation reuse (unchanged addresses for unchanged bytecode),
+ *      deterministic refusals replaying identically, and state a migration
+ *      re-derives itself (initializer values, upgrade-borne calls) landing
+ *      the same way again.
  *   8. test — `tronbox test`: validation works without a deployer, and a
  *      state-changing operation refuses by name.
  *
@@ -581,44 +587,66 @@ async function main() {
     const r = bareHex(right) ?? right;
     return l.toLowerCase() === r.toLowerCase();
   };
-  const stable = [
-    'm1.proxy',
-    'm1.impl',
-    'm2.prepared',
-    'm2.impl',
-    'm6.uupsProxy',
-    'm6.uupsImpl',
-    'm6.autoProxy',
-    'm6.zeroProxy',
-    'm6.callProxy',
-    'm6.ownedProxy',
-  ];
+  // Implementation-only identities: `fetchOrDeployImplementation`'s own
+  // record reuse is untouched by the deploy-proxy change above and keeps
+  // these addresses fixed across runs whether or not the proxy pointing at
+  // them is new.
+  const stable = ['m1.impl', 'm2.prepared', 'm2.impl', 'm6.uupsImpl'];
   for (const key of stable) {
     if (!sameAccount(report1[key], report2[key])) {
       die(`replay changed ${key}: ${report1[key]} -> ${report2[key]}`);
     }
   }
-  if (report2['m3.alreadyHeld'] !== 'true') {
-    die(`replayed transfer expected alreadyHeld=true, saw ${report2['m3.alreadyHeld']}`);
+  // `deployProxy` always deploys a fresh proxy — Hardhat parity, a prior
+  // recorded address is never reused — so every proxy address a migration
+  // deploys directly must DIFFER between the two runs, exactly like the
+  // beacon proxy already does below.
+  const fresh = [
+    'm1.proxy',
+    'm6.uupsProxy',
+    'm6.autoProxy',
+    'm6.zeroProxy',
+    'm6.callProxy',
+    'm6.ownedProxy',
+  ];
+  for (const key of fresh) {
+    if (sameAccount(report1[key], report2[key])) {
+      die(
+        `${key} was expected to deploy fresh on replay (deployProxy never ` +
+          `reuses a prior proxy), but stayed ${report1[key]}`,
+      );
+    }
+  }
+  // Migration 1's Box proxy is a NEW proxy every run, and a transparent
+  // proxy deploys its own ProxyAdmin internally — so the admin transfer
+  // never sees an already-transferred ProxyAdmin on replay either: it
+  // starts over from the deploying account each time.
+  if (report2['m3.alreadyHeld'] !== 'false') {
+    die(
+      `replayed transfer expected alreadyHeld=false (a fresh proxy's ` +
+        `ProxyAdmin is owned by the deployer again), saw ${report2['m3.alreadyHeld']}`,
+    );
   }
   // The refusal is pre-spend against a never-deployed artifact, so it must
-  // replay identically; the upgrade-borne 99 must survive the replayed
-  // no-op upgrade, which sends no call.
+  // replay identically.
   if (report2['m6.refusalCode'] !== 'initializer-data-required') {
     die(
       `replayed initializer:false expected the same refusal, ` +
         `saw ${report2['m6.refusalCode']}`,
     );
   }
-  // The uups+initialOwner refusal fires ahead of the replay decision, so it
-  // must replay identically even against the recorded proxy; the two
-  // initializer values are untouched by any replayed step, so exactly again.
+  // The uups+initialOwner refusal is a deterministic, pre-spend option
+  // check, so it must replay identically regardless of what deployProxy's
+  // corrupt-record refusal would have decided about BoxUUPSAuto's (fresh,
+  // differently-addressed) recorded proxy.
   if (report2['m6.ownerRefusalCode'] !== 'initial-owner-unsupported-kind') {
     die(
       `replayed initialOwner+uups expected the same refusal, ` +
         `saw ${report2['m6.ownerRefusalCode']}`,
     );
   }
+  // Each of these is the FRESH proxy's own initializer/call landing again —
+  // never a preserved value from the first run's now-superseded proxy.
   if (report2['m6.autoValue'] !== '42') {
     die(`replay changed the kind-omitted proxy value: ${report2['m6.autoValue']}`);
   }
@@ -628,8 +656,15 @@ async function main() {
   if (report2['m6.callValue'] !== '99') {
     die(`replay lost the upgrade-borne store(99): ${report2['m6.callValue']}`);
   }
-  if (BigInt(report2['m1.valueBefore']) !== BigInt(report1['m1.valueAfter'])) {
-    die('replay lost the proxy state between runs');
+  // NOT a continuity check against run 1's post-increment value: migration
+  // 1's proxy is a fresh deploy every run, so its state starts over — the
+  // read right after the (also fresh) upgrade must be exactly the
+  // initializer's 42 again, the same pin already made on the first run.
+  if (BigInt(report2['m1.valueBefore']) !== 42n) {
+    die(
+      `the m1 initializer value must be exactly 42 again on replay (a ` +
+        `fresh proxy every run), saw ${report2['m1.valueBefore']}`,
+    );
   }
   if (report1['m4.beaconProxy'] === report2['m4.beaconProxy']) {
     die('the beacon migration was expected to deploy fresh on replay');

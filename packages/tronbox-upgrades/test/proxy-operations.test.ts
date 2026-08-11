@@ -62,6 +62,15 @@ interface FakeSpec {
   readonly existingProxyRecord?: boolean;
   readonly constructorArgs?: readonly unknown[];
   /**
+   * Whether `fetchOrDeployImplementation`'s own record reuse fetches the
+   * cached implementation instead of invoking `deploy()`. Lets a test pin
+   * "the implementation deploy is skipped" independently of the
+   * (now-removed) proxy-level reuse `runDeployProxy` used to short-circuit
+   * on. Defaults to `false` — every other test in this file keeps exercising
+   * the deploy path unchanged.
+   */
+  readonly implementationReused?: boolean;
+  /**
    * What the fake's `inferKind` answers — the engine-side inference over a
    * validated implementation. Defaults to `'transparent'`, the answer the
    * engine gives for a contract with no public upgrade entry point.
@@ -283,7 +292,9 @@ function buildFake(spec: FakeSpec = {}): Fake {
 
     async fetchOrDeployImplementation(_validated, _resolved, deploy) {
       log.push('fetchOrDeployImplementation');
-      await deploy();
+      if (!spec.implementationReused) {
+        await deploy();
+      }
       return toTronHex(canonicalizeAddress(NEW_IMPL));
     },
 
@@ -426,21 +437,34 @@ describe('deployProxy — the order is the contract', () => {
     expect(fake.log).not.toContain('queue');
   });
 
-  it('an authoritative prior reuses — zero queue, zero deploys, zero appends', async () => {
-    const fake = buildFake({ priorAddress: PROXY_ADDR });
+  it('an authoritative prior record no longer short-circuits — deployProxy always hostDeploys a NEW proxy (Hardhat parity)', async () => {
+    // The reuse branch is gone. An authoritative prior record only stops
+    // the corrupt-record refusal below from firing — it no longer returns
+    // the recorded proxy. `OWNER_BASE58` stands in for the FIRST
+    // proxy's recorded address, deliberately distinct from `PROXY_ADDR` (the
+    // fake's hostDeploy write-back), so a passing test cannot be explained
+    // by the two addresses coinciding.
+    const fake = buildFake({
+      priorAddress: OWNER_BASE58,
+      implementationReused: true,
+    });
     const result = await runDeployProxy(
       fake.context,
-      fakeAbstraction({ priorAddress: PROXY_ADDR }),
+      fakeAbstraction({ priorAddress: OWNER_BASE58 }),
       [42],
     );
-    // The artifact's own spelling, not the record's canonical form: the
-    // result pins `address` tool-verbatim, and a replayed run answering a
-    // different spelling than the run it replays fails any caller comparing
-    // the two — measured live before this line pinned it.
-    expect(result.address).toBe(PROXY_ADDR);
-    expect(fake.log).not.toContain('queue');
-    expect(fake.log.some(entry => entry.startsWith('hostDeploy:'))).toBe(false);
-    expect(fake.log).not.toContain('recordProxy');
+    expect(fake.log.filter(entry => entry === 'queue')).toHaveLength(1);
+    // The proxy hostDeploys; the implementation's own hostDeploy never
+    // runs — fetch-reused, exactly as `fetchOrDeployImplementation` (a
+    // separate, untouched reuse mechanism) decided.
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
+      'hostDeploy:TransparentUpgradeableProxy',
+    ]);
+    expect(fake.log).toContain('recordProxy');
+    // The refutation the removal must survive: a second `deployProxy(Box)`
+    // can never answer the first proxy's recorded address.
+    expect(result.address).not.toBe(OWNER_BASE58);
+    expect(result.address).toBe(toTronHex(canonicalizeAddress(PROXY_ADDR)));
   });
 
   it('a stale prior refuses by name, before the queue', async () => {

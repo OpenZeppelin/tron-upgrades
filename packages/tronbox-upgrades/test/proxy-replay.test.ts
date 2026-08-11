@@ -33,20 +33,22 @@ function verdictFor(
 }
 
 describe('the deploy replay decision', () => {
-  it('is fresh with no prior address, whatever the record holds', () => {
+  it('proceeds with no prior address, whatever the record holds', () => {
     expect(decideDeployReplay(null, [verdictFor(PROXY, 'authoritative')])).toEqual(
-      { kind: 'fresh' },
+      { kind: 'proceed' },
     );
   });
 
-  it('reuses an authoritative prior — matched canonically across encodings', () => {
+  it('proceeds past an authoritative prior — matched canonically across encodings — deployProxy never reuses it', () => {
     const canonical = canonicalizeAddress(PROXY);
     // The artifact may hold any of the three spellings; the verdict list holds
-    // canonical form. Recognition must be identity, not string equality.
+    // canonical form. Recognition must be identity, not string equality —
+    // `deployProxy` still deploys fresh regardless, but a spelling mismatch
+    // must not be misread as an unrecorded (refused) address.
     for (const spelling of [PROXY, toBase58(canonical), toTronHex(canonical)]) {
       expect(
         decideDeployReplay(spelling, [verdictFor(PROXY, 'authoritative')]),
-      ).toEqual({ kind: 'reuse', address: canonical });
+      ).toEqual({ kind: 'proceed' });
     }
   });
 

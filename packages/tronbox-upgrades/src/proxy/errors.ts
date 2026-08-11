@@ -195,9 +195,12 @@ export class InitializerDataRequiredError extends ProxyOperationRefusedError {
 /**
  * A prior deployment's record cannot vouch for this replay: the
  * artifact remembers an address, and the record layer reports it stale,
- * unrecorded, or never seen. Redeploying beside it would leave two proxies
- * answering one name, so the operation stops and says which investigation
- * comes first.
+ * unrecorded, or never seen. `deployProxy` always deploys a fresh proxy
+ * regardless (Hardhat parity — a prior address is never reused), but it
+ * refuses to do so while the artifact's own prior address is one the
+ * tooling can no longer account for: the operation stops and says which
+ * investigation comes first, rather than layering a new, correctly-recorded
+ * deploy beside an entry already gone bad.
  */
 export class StaleProxyRecordError extends ProxyOperationRefusedError {
   readonly code = 'stale-proxy-record';
