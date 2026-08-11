@@ -212,16 +212,6 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
         address: canonicalizeAddress(record.address),
         kind: record.kind,
       }),
-    addImplRecord: (record: {
-      readonly versionKey: string;
-      readonly address: string;
-      readonly layout: unknown;
-    }): Promise<void> =>
-      manifest.addImplRecord({
-        versionKey: record.versionKey,
-        address: canonicalizeAddress(record.address),
-        layout: record.layout,
-      }),
     recordCount: async (): Promise<number> => recordCount(await manifest.read()),
   });
 }

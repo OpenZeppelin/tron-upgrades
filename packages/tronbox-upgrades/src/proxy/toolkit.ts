@@ -134,7 +134,10 @@ export interface OperationToolkit {
   fetchOrDeployImplementation(
     validated: ValidatedImplementation,
     resolved: ResolvedForProxyOps,
-    deploy: () => Promise<WriteBack>,
+    deploy: () => Promise<{
+      readonly address: string;
+      readonly transactionHash: string | undefined;
+    }>,
   ): Promise<string>;
 
   /** `contract.new(...)` on the host abstraction, returning the write-back. */

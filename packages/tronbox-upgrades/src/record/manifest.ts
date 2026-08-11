@@ -64,11 +64,6 @@ export interface RecordManifest {
     readonly address: CanonicalAddress;
     readonly kind: ProxyDeployment['kind'];
   }): Promise<void>;
-  addImplRecord(record: {
-    readonly versionKey: string;
-    readonly address: CanonicalAddress;
-    readonly layout: unknown;
-  }): Promise<void>;
 }
 
 /**
@@ -146,39 +141,6 @@ export async function openRecordManifest(
       manifest.addProxy({
         address: assertCanonicalAddress(record.address),
         kind: record.kind,
-      }),
-    /**
-     * The adoption write, under the manifest's own lock, with the engine's own
-     * merge semantics: an existing entry for the version keeps its recorded
-     * layout — the baseline is never overwritten — and the addresses union into
-     * `allAddresses`. An identical replay is therefore a no-op by construction.
-     */
-    addImplRecord: (record: {
-      readonly versionKey: string;
-      readonly address: CanonicalAddress;
-      readonly layout: unknown;
-    }) =>
-      manifest.lockedRun(async () => {
-        const data = await manifest.read();
-        const address = assertCanonicalAddress(record.address);
-        const existing = data.impls[record.versionKey];
-        if (existing !== undefined) {
-          const merged = new Set([
-            existing.address,
-            address,
-            ...(existing.allAddresses ?? []),
-          ]);
-          data.impls[record.versionKey] = {
-            ...existing,
-            allAddresses: [...merged],
-          };
-        } else {
-          data.impls[record.versionKey] = {
-            address,
-            layout: record.layout as ImplDeployment['layout'],
-          };
-        }
-        await manifest.write(data);
       }),
   });
 }

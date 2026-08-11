@@ -153,11 +153,19 @@ export async function runForceImport(
     );
   }
   const implementation = canonicalizeAddress(implementationAddress);
+
+  // This route inherits three engine corner semantics. An invalid stored entry
+  // (missing code or an unfindable transaction) is removed, then the wrapper's
+  // retry replaces it wholesale with this adoption. An address already primary
+  // under a different version is refused by the engine's address-clash check,
+  // which is stricter than the former direct write. Finally, merge mode starts
+  // validation of the stored deployment without awaiting it, so a narrowly stale
+  // entry can surface that validation failure as a delayed rejection.
   const simulatedDeploy = async () => ({
     address: implementation,
     // An externally deployed contract may have no host write-back hash. The
     // engine accepts that shape and validates the already-live bytecode.
-    transactionHash: readWriteBackHash(contract) ?? (undefined as never),
+    transactionHash: readWriteBackHash(contract) ?? undefined,
   });
 
   // Probe with normal reuse first: an exact replay returns the recorded address

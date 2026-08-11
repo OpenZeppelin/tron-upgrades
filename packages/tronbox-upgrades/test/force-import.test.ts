@@ -1,4 +1,4 @@
-import fs from 'node:fs/promises';
+import fs from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -33,7 +33,7 @@ afterAll(async () => {
       process.env['MANIFEST_DEFAULT_DIR'] = PREVIOUS_MANIFEST_DIR;
     }
   } finally {
-    await fs.rm(RECORD_DIR, { recursive: true, force: true });
+    await fs.promises.rm(RECORD_DIR, { recursive: true, force: true });
   }
 });
 
@@ -431,10 +431,11 @@ describe('adoption delegates implementation records to the engine', () => {
     const fake = buildFake({ engineChainId: chainId });
 
     await runForceImport(fake.context, ADDR, abstraction(CODE));
-    const before = JSON.stringify(await implementationRecord(chainId));
+    const manifestFile = (await manifestFor(chainId)).file;
+    const before = fs.readFileSync(manifestFile);
     await runForceImport(fake.context, ADDR, abstraction(CODE));
 
-    expect(JSON.stringify(await implementationRecord(chainId))).toBe(before);
+    expect(fs.readFileSync(manifestFile)).toEqual(before);
   });
 
   it('unions a second address for the same version into allAddresses', async () => {
