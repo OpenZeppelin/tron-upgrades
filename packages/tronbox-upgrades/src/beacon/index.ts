@@ -32,11 +32,46 @@ import {
 } from '../proxy/errors';
 import { isAlreadyCurrent } from '../proxy/replay';
 
-export const BEACON_ACCEPTED_OPTIONS: readonly string[] = [
+/**
+ * `deployBeacon` deploys (or reuses, per `redeployImplementation`) the
+ * implementation and the `UpgradeableBeacon` pointing at it — no proxy, no
+ * prior layout. So it accepts the implementation-deploy and validation
+ * options, plus `initialOwner` (the beacon's owner is set exactly once,
+ * here), but never `initializer` (nothing is initialized: a beacon has no
+ * proxy storage of its own) and never the storage-COMPARISON pair
+ * `unsafeAllowRenames`/`unsafeSkipStorageCheck` — those reach only
+ * `getStorageUpgradeReport` (`assertStorageCompatible`, `toolkit.ts`), which
+ * `runDeployBeacon` never calls, having no prior layout to compare against.
+ * Verified against the installed engine
+ * (`@openzeppelin/upgrades-core@1.46.0`, `dist/validate/overrides.js:processExceptions`
+ * vs `dist/storage/index.js:getStorageUpgradeReport`): the two options are
+ * read by the storage comparator only, never by `getErrors`.
+ */
+export const DEPLOY_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
   ...HANDLE_OPTION_KEYS,
-  'initializer',
   'constructorArgs',
   'initialOwner',
+  'unsafeAllow',
+  'unsafeAllowCustomTypes',
+  'unsafeAllowLinkedLibraries',
+  'redeployImplementation',
+  'useDeployedImplementation',
+  'timeout',
+  'pollingInterval',
+];
+
+/**
+ * `upgradeBeacon` deploys (or reuses) the new implementation, compares its
+ * layout against the beacon's CURRENT one, then dispatches `upgradeTo` — so,
+ * unlike `deployBeacon`, it DOES compare storage and accepts the
+ * `unsafeAllowRenames`/`unsafeSkipStorageCheck` pair that comparison reads.
+ * It never accepts `initializer` (an upgrade sends no proxy init call) or
+ * `initialOwner` (the beacon's owner is set once, at `deployBeacon`; an
+ * upgrade never touches it).
+ */
+export const UPGRADE_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
+  ...HANDLE_OPTION_KEYS,
+  'constructorArgs',
   'unsafeAllow',
   'unsafeAllowRenames',
   'unsafeSkipStorageCheck',
@@ -44,6 +79,26 @@ export const BEACON_ACCEPTED_OPTIONS: readonly string[] = [
   'unsafeAllowLinkedLibraries',
   'redeployImplementation',
   'useDeployedImplementation',
+  'timeout',
+  'pollingInterval',
+];
+
+/**
+ * `deployBeaconProxy` deploys only the `BeaconProxy` itself, pointing at an
+ * ALREADY-deployed beacon — no implementation deploy, no validation, no
+ * storage comparison. So it accepts `initializer` (the proxy's own init
+ * call) plus the confirmation pair, and none of the implementation-deploy or
+ * validation options `deployBeacon`/`upgradeBeacon` need: not
+ * `constructorArgs` (no contract deploys here), not `initialOwner` (the
+ * proxy has no owner concept of its own), none of the five `unsafeAllow*`
+ * validation options (nothing here is ever validated — the beacon was
+ * validated when IT was deployed), and not
+ * `redeployImplementation`/`useDeployedImplementation` (no implementation
+ * fetch-or-deploy decision to make).
+ */
+export const DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS: readonly string[] = [
+  ...HANDLE_OPTION_KEYS,
+  'initializer',
   'timeout',
   'pollingInterval',
 ];
@@ -152,7 +207,7 @@ export async function deployBeacon(
   const context = await createOperationToolkit({
     handles: handlesFrom(options),
     rawOptions: options,
-    acceptedOptions: BEACON_ACCEPTED_OPTIONS,
+    acceptedOptions: DEPLOY_BEACON_ACCEPTED_OPTIONS,
   });
   return runDeployBeacon(context, contract);
 }
@@ -198,11 +253,15 @@ export async function deployBeaconProxy(
   options: RawOperationOptions = {},
 ): Promise<DeployedProxy> {
   // Refused before anything else — see `deployProxy`'s own guard for why.
-  assertNoOptionsInArgsPosition('deployBeaconProxy', args, BEACON_ACCEPTED_OPTIONS);
+  assertNoOptionsInArgsPosition(
+    'deployBeaconProxy',
+    args,
+    DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS,
+  );
   const context = await createOperationToolkit({
     handles: handlesFrom(options),
     rawOptions: options,
-    acceptedOptions: BEACON_ACCEPTED_OPTIONS,
+    acceptedOptions: DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS,
   });
   return runDeployBeaconProxy(context, beaconAddress, contract, args);
 }
@@ -275,7 +334,7 @@ export async function upgradeBeacon(
   const context = await createOperationToolkit({
     handles: handlesFrom(options),
     rawOptions: options,
-    acceptedOptions: BEACON_ACCEPTED_OPTIONS,
+    acceptedOptions: UPGRADE_BEACON_ACCEPTED_OPTIONS,
   });
   return runUpgradeBeacon(context, beaconAddress, contract);
 }

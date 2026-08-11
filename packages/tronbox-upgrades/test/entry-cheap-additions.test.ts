@@ -79,11 +79,31 @@ describe('the 8 previously-missing per-operation option types, now on the entry'
   });
 
   it('DeployBeaconOptions and UpgradeBeaconOptions refuse `kind` too, from `../src` — the same fix applied to all three beacon ops', () => {
-    // @ts-expect-error `kind` is not a member of `DeployBeaconOptions`: `deployBeacon` shares `BEACON_ACCEPTED_OPTIONS` with `deployBeaconProxy` and refuses `kind` the same way.
+    // @ts-expect-error `kind` is not a member of `DeployBeaconOptions`: `deployBeacon` has its own accepted-options list (`DEPLOY_BEACON_ACCEPTED_OPTIONS`) and refuses `kind` the same way `deployBeaconProxy` does.
     const deployBeaconRefused: DeployBeaconOptions = { kind: 'beacon' };
-    // @ts-expect-error `kind` is not a member of `UpgradeBeaconOptions`: `upgradeBeacon` shares `BEACON_ACCEPTED_OPTIONS` too.
+    // @ts-expect-error `kind` is not a member of `UpgradeBeaconOptions`: `upgradeBeacon` has its own accepted-options list (`UPGRADE_BEACON_ACCEPTED_OPTIONS`) too.
     const upgradeBeaconRefused: UpgradeBeaconOptions = { kind: 'beacon' };
     expect(deployBeaconRefused).toBeDefined();
     expect(upgradeBeaconRefused).toBeDefined();
+  });
+
+  it('DeployBeaconOptions and UpgradeBeaconOptions refuse the members inert for them specifically, from `../src`', () => {
+    // Each beacon operation now accepts exactly what it consumes
+    // (`beacon/index.ts`): `deployBeacon` deploys no proxy and never
+    // compares storage, so `initializer` and the storage-check pair are
+    // refused; `upgradeBeacon` sends no proxy init call and never re-sets
+    // the beacon's owner, so `initializer` and `initialOwner` are refused.
+    // @ts-expect-error `initializer` is not a member of `DeployBeaconOptions`.
+    const deployBeaconRefusesInitializer: DeployBeaconOptions = { initializer: 'setUp' };
+    // @ts-expect-error `unsafeSkipStorageCheck` is not a member of `DeployBeaconOptions`: nothing in `deployBeacon` ever compares storage.
+    const deployBeaconRefusesSkipCheck: DeployBeaconOptions = { unsafeSkipStorageCheck: true };
+    // @ts-expect-error `initializer` is not a member of `UpgradeBeaconOptions`.
+    const upgradeBeaconRefusesInitializer: UpgradeBeaconOptions = { initializer: 'setUp' };
+    // @ts-expect-error `initialOwner` is not a member of `UpgradeBeaconOptions`: the owner is set once, at `deployBeacon`.
+    const upgradeBeaconRefusesInitialOwner: UpgradeBeaconOptions = { initialOwner: 'T...' };
+    expect(deployBeaconRefusesInitializer).toBeDefined();
+    expect(deployBeaconRefusesSkipCheck).toBeDefined();
+    expect(upgradeBeaconRefusesInitializer).toBeDefined();
+    expect(upgradeBeaconRefusesInitialOwner).toBeDefined();
   });
 });

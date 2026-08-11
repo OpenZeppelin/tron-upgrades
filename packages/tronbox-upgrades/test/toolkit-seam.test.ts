@@ -13,7 +13,11 @@ import { InvalidDeployment } from '@openzeppelin/upgrades-core';
 import { assertNoOptionsInArgsPosition, createOperationToolkit } from '../src/proxy/toolkit';
 import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
 import { UPGRADE_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/upgrade-proxy';
-import { BEACON_ACCEPTED_OPTIONS } from '../src/beacon';
+import {
+  DEPLOY_BEACON_ACCEPTED_OPTIONS,
+  DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS,
+  UPGRADE_BEACON_ACCEPTED_OPTIONS,
+} from '../src/beacon';
 import { forceImport } from '../src/adopt';
 import { ImplementationNotPreviouslyDeployedError, OptionsInArgsPositionError } from '../src/proxy/errors';
 import { UnknownOptionError } from '../src/options';
@@ -88,21 +92,133 @@ describe('the toolkit reads the resolver output at the right level (B1)', () => 
     expect(context.resolved.unsafeAllowLinkedLibraries).toBe(true);
   });
 
-  it('BEACON_ACCEPTED_OPTIONS refuses `kind` at runtime — the same list deployBeacon, deployBeaconProxy and upgradeBeacon all share', async () => {
+  it.each([
+    ['deployBeacon', DEPLOY_BEACON_ACCEPTED_OPTIONS],
+    ['upgradeBeacon', UPGRADE_BEACON_ACCEPTED_OPTIONS],
+    ['deployBeaconProxy', DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS],
+  ] as const)('%s refuses `kind` at runtime — its own list, not a shared one', async (_name, acceptedOptions) => {
     // Executed, not read from the type: a JS caller who bypasses the (now
-    // fixed) DeployBeaconOptions/UpgradeBeaconOptions type-level refusal and
-    // hands `kind` to the real resolver still gets refused, through the one
-    // constant all three beacon operations pass as `acceptedOptions`.
+    // fixed) DeployBeaconOptions/UpgradeBeaconOptions/DeployBeaconProxyOptions
+    // type-level refusal and hands `kind` to the real resolver still gets
+    // refused. Each beacon operation now passes its OWN accepted-options
+    // constant (`beacon/index.ts`) rather than one list shared across all
+    // three — this pin covers each one individually so a future re-merge back
+    // into a shared list would fail here first.
     const shape = migrateShapedHandles();
     await expect(
       createOperationToolkit({
         handles: shape.handles,
         rawOptions: { kind: 'beacon' },
-        acceptedOptions: BEACON_ACCEPTED_OPTIONS,
+        acceptedOptions,
         processEnv: {},
         mode: 'validate-only',
       }),
     ).rejects.toBeInstanceOf(UnknownOptionError);
+  });
+
+  /*
+   * The split's whole point, pinned at the runtime boundary: each beacon
+   * operation's own accepted-options list now contains exactly what it
+   * consumes, so an option genuinely dead for THAT operation is refused by
+   * name — never silently accepted and ignored (the exact defect class
+   * `README.md`'s "an option an operation does not accept is refused by
+   * name" sentence promises, and which the old shared `BEACON_ACCEPTED_OPTIONS`
+   * broke for nine members on `deployBeaconProxy` alone). One representative
+   * inert option per operation, chosen to differ from the other two so the
+   * three pins together cover three distinct reasons an option can be dead:
+   * no proxy to initialize (`deployBeacon`), no owner to (re)set
+   * (`upgradeBeacon`), and no implementation to validate or deploy
+   * (`deployBeaconProxy`).
+   */
+  it('deployBeacon refuses `initializer` — inert there: no proxy is ever deployed, so nothing calls encodeInitializer', async () => {
+    const shape = migrateShapedHandles();
+    await expect(
+      createOperationToolkit({
+        handles: shape.handles,
+        rawOptions: { initializer: 'setUp' },
+        acceptedOptions: DEPLOY_BEACON_ACCEPTED_OPTIONS,
+        processEnv: {},
+        mode: 'validate-only',
+      }),
+    ).rejects.toBeInstanceOf(UnknownOptionError);
+  });
+
+  it('upgradeBeacon refuses `initialOwner` — inert there: the beacon\'s owner is set once, at deployBeacon, and an upgrade never touches it', async () => {
+    const shape = migrateShapedHandles();
+    await expect(
+      createOperationToolkit({
+        handles: shape.handles,
+        rawOptions: { initialOwner: 'TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh' },
+        acceptedOptions: UPGRADE_BEACON_ACCEPTED_OPTIONS,
+        processEnv: {},
+        mode: 'validate-only',
+      }),
+    ).rejects.toBeInstanceOf(UnknownOptionError);
+  });
+
+  it('deployBeaconProxy refuses `redeployImplementation` — inert there: it deploys the BeaconProxy only, never an implementation', async () => {
+    const shape = migrateShapedHandles();
+    await expect(
+      createOperationToolkit({
+        handles: shape.handles,
+        rawOptions: { redeployImplementation: 'always' },
+        acceptedOptions: DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS,
+        processEnv: {},
+        mode: 'validate-only',
+      }),
+    ).rejects.toBeInstanceOf(UnknownOptionError);
+  });
+
+  it('deployBeacon still resolves every option it actually consumes', async () => {
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: shape.handles,
+      rawOptions: {
+        constructorArgs: [1],
+        initialOwner: 'TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh',
+        unsafeAllow: ['constructor'],
+        redeployImplementation: 'always',
+      },
+      acceptedOptions: DEPLOY_BEACON_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    expect(context.resolved.constructorArgs).toEqual([1]);
+    expect(context.resolved.initialOwner).toBe('TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh');
+    expect(context.resolved.redeployImplementation).toBe('always');
+    expect(context.resolved.engineOptions['unsafeAllow']).toEqual(['constructor']);
+  });
+
+  it('upgradeBeacon still resolves every option it actually consumes, including the storage-check pair deployBeacon does not', async () => {
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: shape.handles,
+      rawOptions: {
+        constructorArgs: [1],
+        unsafeAllowRenames: true,
+        unsafeSkipStorageCheck: true,
+        redeployImplementation: 'onchange',
+      },
+      acceptedOptions: UPGRADE_BEACON_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    expect(context.resolved.constructorArgs).toEqual([1]);
+    expect(context.resolved.redeployImplementation).toBe('onchange');
+    expect(context.resolved.engineOptions['unsafeAllowRenames']).toBe(true);
+    expect(context.resolved.engineOptions['unsafeSkipStorageCheck']).toBe(true);
+  });
+
+  it('deployBeaconProxy still resolves the one option it actually consumes', async () => {
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: shape.handles,
+      rawOptions: { initializer: 'setUp' },
+      acceptedOptions: DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    expect(context.resolved.initializer).toBe('setUp');
   });
 });
 

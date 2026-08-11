@@ -175,18 +175,49 @@ describe('the option surface composes upstream types and never re-declares a mem
   });
 
   it('DeployBeaconOptions and UpgradeBeaconOptions also refuse `kind` — the same type/runtime fix as DeployBeaconProxyOptions', () => {
-    // `deployBeacon` and `upgradeBeacon` share `BEACON_ACCEPTED_OPTIONS` with
-    // `deployBeaconProxy`, and that list excludes `'kind'` for all three
-    // (verified directly: `beacon/index.ts`'s one constant, read by all
-    // three operations). `StandaloneOptions`/`UpgradeOptions` themselves
-    // still carry `kind` — `DeployProxyOptions` and `DeployImplementationOptions`
-    // need it — so these two aliases build on `Omit<_, 'kind'>` instead.
+    // `deployBeacon`, `upgradeBeacon` and `deployBeaconProxy` each pass their
+    // OWN accepted-options constant now (`beacon/index.ts`:
+    // `DEPLOY_BEACON_ACCEPTED_OPTIONS`, `UPGRADE_BEACON_ACCEPTED_OPTIONS`,
+    // `DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS`), no longer one list shared
+    // across all three — and all three still exclude `'kind'`.
+    // `StandaloneOptions`/`UpgradeOptions` themselves still carry `kind` —
+    // `DeployProxyOptions` and `DeployImplementationOptions` need it — so
+    // these two aliases build on `Omit<_, 'kind'>` instead.
     // @ts-expect-error `kind` is not a member: deployBeacon refuses the option entirely (`OPTION_UNKNOWN`), never narrows a wrong value.
     const deployBeaconRefusesKind: DeployBeaconOptions = { kind: 'beacon' };
     // @ts-expect-error `kind` is not a member: upgradeBeacon refuses the option entirely (`OPTION_UNKNOWN`), never narrows a wrong value.
     const upgradeBeaconRefusesKind: UpgradeBeaconOptions = { kind: 'beacon' };
     expect(deployBeaconRefusesKind).toBeDefined();
     expect(upgradeBeaconRefusesKind).toBeDefined();
+  });
+
+  it('DeployBeaconOptions and UpgradeBeaconOptions each refuse the members inert for THEM specifically, not just `kind`', () => {
+    /*
+     * The type surface already excluded these — `StandaloneOptions` composes
+     * no `InitializerOption` and `StandaloneValidationOptions` carries
+     * neither `unsafeAllowRenames` nor `unsafeSkipStorageCheck` (those are
+     * `ValidationOptions`-only, i.e. upgrade-shaped) — so this is a NEW pin
+     * on an ALREADY-true fact, added alongside the runtime split
+     * (`beacon/index.ts:DEPLOY_BEACON_ACCEPTED_OPTIONS`/
+     * `UPGRADE_BEACON_ACCEPTED_OPTIONS`) rather than a type change of its
+     * own, for the same reason the `kind` pins above exist: a caller reading
+     * only the type learns the same refusal the runtime now enforces.
+     */
+    // @ts-expect-error `initializer` is not a member: `deployBeacon` deploys no proxy, so nothing ever calls `encodeInitializer`.
+    const deployBeaconRefusesInitializer: DeployBeaconOptions = { initializer: 'setUp' };
+    // @ts-expect-error `unsafeAllowRenames` is not a member: `deployBeacon` never compares storage, so the engine's storage comparator — the only reader of this option — never runs.
+    const deployBeaconRefusesRenames: DeployBeaconOptions = { unsafeAllowRenames: true };
+    // @ts-expect-error `unsafeSkipStorageCheck` is not a member: same reason as `unsafeAllowRenames` above.
+    const deployBeaconRefusesSkipCheck: DeployBeaconOptions = { unsafeSkipStorageCheck: true };
+    // @ts-expect-error `initializer` is not a member: `upgradeBeacon` sends no proxy init call.
+    const upgradeBeaconRefusesInitializer: UpgradeBeaconOptions = { initializer: 'setUp' };
+    // @ts-expect-error `initialOwner` is not a member: the beacon's owner is set once, at `deployBeacon`; an upgrade never touches it.
+    const upgradeBeaconRefusesInitialOwner: UpgradeBeaconOptions = { initialOwner: 'T...' };
+    expect(deployBeaconRefusesInitializer).toBeDefined();
+    expect(deployBeaconRefusesRenames).toBeDefined();
+    expect(deployBeaconRefusesSkipCheck).toBeDefined();
+    expect(upgradeBeaconRefusesInitializer).toBeDefined();
+    expect(upgradeBeaconRefusesInitialOwner).toBeDefined();
   });
 
   it('refuses a value outside the closed set at compile time, so a typo cannot type-check', () => {

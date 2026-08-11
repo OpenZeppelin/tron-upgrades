@@ -153,15 +153,35 @@ export type DeployImplementationOptions = StandaloneOptions;
  * **A recorded divergence from the parity target, the same pattern as
  * {@link DeployBeaconProxyOptions}'s own `kind` omission below:** a beacon
  * has exactly one kind, so `deployBeacon`'s accepted-options list
- * (`beacon/index.ts:BEACON_ACCEPTED_OPTIONS`) refuses `kind` outright. Built
+ * (`beacon/index.ts:DEPLOY_BEACON_ACCEPTED_OPTIONS`) refuses `kind` outright. Built
  * as `Omit<StandaloneOptions, 'kind'>` rather than a fresh composition —
  * `StandaloneOptions` itself keeps `kind` (`DeployProxyOptions` and
  * `DeployImplementationOptions` both need it, and both genuinely accept it
  * at runtime), so the member is dropped locally, on this alias only, rather
  * than widening the omission to every type built from the shared base.
+ *
+ * Beyond `kind`, this alias needed no further narrowing when
+ * `beacon/index.ts`'s accepted-options list was split per operation:
+ * `StandaloneOptions` never carried `initializer` (that is
+ * `InitializerOption`'s, added only to `DeployProxyOptions`) or
+ * `unsafeAllowRenames`/`unsafeSkipStorageCheck` (those are
+ * `ValidationOptions`-only, i.e. upgrade-shaped, and `deployBeacon` — a
+ * fresh deploy with no prior layout — never compares storage). The type was
+ * already exactly this narrow; only the runtime accepted-options list
+ * (formerly the shared `BEACON_ACCEPTED_OPTIONS`) had to catch up.
  */
 export type DeployBeaconOptions = Omit<StandaloneOptions, 'kind'>;
-/** Same divergence, same reason, same pattern: see {@link DeployBeaconOptions}. */
+/**
+ * Same divergence, same reason, same pattern: see {@link DeployBeaconOptions}.
+ *
+ * Also already exactly narrow enough beyond `kind`: `UpgradeOptions` never
+ * carried `initializer` (an upgrade sends no proxy init call) or
+ * `initialOwner` (the beacon's owner is set once, at `deployBeacon`; an
+ * upgrade never touches it) — unlike `deployBeacon`'s alias above,
+ * `unsafeAllowRenames`/`unsafeSkipStorageCheck` DO belong here, because
+ * `upgradeBeacon` compares storage against the beacon's current
+ * implementation and both options reach that comparison.
+ */
 export type UpgradeBeaconOptions = Omit<UpgradeOptions, 'kind'>;
 /**
  * **Two recorded divergences from the parity target, both in this one type:**
@@ -178,12 +198,22 @@ export type UpgradeBeaconOptions = Omit<UpgradeOptions, 'kind'>;
  *    itself close.
  * 2. It omits `ProxyKindOption`, where the parity-shaped type would include
  *    it. A beacon proxy has exactly one kind, so `deployBeaconProxy`'s own
- *    accepted-options list (`beacon/index.ts:BEACON_ACCEPTED_OPTIONS`) refuses
- *    `kind` outright rather than accepting and narrowing it — this type omits
- *    the option for the same reason, rather than typing one the runtime
- *    refuses by name whatever value it is given. The old API's behaviour was
- *    narrower still: it refused only a WRONG value; the new one refuses the
- *    option entirely.
+ *    accepted-options list (`beacon/index.ts:DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS`)
+ *    refuses `kind` outright rather than accepting and narrowing it — this
+ *    type omits the option for the same reason, rather than typing one the
+ *    runtime refuses by name whatever value it is given. The old API's
+ *    behaviour was narrower still: it refused only a WRONG value; the new
+ *    one refuses the option entirely.
+ *
+ * A third, non-`kind` divergence, added alongside the runtime split into
+ * per-operation accepted-options lists: this type was ALREADY narrower than
+ * `StandaloneOptions`/`UpgradeOptions` in exactly the way the runtime now
+ * mirrors — `deployBeaconProxy` deploys no implementation and validates
+ * nothing, so it never carried `constructorArgs`, `initialOwner`, any of the
+ * five `unsafeAllow*` validation options, or
+ * `redeployImplementation`/`useDeployedImplementation`. The type was correct
+ * first; `beacon/index.ts`'s shared `BEACON_ACCEPTED_OPTIONS` (since split)
+ * was the one still accepting all nine of those at runtime.
  */
 export type DeployBeaconProxyOptions = InitializerOption & DeployOpts;
 export type ForceImportOptions = ProxyKindOption;
