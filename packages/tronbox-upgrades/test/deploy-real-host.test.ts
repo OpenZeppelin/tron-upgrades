@@ -241,3 +241,88 @@ describe('the premise is version-stable where the deploy seam assumes it is', ()
     },
   );
 });
+
+/**
+ * The `_static_methods.new` face `Contract.clone(...)`'s deploy artifacts
+ * expose, unbound. `hostDeploy` never sees this directly (it calls through an
+ * abstraction `Contract.clone` produced), but the static method is where
+ * `filterEnergyParameter` actually runs, and calling it against a minimal
+ * `this` isolates that ONE synchronous step from everything after it
+ * (linking checks, the network call) — exactly what `assertNoCheatcodeCollision`
+ * needs to be refusing ahead of.
+ */
+interface HostContractNew {
+  readonly _static_methods: {
+    readonly new: (this: unknown, ...args: unknown[]) => unknown;
+  };
+}
+
+function realContractNew(installName: string): (this: unknown, ...args: unknown[]) => unknown {
+  return hostModule<HostContractNew>(installName, 'components/Contract/contract.js')
+    ._static_methods.new;
+}
+
+/**
+ * A minimal `this` for `Contract._static_methods.new`: enough for
+ * `filterEnergyParameter` to run and, on the minor that gets past it, for the
+ * arity check and `Utils.merge` right after to run too — no `tronWrap` is
+ * initialized, so anything past that point rejects for reasons unrelated to
+ * the null under test, and that rejection is swallowed rather than asserted.
+ */
+function probeContractThis(): Record<string, unknown> {
+  return {
+    abi: [{ type: 'constructor', inputs: [{ type: 'address' }, { type: 'address' }] }],
+    bytecode: '0x60806040',
+    binary: '0x60806040',
+    contractName: 'CheatcodeProbe',
+    class_defaults: {},
+  };
+}
+
+/*
+ * The finding that reopened this guard (Cursor adversarial, fix round 1): a
+ * trailing `null` reaches `filterEnergyParameter` down the SAME branch as a
+ * plain object (`typeof null === 'object'`), and the two installed minors
+ * diverge from there. Both `assertNoCheatcodeCollision`'s doc comment and
+ * `CheatcodeSlotCollisionError`'s `'null'` message make this exact claim —
+ * this pins it against the real, installed host source rather than trusting
+ * the comment to stay honest on its own.
+ */
+describe.each(installedVersions)(
+  'filterEnergyParameter and a trailing null, against %s',
+  installName => {
+    it('handles a trailing null differently across the installed minors, neither usably', () => {
+      const newFn = realContractNew(installName);
+      let synchronousResult: unknown;
+      let synchronousThrow: unknown;
+      try {
+        synchronousResult = newFn.call(probeContractThis(), '0xabc', null);
+      } catch (error) {
+        synchronousThrow = error;
+      }
+      // Whichever branch ran, absorb any later async rejection: past the
+      // synchronous step under test, `_deployContract` is undefined in this
+      // fixture (no `tronWrap` was initialized), which is this probe's own
+      // gap, not a fact about the null.
+      if (
+        synchronousResult !== undefined &&
+        typeof (synchronousResult as { catch?: unknown }).catch === 'function'
+      ) {
+        (synchronousResult as Promise<unknown>).catch(() => undefined);
+      }
+
+      if (installName === 'tronbox-4.8.0') {
+        // No null guard in filterEnergyParameter: `args.pop()` removes the
+        // null, then `Object.keys(null)` throws — synchronously, before any
+        // deploy is attempted.
+        expect(synchronousThrow).toBeInstanceOf(TypeError);
+      } else {
+        // 4.9.0 added the null guard: filterEnergyParameter returns early and
+        // the null is retained, unexamined, in the argument list — no
+        // synchronous throw here. (What happens when THAT null reaches ABI
+        // encoding is `errors.ts`'s and `queue.ts`'s concern, not this one's.)
+        expect(synchronousThrow).toBeUndefined();
+      }
+    });
+  },
+);

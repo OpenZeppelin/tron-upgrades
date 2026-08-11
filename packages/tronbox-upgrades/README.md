@@ -190,19 +190,25 @@ where the concepts coincide: `kind`, `initializer`, `constructorArgs`,
 rest. An option an operation does not accept is refused by name, never
 silently ignored.
 
-**`constructorArgs` cannot end in a plain object.** TronBox's own contract
-layer treats a trailing non-array object as its own energy-parameter slot,
-never as part of your constructor call: it pops that argument off the list
-entirely and mines it for the deploy parameters it recognizes (fee limit,
-origin energy limit, and the like), so your constructor never receives it —
-usually as a loud arity mismatch, but silently exactly when the real
-constructor also expects that many arguments once the struct is gone. Every
-operation that deploys a contract with your `constructorArgs` (`deployProxy`,
-`upgradeProxy`, `deployBeacon`, `upgradeBeacon`, `deployImplementation`,
-`prepareUpgrade`) refuses that shape by name before attempting any deploy. If
-your constructor's last parameter is genuinely a struct, wrap it so it is not
-the final argument — pass it as an array member, or add a trailing dummy
-argument — or restructure the constructor.
+**`constructorArgs` cannot end in a plain object or `null`.** TronBox's own
+contract layer treats a trailing non-array object — and `null`, since
+`typeof null` is also `"object"` — as its own energy-parameter slot, never as
+part of your constructor call: it pops that argument off the list entirely
+and mines it for the deploy parameters it recognizes (fee limit, origin
+energy limit, and the like), so your constructor never receives it — usually
+as a loud arity mismatch, but silently exactly when the real constructor also
+expects that many arguments once the struct is gone. A trailing `null` fares
+no better: depending on the installed TronBox version it either crashes
+before any deploy is attempted, or reaches the ABI encoder, which typically
+refuses it too. Every operation that deploys a contract with your
+`constructorArgs` (`deployProxy`, `upgradeProxy`, `deployBeacon`,
+`upgradeBeacon`, `deployImplementation`, `prepareUpgrade`) refuses either
+shape by name before attempting any deploy. If your constructor's last
+parameter is genuinely a struct, wrap it so it is not the final argument —
+pass it as an array member, or add a trailing dummy argument — or restructure
+the constructor. `deployBeacon` also refuses up front if it cannot derive an
+owner for the beacon (no `initialOwner` given and no sending account
+configured) — pass `initialOwner` or configure a `from` address.
 
 Longer-form documentation ships in the repository's `docs/` directory:
 proxy operations and their refusals, deployment and transaction semantics

@@ -699,9 +699,15 @@ export async function createOperationToolkit(request: {
       // implementation deploy, but `upgradeProxy`, `deployBeacon`,
       // `upgradeBeacon`, `deployImplementation` and `prepareUpgrade` had no
       // guard of their own before this one, since their constructor args
-      // reach the host only from inside a queued step. Args this seam
-      // builds itself (proxy/beacon constructor args, always addresses and
-      // encoded call data — strings or `null`) can never trip it.
+      // reach the host only from inside a queued step. The guard refuses
+      // BOTH a trailing plain object and a trailing `null` — a trailing
+      // `null` is not a safe pass-through either, verified per installed
+      // TronBox minor in `assertNoCheatcodeCollision`'s doc comment. Args
+      // this seam builds itself never reach here as a trailing `null`:
+      // `deployBeacon`'s owner is the one plugin-built value that could be
+      // null, and it is refused pre-flight, before the queue, by
+      // `BeaconInitialOwnerRequiredError` — every other plugin-built last
+      // argument is an encoded call/address string.
       assertNoCheatcodeCollision(args);
       const instance = (await deployable.new(...args)) as {
         address?: unknown;

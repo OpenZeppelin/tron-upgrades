@@ -162,31 +162,53 @@ export class StaleTransactionIdentityError extends DeploymentRefusedError {
 }
 
 /**
- * The final constructor argument is a plain object, and TronBox's contract
- * layer treats a trailing non-array object as its own energy-parameter
- * slot, never as part of the constructor call: `filterEnergyParameter`
- * (`Contract/contract.js`, reached from the `abstraction.new(...)` this seam
- * calls directly) pops the argument off the list entirely and mines it for
- * the keys it recognizes (`feeLimit`, `originEnergyLimit`, and the rest of
- * `constants.deployParameters`) — the constructor never sees the struct, and
- * everything else in it is discarded. Usually this is a loud arity mismatch;
- * it is silent exactly when the real constructor also expects that many
- * arguments once the struct is gone.
+ * The final constructor argument is one of two shapes this seam refuses
+ * outright, verified per-shape against both installed TronBox minors
+ * (`tronbox-4.8.0` and `tronbox-4.9.0`, `Contract/contract.js`):
+ *
+ * - `'plain-object'`: a trailing non-array object. TronBox's contract layer
+ *   treats it as its own energy-parameter slot, never as part of the
+ *   constructor call: `filterEnergyParameter` pops the argument off the list
+ *   entirely and mines it for the keys it recognizes (`feeLimit`,
+ *   `originEnergyLimit`, and the rest of `constants.deployParameters`) — the
+ *   constructor never sees the struct, and everything else in it is
+ *   discarded. Identical on both minors. Usually a loud arity mismatch;
+ *   silent exactly when the real constructor also expects that many
+ *   arguments once the struct is gone.
+ * - `'null'`: a trailing `null`. `typeof null === 'object'`, so
+ *   `filterEnergyParameter` takes the SAME branch as a plain object — but the
+ *   two minors diverge from there: 4.8.0 has no null check and crashes inside
+ *   `filterEnergyParameter` itself (`Object.keys(null)` throws a bare
+ *   `TypeError`, before any deploy attempt); 4.9.0 added a null check and
+ *   passes `null` through to the constructor untouched, where the ABI
+ *   encoder's behavior depends on the parameter's type — most types throw a
+ *   clear-but-unnamed encoding error, but a `bool` parameter silently
+ *   coerces `null` to `false` (measured: `ethers.AbiCoder`). No installed
+ *   version turns a trailing `null` into a reliable, correct deploy.
  */
 export class CheatcodeSlotCollisionError extends DeploymentRefusedError {
   readonly code = 'cheatcode-slot-collision';
-  constructor() {
+  constructor(readonly because: 'plain-object' | 'null' = 'plain-object') {
     super(
-      `The last constructor argument is a plain object, and TronBox treats a ` +
-        `trailing non-array object as its own energy-parameter slot: it pops ` +
-        `the argument off the constructor call entirely and mines it for the ` +
-        `deploy parameters it recognizes (fee limit, origin energy limit, and ` +
-        `the like) — your constructor never receives it, usually as a loud ` +
-        `arity mismatch, silently only when the real constructor happens to ` +
-        `expect that many arguments once the struct is gone. Wrap the struct ` +
-        `so it is not the final argument — for example, pass it as an array ` +
-        `member or add a trailing dummy argument — or restructure the ` +
-        `constructor.`,
+      because === 'plain-object'
+        ? `The last constructor argument is a plain object, and TronBox treats a ` +
+          `trailing non-array object as its own energy-parameter slot: it pops ` +
+          `the argument off the constructor call entirely and mines it for the ` +
+          `deploy parameters it recognizes (fee limit, origin energy limit, and ` +
+          `the like) — your constructor never receives it, usually as a loud ` +
+          `arity mismatch, silently only when the real constructor happens to ` +
+          `expect that many arguments once the struct is gone. Wrap the struct ` +
+          `so it is not the final argument — for example, pass it as an array ` +
+          `member or add a trailing dummy argument — or restructure the ` +
+          `constructor.`
+        : `The last constructor argument is \`null\`. TronBox's contract layer ` +
+          `takes it down the same path as a plain object (\`typeof null === ` +
+          `'object'\`), and the installed host versions disagree on where that ` +
+          `leads: one crashes internally before any deploy is attempted, the ` +
+          `other passes \`null\` through to your constructor, where the result ` +
+          `depends on the parameter's type and is never something this plugin ` +
+          `can vouch for. Pass the actual value your constructor expects ` +
+          `instead of \`null\`.`,
     );
     this.name = 'CheatcodeSlotCollisionError';
   }

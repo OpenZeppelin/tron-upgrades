@@ -25,7 +25,10 @@ import {
   type RawOperationOptions,
 } from '../proxy/toolkit';
 import { NothingToAdoptError } from '../adopt/errors';
-import { UpgradeVerificationFailedError } from '../proxy/errors';
+import {
+  BeaconInitialOwnerRequiredError,
+  UpgradeVerificationFailedError,
+} from '../proxy/errors';
 import { isAlreadyCurrent } from '../proxy/replay';
 
 export const BEACON_ACCEPTED_OPTIONS: readonly string[] = [
@@ -101,6 +104,15 @@ export async function runDeployBeacon(
       : sender.kind === 'resolved'
         ? canonicalizeAddress(sender.address)
         : null;
+  // Refused HERE, before any spend: a `null` owner reaching the host is
+  // never a usable deploy on either installed TronBox minor (one crashes
+  // internally, the other fails ABI-encoding the constructor's `address`
+  // argument — see `BeaconInitialOwnerRequiredError`'s doc comment), so this
+  // names the real cause and its remedy instead of letting the host's own
+  // failure stand in for it.
+  if (owner === null) {
+    throw new BeaconInitialOwnerRequiredError();
+  }
   const beaconAbstraction = toolkit.proxyArtifact('UpgradeableBeacon');
 
   const outcome = await toolkit.queue(deployer, async () => {

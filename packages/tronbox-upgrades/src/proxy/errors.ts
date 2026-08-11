@@ -251,6 +251,34 @@ export class InitialOwnerUnsupportedKindError extends ProxyOperationRefusedError
 }
 
 /**
+ * `deployBeacon` could not derive an owner for the `UpgradeableBeacon` it is
+ * about to deploy: no `initialOwner` was given, and the effective-sender
+ * resolution came back `'unconfigured'` (no `from` in the network config),
+ * so the plugin genuinely does not know who will sign. Passing `null` as the
+ * owner is refused HERE rather than let it reach the host: the beacon's
+ * `Ownable(initialOwner)` constructor treats a zero address as invalid and
+ * reverts, but `null` never gets that far — measured against both installed
+ * TronBox minors, one crashes internally before attempting any deploy
+ * (`tronbox-4.8.0`, no null guard in `filterEnergyParameter`) and the other
+ * fails ABI-encoding the constructor's `address` argument
+ * (`tronbox-4.9.0`, `ethers.AbiCoder` refuses `null` for `address`). Neither
+ * failure names the real cause or its remedy, so this one does instead.
+ */
+export class BeaconInitialOwnerRequiredError extends ProxyOperationRefusedError {
+  readonly code = 'beacon-initial-owner-required';
+  constructor() {
+    super(
+      `deployBeacon could not determine an initial owner for the beacon: no ` +
+        `\`initialOwner\` option was given, and the configured network names ` +
+        `no sending account to fall back to. Configure a sending account ` +
+        `(\`from\`) in your network settings, or pass \`initialOwner\` ` +
+        `explicitly.`,
+    );
+    this.name = 'BeaconInitialOwnerRequiredError';
+  }
+}
+
+/**
  *`initialOwner` looks like a ProxyAdmin contract: the v5 transparent
  * proxy deploys its OWN admin owned by `initialOwner`, so handing it an
  * existing ProxyAdmin is almost always a v4-era habit that buries the real

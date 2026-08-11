@@ -238,19 +238,32 @@ describe('a trailing plain object is refused before the host can pop it off and 
       CheatcodeSlotCollisionError,
     );
     expect(() => assertNoCheatcodeCollision([{ any: 'struct' }])).toThrow(
-      CheatcodeSlotCollisionError,
+      expect.objectContaining({ because: 'plain-object' }),
     );
   });
 
-  it('passes every shape the host forwards untouched', () => {
-    // Arrays, primitives, null, and a struct that is not final: the host's
-    // check is `typeof === 'object' && !== null && !Array.isArray` on the LAST
-    // argument only, so these are the measured pass-through shapes.
+  it('refuses a trailing null too — the two installed minors disagree on what happens next, and neither is usable', () => {
+    // Measured (tronbox-4.8.0 vs tronbox-4.9.0, Contract/contract.js): 4.8.0
+    // has no null guard in filterEnergyParameter and crashes on
+    // Object.keys(null) before any deploy is attempted; 4.9.0 added the null
+    // guard and passes null through untouched, where ethers.AbiCoder then
+    // throws for most parameter types and silently coerces to `false` for a
+    // trailing `bool`. Refused outright rather than let either happen.
+    expect(() => assertNoCheatcodeCollision([null])).toThrow(CheatcodeSlotCollisionError);
+    expect(() => assertNoCheatcodeCollision([1, null])).toThrow(
+      expect.objectContaining({ because: 'null' }),
+    );
+  });
+
+  it('passes every OTHER shape the host forwards untouched', () => {
+    // Arrays, primitives, and a struct that is not final: the host's check is
+    // `typeof === 'object' && !Array.isArray` on the LAST argument only, so
+    // these are the measured pass-through shapes — null is refused above,
+    // not passed through.
     expect(() => assertNoCheatcodeCollision([])).not.toThrow();
     expect(() => assertNoCheatcodeCollision([1, 2, 3])).not.toThrow();
     expect(() => assertNoCheatcodeCollision([{ s: 1 }, 'last'])).not.toThrow();
     expect(() => assertNoCheatcodeCollision(['a', [1, 2]])).not.toThrow();
-    expect(() => assertNoCheatcodeCollision([null])).not.toThrow();
   });
 });
 

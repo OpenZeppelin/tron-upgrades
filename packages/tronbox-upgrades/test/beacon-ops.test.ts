@@ -6,7 +6,10 @@ import {
   runUpgradeBeacon,
 } from '../src/beacon';
 import { NothingToAdoptError } from '../src/adopt/errors';
-import { UpgradeVerificationFailedError } from '../src/proxy/errors';
+import {
+  BeaconInitialOwnerRequiredError,
+  UpgradeVerificationFailedError,
+} from '../src/proxy/errors';
 import {
   assertNoCheatcodeCollision,
   CheatcodeSlotCollisionError,
@@ -37,6 +40,10 @@ interface Spec {
   readonly observedAfterUpgrade?: string;
   /** The implementation's constructor args — the cheatcode-guard tests override this. */
   readonly constructorArgs?: readonly unknown[];
+  /** `resolveSender` answers `'unconfigured'` instead of a resolved address. */
+  readonly unconfiguredSender?: boolean;
+  /** Overrides `resolved.initialOwner` (default: unset). */
+  readonly initialOwner?: string;
 }
 
 const ABI = [
@@ -111,10 +118,10 @@ function buildFake(spec: Spec = {}) {
     },
     priorDeployedAddress: () => null,
     replayVerdicts: () => [],
-    resolveSender: () => ({
-      kind: 'resolved' as const,
-      address: canonicalizeAddress(IMPL),
-    }),
+    resolveSender: () =>
+      spec.unconfiguredSender
+        ? { kind: 'unconfigured' as const }
+        : { kind: 'resolved' as const, address: canonicalizeAddress(IMPL) },
     signerOf: async () => null,
     proxyArtifact: (name: string) => {
       log.push(`proxyArtifact:${name}`);
@@ -182,7 +189,7 @@ function buildFake(spec: Spec = {}) {
     redeployImplementation: 'onchange',
     unsafeAllowLinkedLibraries: false,
     unsafeSkipProxyAdminCheck: false,
-    initialOwner: undefined,
+    initialOwner: spec.initialOwner,
     call: undefined,
     engineOptions: {},
   };
@@ -196,6 +203,28 @@ describe('deployBeacon', () => {
     const result = await runDeployBeacon(fake.context, abstraction('Box'));
     expect(fake.log).toContain('validate:Box:beacon');
     expect(fake.log.filter(e => e === 'queue')).toHaveLength(1);
+    expect(fake.log).toContain('hostDeploy:UpgradeableBeacon');
+    expect((result as { transaction?: { hash: string } }).transaction?.hash).toBe(
+      'aa'.repeat(32),
+    );
+  });
+
+  it('an unconfigured sender with no initialOwner refuses by name, before the queue', async () => {
+    // No `initialOwner` and no configured `from`: the plugin cannot derive an
+    // owner, and passing `null` through to the host crashes on one installed
+    // minor and produces an unusable deploy on the other (verified in
+    // src/deploy/errors.ts's BeaconInitialOwnerRequiredError doc comment).
+    const fake = buildFake({ unconfiguredSender: true });
+    await expect(
+      runDeployBeacon(fake.context, abstraction('Box')),
+    ).rejects.toBeInstanceOf(BeaconInitialOwnerRequiredError);
+    expect(fake.log).not.toContain('queue');
+    expect(fake.log.some(e => e.startsWith('hostDeploy:'))).toBe(false);
+  });
+
+  it('an unconfigured sender WITH an explicit initialOwner deploys normally', async () => {
+    const fake = buildFake({ unconfiguredSender: true, initialOwner: IMPL });
+    const result = await runDeployBeacon(fake.context, abstraction('Box'));
     expect(fake.log).toContain('hostDeploy:UpgradeableBeacon');
     expect((result as { transaction?: { hash: string } }).transaction?.hash).toBe(
       'aa'.repeat(32),

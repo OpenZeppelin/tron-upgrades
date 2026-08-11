@@ -95,24 +95,40 @@ export function runThroughQueue<T>(
 /**
  * The marshalling guard. `hostDeploy` calls the host's `abstraction.new(...)`
  * directly, and that call's own contract layer — `filterEnergyParameter` in
- * `Contract/contract.js` — inspects the **final** argument: a non-null,
- * non-array object is popped off the argument list entirely (`args.pop()`)
- * and mined for the keys it recognizes as deploy parameters (`feeLimit`,
- * `originEnergyLimit`, and the rest of `constants.deployParameters`) — the
- * constructor never receives the struct at all, and everything else in it is
- * discarded. Usually this surfaces as a loud arity mismatch — the host's own
- * "expected N arguments, received one fewer"; it is silent exactly when the
- * contract's real constructor also expects that many arguments once the
- * struct is popped. A user argument of that shape is refused by name rather
- * than silently shortened.
+ * `Contract/contract.js` — inspects the **final** argument, taking the same
+ * branch for a plain object AND for `null` (`typeof null === 'object'`).
+ * Verified against both installed minors (`tronbox-4.8.0`, `tronbox-4.9.0`),
+ * because they disagree past that point:
+ *
+ * - A trailing plain object is popped off the argument list entirely
+ *   (`args.pop()`) and mined for the keys recognized as deploy parameters
+ *   (`feeLimit`, `originEnergyLimit`, and the rest of
+ *   `constants.deployParameters`) — the constructor never receives the
+ *   struct, and everything else in it is discarded, identically on both
+ *   minors. Usually a loud arity mismatch; silent exactly when the
+ *   constructor also expects that many arguments once the struct is popped.
+ * - A trailing `null` is where the minors diverge: 4.8.0 has no null guard
+ *   and crashes inside `filterEnergyParameter` itself (`Object.keys(null)`
+ *   throws before any deploy is attempted); 4.9.0 added a null check and
+ *   passes `null` through untouched, where the ABI encoder's behavior then
+ *   depends on the constructor parameter's type (most types throw a
+ *   clear-but-unnamed error; a `bool` parameter silently coerces `null` to
+ *   `false` — measured against `ethers.AbiCoder`). Neither outcome is a
+ *   value this plugin can vouch for.
+ *
+ * A user argument of either shape is refused by name rather than forwarded
+ * bare into whichever of these the installed host version does.
  */
 export function assertNoCheatcodeCollision(args: readonly unknown[]): void {
   if (args.length === 0) {
     return;
   }
   const last = args[args.length - 1];
-  if (typeof last === 'object' && last !== null && !Array.isArray(last)) {
-    throw new CheatcodeSlotCollisionError();
+  if (last === null) {
+    throw new CheatcodeSlotCollisionError('null');
+  }
+  if (typeof last === 'object' && !Array.isArray(last)) {
+    throw new CheatcodeSlotCollisionError('plain-object');
   }
 }
 
