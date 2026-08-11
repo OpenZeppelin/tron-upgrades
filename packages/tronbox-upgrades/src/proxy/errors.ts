@@ -154,16 +154,19 @@ export class EmptyInitializerRefusedError extends ProxyOperationRefusedError {
 }
 
 /**
- * `resolveInitializer` resolved the operation's `initializer`/argument
- * combination to `{ kind: 'none' }`: either `initializer: false` was passed
- * explicitly, or no arguments and no `initializer` name were given for it to
- * fall back on. Both leave the deploy with no initialization data — and
- * unlike upstream's `ERC1967Proxy`, the ported TRC1967Proxy and
- * TransparentUpgradeableProxy REJECT an empty init-data constructor argument
- * (a deliberate parity break, safer than upstream). Refusing here, before any
- * spend, turns that guaranteed on-chain revert into a named pre-flight error
- * that states its own remedy — rather than the two mistakes surfacing later,
- * unexplained, as `encodeInitializer`'s `EmptyInitializerRefusedError`.
+ * `resolveInitializer` resolved the operation's `initializer` to
+ * `{ kind: 'none' }` — only an explicit `initializer: false` produces one,
+ * since the omitted case follows the parity target's TRY-FIRST rule and lets
+ * the ABI decide inside `encodeInitializer`. That leaves the deploy with no
+ * initialization data — and unlike upstream's `ERC1967Proxy`, the ported
+ * TRC1967Proxy and TransparentUpgradeableProxy REJECT an empty init-data
+ * constructor argument (a deliberate parity break, safer than upstream).
+ * Refusing here, before any spend, turns that guaranteed on-chain revert
+ * into a named pre-flight error that states its own remedy. The
+ * `'no-arguments'` cause is retired from `deployProxy` by the TRY-FIRST
+ * rule — an argument-less deploy now succeeds or takes the encode step's
+ * `EmptyInitializerRefusedError` — and stays declared only until the decided
+ * consolidation of this class with that one.
  */
 export class InitializerDataRequiredError extends ProxyOperationRefusedError {
   readonly code = 'initializer-data-required';

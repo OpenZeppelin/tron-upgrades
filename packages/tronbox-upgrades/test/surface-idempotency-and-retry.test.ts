@@ -169,7 +169,9 @@ describe('resolveUpgradeOptions is pure and idempotent, and leaves the caller by
       );
     }
     expect(resolveInitializer(false, 3)).toEqual({ kind: 'none' });
-    expect(resolveInitializer(undefined, 0)).toEqual({ kind: 'none' });
+    // The TRY-FIRST rule: omitted means try 'initialize' WHATEVER the
+    // argument count — the ABI decides at encode time, never the count.
+    expect(resolveInitializer(undefined, 0)).toEqual({ kind: 'call', fn: 'initialize' });
     expect(resolveInitializer(undefined, 1)).toEqual({ kind: 'call', fn: 'initialize' });
     expect(resolveInitializer('setUp', 0)).toEqual({ kind: 'call', fn: 'setUp' });
 

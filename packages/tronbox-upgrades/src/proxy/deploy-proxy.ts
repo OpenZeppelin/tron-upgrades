@@ -176,16 +176,17 @@ export async function runDeployProxy(
 
   // The ported TRC1967Proxy/TransparentUpgradeableProxy reject empty
   // initialization data — safer than upstream's ERC1967Proxy, and a
-  // deliberate parity break. An `{ kind: 'none' }` resolution — `initializer:
-  // false`, or no arguments and no `initializer` name — is refused BY NAME
-  // here, before any spend, rather than left to revert on-chain against the
-  // ported proxy.
+  // deliberate parity break. An `{ kind: 'none' }` resolution — only an
+  // explicit `initializer: false` produces one, now that the omitted case
+  // follows the parity target's TRY-FIRST rule — is refused BY NAME here,
+  // before any spend, rather than left to revert on-chain against the ported
+  // proxy. An OMITTED initializer resolves to `'initialize'` whatever the
+  // argument count; whether the contract HAS one is the ABI's decision
+  // inside `encodeInitializer`, whose fragment-absent arm is where the
+  // empty-data refusal belongs.
   const initializerResolution = resolveInitializer(resolved.initializer, args.length);
   if (initializerResolution.kind === 'none') {
-    throw new InitializerDataRequiredError(
-      name,
-      resolved.initializer === false ? 'initializer-false' : 'no-arguments',
-    );
+    throw new InitializerDataRequiredError(name, 'initializer-false');
   }
   const abi = (contract as { abi?: readonly unknown[] }).abi ?? [];
   // The RESOLUTION's own function name is what gets encoded — never a second,

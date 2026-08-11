@@ -554,6 +554,56 @@ describe('deployProxy — the order is the contract', () => {
     ).rejects.toThrow(InitializerDataRequiredError);
   });
 
+  it('an omitted initializer with zero args TRIES initialize() — the ABI decides, not the arg count', async () => {
+    // The parity target's TRY-FIRST rule (`getInitializerData`, ported
+    // verbatim in the sibling's `hardhat-tron-upgrades/dist/utils/
+    // initializer-data.js`): omitted means try `'initialize'`; only an ABI
+    // with no such fragment has nothing to encode.
+    const zeroInitAbi = [
+      {
+        type: 'function',
+        name: 'initialize',
+        inputs: [],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ];
+    const fake = buildFake();
+    await runDeployProxy(
+      fake.context,
+      fakeAbstraction({ abi: zeroInitAbi }),
+      [],
+    );
+    // The transparent proxy's constructor args are [implementation,
+    // initialOwner, initData] — the encoded zero-arg initialize() call is
+    // the third, and it is NON-empty: the ported proxies reject '0x'.
+    expect(fake.proxyConstructorArgs?.[2]).toBe(
+      new Interface(zeroInitAbi as never).encodeFunctionData('initialize', []),
+    );
+    expect(fake.proxyConstructorArgs?.[2]).not.toBe('0x');
+  });
+
+  it('an omitted initializer refuses by name when the ABI has NO initialize() — nothing deploys', async () => {
+    // Upstream would deploy UNINITIALIZED here (`allowNoInitialization` →
+    // '0x'); the ported proxies reject empty init data, so absence of the
+    // default initializer is where the empty-data refusal belongs.
+    const noInitAbi = [
+      {
+        type: 'function',
+        name: 'store',
+        inputs: [{ name: 'v', type: 'uint256' }],
+        outputs: [],
+        stateMutability: 'nonpayable',
+      },
+    ];
+    const fake = buildFake();
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({ abi: noInitAbi }), []),
+    ).rejects.toBeInstanceOf(EmptyInitializerRefusedError);
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('queue');
+  });
+
   it('initialOwner reaches the transparent proxy constructor args', async () => {
     const fake = buildFake({ resolved: { initialOwner: OWNER_BASE58 } });
     await runDeployProxy(fake.context, fakeAbstraction({}), [42]);

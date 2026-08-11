@@ -611,22 +611,37 @@ export function engineValidationOptions(
 }
 
 /**
- * The `initializer` rule, mirroring
- * `plugin-truffle/src/utils/initializer-data.ts:getInitializerData`.
+ * The `initializer` rule, mirroring the parity target's TRY-FIRST semantics —
+ * `getInitializerData`, identical in the truffle and hardhat plugins and
+ * re-verified in the sibling port's
+ * `hardhat-tron-upgrades/dist/utils/initializer-data.js`: `false` means no
+ * initialization; a name means call it; OMITTED means try `'initialize'`.
+ * Whether the contract HAS one is the ABI's decision at encode time
+ * (`proxy/toolkit.ts:encodeInitializer` refuses by name when the fragment is
+ * absent) — never the argument count's, which is the rule this function once
+ * got wrong: `resolveInitializer(undefined, 0)` answered `{ kind: 'none' }`
+ * and had `deployProxy` refuse contracts whose zero-argument `initialize()`
+ * was sitting right there in the ABI.
  *
- * `false` means no initialization; a name means call it; omitted means call
- * `'initialize'` unless there are no arguments, in which case there is nothing to
- * initialize with. The result is a discriminated union rather than a nullable
- * string, so a caller cannot read "no initialization" as "call `undefined`".
+ * `argCount` mirrors the parity target's `args` input, whose ONLY decision
+ * power there is `allowNoInitialization` — omitted initializer, zero args
+ * and an ABSENT fragment deploy UNINITIALIZED (`'0x'`) upstream — and that
+ * is precisely the arm the ported proxies' empty-data rejection forecloses
+ * on TRON (they revert on `'0x'`; upstream's ERC1967Proxy accepts it). So
+ * the parameter no longer decides anything; it stays because the surface's
+ * shape mirrors the input upstream reads, and dropping it is an API break
+ * with nothing bought.
+ *
+ * The result is a discriminated union rather than a nullable string, so a
+ * caller cannot read "no initialization" as "call `undefined`".
  */
 export function resolveInitializer(
   initializer: string | false | undefined,
   argCount: number,
 ): InitializerResolution {
+  void argCount;
   if (initializer === undefined) {
-    return argCount === 0
-      ? { kind: 'none' }
-      : { kind: 'call', fn: DEFAULT_INITIALIZER };
+    return { kind: 'call', fn: DEFAULT_INITIALIZER };
   }
   const validated = validateInitializer(initializer);
   return validated === false
