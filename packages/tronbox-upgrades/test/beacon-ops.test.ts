@@ -7,6 +7,10 @@ import {
 } from '../src/beacon';
 import { NothingToAdoptError } from '../src/adopt/errors';
 import { UpgradeVerificationFailedError } from '../src/proxy/errors';
+import {
+  assertNoCheatcodeCollision,
+  CheatcodeSlotCollisionError,
+} from '../src/deploy';
 import type {
   OperationContext,
   OperationToolkit,
@@ -31,6 +35,8 @@ interface Spec {
   readonly incompatible?: boolean;
   /** What the beacon answers after the upgrade call. */
   readonly observedAfterUpgrade?: string;
+  /** The implementation's constructor args — the cheatcode-guard tests override this. */
+  readonly constructorArgs?: readonly unknown[];
 }
 
 const ABI = [
@@ -134,7 +140,14 @@ function buildFake(spec: Spec = {}) {
       await deploy();
       return toTronHex(canonicalizeAddress(NEW_IMPL));
     },
-    hostDeploy: async (target: { contractName?: unknown }) => {
+    hostDeploy: async (
+      target: { contractName?: unknown },
+      args: readonly unknown[],
+    ) => {
+      // The real choke-point guard: this fixture must refuse exactly what
+      // the production `hostDeploy` refuses, so the tests below pin the
+      // choke point itself rather than a fake's approximation of it.
+      assertNoCheatcodeCollision(args);
       log.push(`hostDeploy:${String(target.contractName)}`);
       return {
         address: toTronHex(canonicalizeAddress(BEACON)),
@@ -165,7 +178,7 @@ function buildFake(spec: Spec = {}) {
   const resolved: ResolvedForProxyOps = {
     kind: undefined,
     initializer: undefined,
-    constructorArgs: [],
+    constructorArgs: spec.constructorArgs ?? [],
     redeployImplementation: 'onchange',
     unsafeAllowLinkedLibraries: false,
     unsafeSkipProxyAdminCheck: false,
@@ -187,6 +200,18 @@ describe('deployBeacon', () => {
     expect((result as { transaction?: { hash: string } }).transaction?.hash).toBe(
       'aa'.repeat(32),
     );
+  });
+
+  it('the cheatcode-slot shape refuses through hostDeploy — the beacon itself never deploys', async () => {
+    const fake = buildFake({ constructorArgs: [1, { overwrite: false }] });
+    await expect(
+      runDeployBeacon(fake.context, abstraction('Box')),
+    ).rejects.toBeInstanceOf(CheatcodeSlotCollisionError);
+    // No hostDeploy call completes at all — not the implementation's, and
+    // not the beacon's own, which never runs because the implementation
+    // deploy callback throws before returning.
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('confirm');
   });
 });
 
@@ -245,5 +270,15 @@ describe('upgradeBeacon', () => {
     await expect(
       runUpgradeBeacon(fake.context, BEACON, abstraction('BoxV2')),
     ).rejects.toBeInstanceOf(UpgradeVerificationFailedError);
+  });
+
+  it('the cheatcode-slot shape refuses through hostDeploy — no upgrade call is sent', async () => {
+    const fake = buildFake({ constructorArgs: [1, { overwrite: false }] });
+    await expect(
+      runUpgradeBeacon(fake.context, BEACON, abstraction('BoxV2')),
+    ).rejects.toBeInstanceOf(CheatcodeSlotCollisionError);
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('confirm');
+    expect(fake.log.some(e => e.startsWith('callThroughFacade'))).toBe(false);
   });
 });

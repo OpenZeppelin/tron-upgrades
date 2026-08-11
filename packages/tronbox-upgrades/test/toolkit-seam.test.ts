@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createOperationToolkit } from '../src/proxy/toolkit';
 import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
 import { UPGRADE_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/upgrade-proxy';
-import { LinkVerificationFailedError } from '../src/deploy';
+import { CheatcodeSlotCollisionError, LinkVerificationFailedError } from '../src/deploy';
 import { migrateShapedHandles } from './helpers/handles';
 
 /*
@@ -110,5 +110,37 @@ describe('hostDeploy verifies linking before it deploys (review §3 M4)', () => 
     await expect(
       context.toolkit.hostDeploy(abstraction as never, []),
     ).rejects.toThrow(LinkVerificationFailedError);
+  });
+});
+
+/*
+ * `hostDeploy` is also the single choke point for the cheatcode-collision
+ * guard (review M1): every operation's deploy funnels through it, so it is
+ * the one place a guard can protect `upgradeProxy`, `deployBeacon`,
+ * `upgradeBeacon`, `deployImplementation` and `prepareUpgrade` — none of
+ * which had a pre-queue guard of their own before this fix. The REAL toolkit
+ * is built here, exactly like the linking suite above, so this pins the
+ * choke point itself rather than a fake's approximation of it.
+ */
+describe('hostDeploy refuses a trailing plain-object argument before it deploys (review M1)', () => {
+  it('refuses before `.new()` is ever called, even with linking already satisfied', async () => {
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: shape.handles,
+      rawOptions: {},
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    const abstraction = {
+      contractName: 'Box',
+      binary: '0x60806040',
+      new: async (): Promise<never> => {
+        throw new Error('must not be reached');
+      },
+    };
+    await expect(
+      context.toolkit.hostDeploy(abstraction as never, [1, { overwrite: false }]),
+    ).rejects.toThrow(CheatcodeSlotCollisionError);
   });
 });

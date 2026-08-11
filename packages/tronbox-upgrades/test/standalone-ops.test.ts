@@ -15,6 +15,10 @@ import type {
 import { canonicalizeAddress } from '../src/record';
 import { toTronHex } from '../src/record/address';
 import type { ContractAbstraction } from '../src/environment';
+import {
+  assertNoCheatcodeCollision,
+  CheatcodeSlotCollisionError,
+} from '../src/deploy';
 
 /*
  * The standalone operations — the CI surface over a recording fake. The
@@ -33,6 +37,8 @@ interface Spec {
   readonly reuseImplementation?: boolean;
   readonly inferredKind?: 'transparent' | 'uups';
   readonly storedLayoutRefusal?: string;
+  /** The implementation's constructor args — the cheatcode-guard tests override this. */
+  readonly constructorArgs?: readonly unknown[];
 }
 
 function abstraction(name: string): ContractAbstraction {
@@ -139,7 +145,11 @@ function buildFake(spec: Spec = {}) {
       return toTronHex(canonicalizeAddress(IMPL));
     },
 
-    async hostDeploy(target) {
+    async hostDeploy(target, args) {
+      // The real choke-point guard: this fixture must refuse exactly what
+      // the production `hostDeploy` refuses, so the tests below pin the
+      // choke point itself rather than a fake's approximation of it.
+      assertNoCheatcodeCollision(args);
       log.push(
         `hostDeploy:${String((target as { contractName?: unknown }).contractName)}`,
       );
@@ -183,7 +193,7 @@ function buildFake(spec: Spec = {}) {
   const resolved: ResolvedForProxyOps = {
     kind: undefined,
     initializer: undefined,
-    constructorArgs: [],
+    constructorArgs: spec.constructorArgs ?? [],
     redeployImplementation: 'onchange',
     unsafeAllowLinkedLibraries: false,
     unsafeSkipProxyAdminCheck: false,
@@ -298,5 +308,23 @@ describe('deployImplementation and prepareUpgrade', () => {
       runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2')),
     ).rejects.toThrow('forceImport');
     expect(fake.log).not.toContain('queue');
+  });
+
+  it('deployImplementation: the cheatcode-slot shape refuses through hostDeploy, before confirm', async () => {
+    const fake = buildFake({ constructorArgs: [1, { overwrite: false }] });
+    await expect(
+      runDeployImplementation(fake.context, abstraction('Box')),
+    ).rejects.toBeInstanceOf(CheatcodeSlotCollisionError);
+    expect(fake.log.filter(e => e.startsWith('hostDeploy'))).toEqual([]);
+    expect(fake.log).not.toContain('confirm');
+  });
+
+  it('prepareUpgrade: the cheatcode-slot shape refuses through hostDeploy, before confirm', async () => {
+    const fake = buildFake({ constructorArgs: [1, { overwrite: false }] });
+    await expect(
+      runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2')),
+    ).rejects.toBeInstanceOf(CheatcodeSlotCollisionError);
+    expect(fake.log.filter(e => e.startsWith('hostDeploy'))).toEqual([]);
+    expect(fake.log).not.toContain('confirm');
   });
 });

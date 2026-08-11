@@ -162,21 +162,31 @@ export class StaleTransactionIdentityError extends DeploymentRefusedError {
 }
 
 /**
- * The final constructor argument is a plain object, which the host's deploy
- * action treats as a cheatcode slot and mutates — it destructures
- * `overwrite` off it and forwards the remainder, so the constructor would
- * receive a struct the caller never wrote.
+ * The final constructor argument is a plain object, and TronBox's contract
+ * layer treats a trailing non-array object as its own energy-parameter
+ * slot, never as part of the constructor call: `filterEnergyParameter`
+ * (`Contract/contract.js`, reached from the `abstraction.new(...)` this seam
+ * calls directly) pops the argument off the list entirely and mines it for
+ * the keys it recognizes (`feeLimit`, `originEnergyLimit`, and the rest of
+ * `constants.deployParameters`) — the constructor never sees the struct, and
+ * everything else in it is discarded. Usually this is a loud arity mismatch;
+ * it is silent exactly when the real constructor also expects that many
+ * arguments once the struct is gone.
  */
 export class CheatcodeSlotCollisionError extends DeploymentRefusedError {
   readonly code = 'cheatcode-slot-collision';
   constructor() {
     super(
       `The last constructor argument is a plain object, and TronBox treats a ` +
-        `trailing object as its own options slot: it strips \`overwrite\` and ` +
-        `passes the remainder to your constructor, silently altering the ` +
-        `argument. Wrap the struct so it is not the final argument — for ` +
-        `example, pass it as an array member or add a trailing dummy argument ` +
-        `— or restructure the constructor.`,
+        `trailing non-array object as its own energy-parameter slot: it pops ` +
+        `the argument off the constructor call entirely and mines it for the ` +
+        `deploy parameters it recognizes (fee limit, origin energy limit, and ` +
+        `the like) — your constructor never receives it, usually as a loud ` +
+        `arity mismatch, silently only when the real constructor happens to ` +
+        `expect that many arguments once the struct is gone. Wrap the struct ` +
+        `so it is not the final argument — for example, pass it as an array ` +
+        `member or add a trailing dummy argument — or restructure the ` +
+        `constructor.`,
     );
     this.name = 'CheatcodeSlotCollisionError';
   }

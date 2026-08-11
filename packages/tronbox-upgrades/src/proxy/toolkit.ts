@@ -40,6 +40,7 @@ import type { ProxyRecordVerdict, RecordSession } from '../record';
 import type { ValidationInput } from '../validation-input';
 import {
   assertFullyLinked,
+  assertNoCheatcodeCollision,
   confirmTransaction,
   resolveEffectiveSender,
   runThroughQueue,
@@ -692,6 +693,16 @@ export async function createOperationToolkit(request: {
         (abstraction as { bytecode?: string }).bytecode ??
         '';
       assertFullyLinked(deployableBytecode);
+      // The single choke point for the cheatcode-collision guard (review
+      // M1): every operation's deploy funnels through this call — `deploy-
+      // proxy.ts` also runs it pre-queue as a fail-fast for its own
+      // implementation deploy, but `upgradeProxy`, `deployBeacon`,
+      // `upgradeBeacon`, `deployImplementation` and `prepareUpgrade` had no
+      // guard of their own before this one, since their constructor args
+      // reach the host only from inside a queued step. Args this seam
+      // builds itself (proxy/beacon constructor args, always addresses and
+      // encoded call data — strings or `null`) can never trip it.
+      assertNoCheatcodeCollision(args);
       const instance = (await deployable.new(...args)) as {
         address?: unknown;
         transactionHash?: unknown;

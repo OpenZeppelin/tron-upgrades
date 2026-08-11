@@ -19,7 +19,11 @@ import {
 } from '../src/proxy/errors';
 import { PROXY_CONTRACT_NAMES } from '../src/proxy/artifacts';
 import { OptionValueError } from '../src/options';
-import { CheatcodeSlotCollisionError, DeployerAbsentError } from '../src/deploy';
+import {
+  assertNoCheatcodeCollision,
+  CheatcodeSlotCollisionError,
+  DeployerAbsentError,
+} from '../src/deploy';
 import { canonicalizeAddress, toBase58 } from '../src/record';
 import { toTronHex } from '../src/record/address';
 import { zeroChainAddress } from '../src/chain';
@@ -284,6 +288,11 @@ function buildFake(spec: FakeSpec = {}): Fake {
     },
 
     async hostDeploy(abstraction, args) {
+      // The real choke-point guard, not a fake stand-in: this fixture must
+      // refuse exactly what the production `hostDeploy` refuses, so the
+      // ordering tests below pin the choke point itself rather than a
+      // fake's approximation of it.
+      assertNoCheatcodeCollision(args);
       const contractName = String(
         (abstraction as { contractName?: unknown }).contractName,
       );
@@ -754,6 +763,24 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     // no half-queued operation behind.
     expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
     expect(fake.log).not.toContain('queue');
+    expect(fake.log.some(e => e.startsWith('sendUpgradeCall:'))).toBe(false);
+    expect(fake.log).not.toContain('recordProxy');
+  });
+
+  it('the cheatcode-slot shape refuses through hostDeploy — no deploy reaches the host', async () => {
+    // Unlike deployProxy, upgradeProxy has no pre-queue guard of its own: the
+    // implementation's constructor args reach the host only from inside the
+    // queued step, through `fetchOrDeployImplementation`'s deploy callback.
+    // The choke-point guard in `hostDeploy` is the only thing that can catch
+    // this shape here, so the refusal happens after `queue` is entered but
+    // before any hostDeploy call completes and before anything downstream
+    // of it runs.
+    const fake = buildFake({ constructorArgs: [1, { overwrite: false }] });
+    await expect(
+      runUpgradeProxy(fake.context, PROXY_ADDR, newImpl()),
+    ).rejects.toBeInstanceOf(CheatcodeSlotCollisionError);
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('confirm');
     expect(fake.log.some(e => e.startsWith('sendUpgradeCall:'))).toBe(false);
     expect(fake.log).not.toContain('recordProxy');
   });

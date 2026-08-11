@@ -232,8 +232,8 @@ describe('the bridge settles its own promise where a direct await would hang', (
 // the marshalling and staleness guards
 // ---------------------------------------------------------------------------
 
-describe('a trailing plain object is refused before the host can mutate it', () => {
-  it('refuses exactly the shape the host destructures', () => {
+describe('a trailing plain object is refused before the host can pop it off and discard it', () => {
+  it('refuses exactly the shape filterEnergyParameter pops off the argument list', () => {
     expect(() => assertNoCheatcodeCollision([1, 'a', { overwrite: false }])).toThrow(
       CheatcodeSlotCollisionError,
     );
