@@ -17,6 +17,7 @@ import type {
 import {
   BeaconProxyRefusedError,
   EmptyInitializerRefusedError,
+  ImplementationNotPreviouslyDeployedError,
   InitialOwnerUnsupportedKindError,
   NotTransparentProxyError,
   OptionsInArgsPositionError,
@@ -94,6 +95,13 @@ interface FakeSpec {
    * (now-removed) proxy-level reuse `runDeployProxy` used to short-circuit
    * on. Defaults to `false` — every other test in this file keeps exercising
    * the deploy path unchanged.
+   *
+   * Read together with `resolved.redeployImplementation`: `'never'` with
+   * this `false` (the default) is the empty-record case the fake refuses by
+   * name, exactly as the real gate does; `'never'` with this `true` is the
+   * already-recorded case, where the real gate never runs at all because the
+   * engine's own cache lookup returns before the wrapped `deploy` closure is
+   * reached.
    */
   readonly implementationReused?: boolean;
   /**
@@ -354,9 +362,23 @@ function buildFake(spec: FakeSpec = {}): Fake {
       return spec.looksLikeAdmin ?? false;
     },
 
-    async fetchOrDeployImplementation(_validated, _resolved, deploy) {
+    async fetchOrDeployImplementation(validated, resolvedOptions, deploy) {
       log.push('fetchOrDeployImplementation');
+      // Mirrors `proxy/toolkit.ts`'s real gate: `'always'` deploys
+      // unconditionally (upstream's `merge` argument forces a fresh deploy
+      // regardless of any cached entry), `'never'` never deploys and — when
+      // there is nothing recorded to reuse instead — refuses by name before
+      // `deploy()` (and therefore `hostDeploy`) is ever reached. `'onchange'`
+      // (the default) keeps this fake's original behavior: reuse when the
+      // spec says so, deploy otherwise.
+      if (resolvedOptions.redeployImplementation === 'always') {
+        await deploy();
+        return toTronHex(canonicalizeAddress(NEW_IMPL));
+      }
       if (!spec.implementationReused) {
+        if (resolvedOptions.redeployImplementation === 'never') {
+          throw new ImplementationNotPreviouslyDeployedError(validated.name);
+        }
         await deploy();
       }
       return toTronHex(canonicalizeAddress(NEW_IMPL));
@@ -921,6 +943,35 @@ describe('deployProxy — an interrupted confirmation, and what a re-run does ab
   });
 });
 
+describe("deployProxy — redeployImplementation: 'never'", () => {
+  it('refuses by name before any host spend when the implementation was not previously deployed — the proxy is never reached', async () => {
+    const fake = buildFake({ resolved: { redeployImplementation: 'never' } });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(ImplementationNotPreviouslyDeployedError);
+    // The implementation half is refused before the proxy half is ever
+    // attempted — zero hostDeploy entries, not merely "the implementation's
+    // is missing".
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('recordProxy');
+  });
+
+  it('proceeds using the recorded implementation address when one already exists, with no fresh implementation deploy', async () => {
+    const fake = buildFake({
+      implementationReused: true,
+      resolved: { redeployImplementation: 'never' },
+    });
+    const result = await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
+    // Only the proxy hostDeploys — the implementation's own is skipped,
+    // exactly as the already-recorded case for every other policy behaves.
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
+      'hostDeploy:TransparentUpgradeableProxy',
+    ]);
+    expect(fake.log).toContain('recordProxy');
+    expect(result.address).toBe(toTronHex(canonicalizeAddress(PROXY_ADDR)));
+  });
+});
+
 describe('deployProxy — the ProxyAdmin-as-owner refusal and its escape', () => {
   it('refuses by name when the resolved initialOwner looks like a ProxyAdmin contract', async () => {
     const fake = buildFake({
@@ -1231,6 +1282,42 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     expect(fake.log).not.toContain('confirm');
     expect(fake.log.some(e => e.startsWith('sendUpgradeCall:'))).toBe(false);
     expect(fake.log).not.toContain('recordProxy');
+  });
+
+  it("redeployImplementation: 'never' refuses by name before any host spend when the implementation was not previously deployed", async () => {
+    const fake = buildFake({ resolved: { redeployImplementation: 'never' } });
+    await expect(
+      runUpgradeProxy(fake.context, PROXY_ADDR, newImpl()),
+    ).rejects.toBeInstanceOf(ImplementationNotPreviouslyDeployedError);
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log.some(e => e.startsWith('sendUpgradeCall:'))).toBe(false);
+    expect(fake.log).not.toContain('confirm');
+    expect(fake.log).not.toContain('recordProxy');
+  });
+
+  it("redeployImplementation: 'never' proceeds using the recorded implementation address when one already exists, with no fresh deploy", async () => {
+    const fake = buildFake({
+      implementationReused: true,
+      resolved: { redeployImplementation: 'never' },
+    });
+    await runUpgradeProxy(fake.context, PROXY_ADDR, newImpl());
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log.some(e => e.startsWith('sendUpgradeCall:'))).toBe(true);
+  });
+
+  it("redeployImplementation: 'always' deploys a fresh implementation even when one is already recorded", async () => {
+    // Distinct from 'never'/'onchange': upstream's `merge` argument to
+    // `fetchOrDeployGetDeployment` forces a fresh deploy unconditionally, so
+    // `implementationReused` — every other policy's short-circuit — does not
+    // apply here.
+    const fake = buildFake({
+      implementationReused: true,
+      resolved: { redeployImplementation: 'always' },
+    });
+    await runUpgradeProxy(fake.context, PROXY_ADDR, newImpl());
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
+      'hostDeploy:Box',
+    ]);
   });
 });
 

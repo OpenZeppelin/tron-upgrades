@@ -103,6 +103,7 @@ export {
 export {
   BeaconProxyRefusedError,
   EmptyInitializerRefusedError,
+  ImplementationNotPreviouslyDeployedError,
   InitialOwnerUnsupportedKindError,
   NotTransparentProxyError,
   OptionsInArgsPositionError,

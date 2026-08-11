@@ -206,6 +206,45 @@ export class StaleProxyRecordError extends ProxyOperationRefusedError {
 }
 
 /**
+ * `redeployImplementation: 'never'` — including its deprecated spelling,
+ * `useDeployedImplementation: true` (collapsed into `'never'` before either
+ * reaches this class; see `options/resolve.ts:resolveRedeployMode`) — asks
+ * every consumer that reaches `fetchOrDeployImplementation` (`deployProxy`,
+ * `upgradeProxy`, the beacon and standalone operations) to reuse ONLY an
+ * implementation deployment already recorded for the exact contract version
+ * being validated, never a fresh one. There is no such record here, so the
+ * deploy this policy exists to forbid is refused before anything spends.
+ *
+ * Mirrors the parity target's own MECHANISM, not its class: Hardhat's
+ * `resolveImplementation` wraps the identical `deploy` callback handed to
+ * `fetchOrDeployGetDeployment` and throws from inside it — reached only when
+ * that call's own cache lookup found nothing to reuse
+ * (`hardhat-tron-upgrades/dist/utils/deploy-impl.js:18-23`: `"The
+ * implementation contract ${contractName} was not previously deployed on
+ * this network"`). `proxy/toolkit.ts`'s `fetchOrDeployImplementation` wraps
+ * that same callback the same way, so every one of its callers inherits this
+ * refusal with no per-operation copy — including `forceImport`'s adoption
+ * probe, which never reaches it in practice, because adoption always calls
+ * through with `'onchange'` then `'always'`, never the caller's own policy
+ * (`adopt/index.ts:runForceImport`).
+ */
+export class ImplementationNotPreviouslyDeployedError extends ProxyOperationRefusedError {
+  readonly code = 'implementation-not-previously-deployed';
+  constructor(readonly contractName: string) {
+    super(
+      `redeployImplementation: 'never' was set, but the implementation ` +
+        `contract ${contractName} was not previously deployed on this ` +
+        `network — there is no recorded deployment of this exact contract ` +
+        `version to reuse, so the fresh deploy this policy exists to forbid ` +
+        `was refused before anything spent. Deploy it once with ` +
+        `'onchange' or 'always' (or with the option omitted), or drop ` +
+        `'never' if a fresh deploy is acceptable here.`,
+    );
+    this.name = 'ImplementationNotPreviouslyDeployedError';
+  }
+}
+
+/**
  * `initialOwner` was supplied for a proxy kind that has no admin for it to
  * own: a UUPS proxy authorizes upgrades through the implementation itself,
  * so accepting the option would silently drop the one thing the caller asked

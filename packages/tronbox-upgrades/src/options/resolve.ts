@@ -345,8 +345,22 @@ const contradictions: readonly Contradiction[] = Object.freeze([
   },
   {
     options: ['useDeployedImplementation', 'redeployImplementation'],
+    /*
+     * Truthy, not merely present — mirroring the parity target's own check
+     * exactly, read off the installed sibling:
+     * `hardhat-tron-upgrades/dist/utils/deploy-impl.js:12`, `if
+     * (opts.useDeployedImplementation && opts.redeployImplementation !==
+     * undefined) throw ...`. An explicit `useDeployedImplementation: false`
+     * alongside a `redeployImplementation` value is NOT a contradiction
+     * there — `resolveRedeployMode` below lets the explicit
+     * `redeployImplementation` win over a falsy `useDeployedImplementation`
+     * silently, the same way upstream's own `mode = opts.redeployImplementation
+     * ?? (opts.useDeployedImplementation ? 'never' : 'onchange')` does. Using
+     * `!== undefined` here instead — the natural reading of "both supplied"
+     * — would refuse a combination upstream permits.
+     */
     holds: supplied =>
-      read(supplied, 'useDeployedImplementation') !== undefined &&
+      read(supplied, 'useDeployedImplementation') === true &&
       read(supplied, 'redeployImplementation') !== undefined,
     because:
       'They are two spellings of one policy, and useDeployedImplementation is ' +
@@ -532,8 +546,22 @@ function buildResolved(supplied: SuppliedOptions): ResolvedUpgradeOptions {
  * `useDeployedImplementation` does not survive resolution: it collapses into
  * `redeployImplementation` per the parity target's own stated equivalence
  * (*"@deprecated Use redeployImplementation = 'never' instead"*), so exactly one
- * field expresses the policy downstream. The two cannot both be set — that is
+ * field expresses the policy downstream. `useDeployedImplementation: true`
+ * alongside an explicit `redeployImplementation` cannot both be set — that is
  * the contradiction table's third entry, already refused by check step 3.
+ *
+ * **`useDeployedImplementation: false` alongside an explicit
+ * `redeployImplementation` is not refused, and this function is where that
+ * combination's winner is decided: the explicit `redeployImplementation`
+ * wins silently, read off first and returned immediately below, exactly
+ * mirroring the parity target's own precedence (`mode =
+ * opts.redeployImplementation ?? (opts.useDeployedImplementation ? 'never' :
+ * 'onchange')`, `hardhat-tron-upgrades/dist/utils/deploy-impl.js:17` — the
+ * nullish-coalesce means a defined `redeployImplementation` is read before
+ * `useDeployedImplementation` is even consulted).** A falsy
+ * `useDeployedImplementation` is otherwise inert here — it never reaches
+ * `'never'` on its own, and it does not revoke or narrow whatever
+ * `redeployImplementation` says.
  */
 function resolveRedeployMode(supplied: SuppliedOptions): RedeployMode {
   const explicit = readRedeployMode(supplied);

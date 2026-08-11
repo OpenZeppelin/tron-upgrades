@@ -744,6 +744,29 @@ describe('a contradiction between two channels expressing one allowance is refus
     }
   });
 
+  it("useDeployedImplementation: false alongside redeployImplementation is NOT a contradiction — only a truthy useDeployedImplementation is", () => {
+    /*
+     * Read directly off the parity target
+     * (`hardhat-tron-upgrades/dist/utils/deploy-impl.js:12`):
+     * `if (opts.useDeployedImplementation && opts.redeployImplementation !==
+     * undefined) throw ...` — a truthiness check, not a presence check. An
+     * explicit `useDeployedImplementation: false` alongside any
+     * `redeployImplementation` value does NOT throw upstream; `mode =
+     * opts.redeployImplementation ?? (opts.useDeployedImplementation ? 'never'
+     * : 'onchange')` then lets the explicit `redeployImplementation` win
+     * regardless. `useDeployedImplementation: true` alongside
+     * `redeployImplementation` is the one combination that still throws,
+     * pinned separately above.
+     */
+    for (const redeployImplementation of ['always', 'onchange', 'never'] as const) {
+      const resolved = resolveAsJavaScriptCaller(
+        { useDeployedImplementation: false, redeployImplementation },
+        UPGRADE_OPTION_KEYS,
+      );
+      expect(resolved.redeployImplementation).toBe(redeployImplementation);
+    }
+  });
+
   it('collapses the deprecated spelling into one field once it is the only one set', () => {
     // `useDeployedImplementation: true` is the parity target's own stated
     // equivalent of `redeployImplementation: 'never'`, so exactly one field

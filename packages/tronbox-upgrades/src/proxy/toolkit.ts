@@ -53,7 +53,11 @@ import {
 } from '../deploy';
 import { Interface } from 'ethers';
 import { requireProxyArtifact } from './artifacts';
-import { EmptyInitializerRefusedError, OptionsInArgsPositionError } from './errors';
+import {
+  EmptyInitializerRefusedError,
+  ImplementationNotPreviouslyDeployedError,
+  OptionsInArgsPositionError,
+} from './errors';
 import type { UpgradeOptions } from '../options/types';
 import { captureEngineWarnings } from '../output/engine';
 
@@ -690,6 +694,23 @@ export async function createOperationToolkit(request: {
           validated.version as never,
           requireChain().provider as never,
           async () => {
+            // The `'never'` gate, at the single choke point every consumer of
+            // this method shares (`deployProxy`, `upgradeProxy`, the beacon
+            // and standalone operations, and — inertly — `forceImport`'s
+            // adoption probe, which always overrides this field before
+            // calling in). This callback is `engine.fetchOrDeployGetDeployment`'s
+            // OWN `deploy` argument, invoked only after ITS cache lookup
+            // already found nothing valid to reuse — so a genuinely
+            // recorded implementation for this exact version is fetched and
+            // returned above this closure, never reaching it, and the throw
+            // below happens before any host spend. Mirrors the parity
+            // target's mechanism, not its class: see
+            // `ImplementationNotPreviouslyDeployedError`'s own doc comment
+            // for the read `hardhat-tron-upgrades` source this wraps the
+            // same way.
+            if (resolvedOptions.redeployImplementation === 'never') {
+              throw new ImplementationNotPreviouslyDeployedError(validated.name);
+            }
             const writeBack = await deploy();
             return {
               address: writeBack.address,
