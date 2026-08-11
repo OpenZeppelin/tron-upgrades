@@ -74,7 +74,11 @@ function freshCandidateProject() {
   });
 }
 
-/** 1 — outside `SUPPORTED_SOLC`, decided before any file is touched. */
+/**
+ * 1 — outside `SUPPORTED_SOLC`. Decided right after the artifact record is
+ * inspected, but before `resolveSourceGraph` reads anything off disk — so
+ * this driver needs no filesystem lever.
+ */
 async function driveCompilerUnsupported(): Promise<ValidationInputOutcome> {
   const project = ladderProject({ resolvedVersion: '0.7.6' });
   return deriveValidationInput({
@@ -166,10 +170,11 @@ async function driveBuildRecordStale(): Promise<ValidationInputOutcome> {
 const OVERLONG_LIBRARY_NAME = 'L'.repeat(40);
 
 interface MutableCreationBytecode {
-  linkReferences: Record<string, Record<string, unknown>>;
+  readonly object: string;
+  readonly linkReferences: Record<string, Record<string, unknown>>;
 }
 interface MutableRecordEntry {
-  readonly evm: { readonly bytecode: MutableCreationBytecode };
+  readonly evm: { bytecode: MutableCreationBytecode };
 }
 interface MutableRecordOutput {
   readonly contracts: Record<string, Record<string, MutableRecordEntry>>;
@@ -184,8 +189,22 @@ interface MutableRecordOutput {
  * one is a property of what the verified record's `linkReferences` names, so a
  * record that verifies exactly as `freshCandidateProject`'s own artifact expects
  * is built first, and only its creation bytecode's `linkReferences` — never its
- * `deployedBytecode`, which is what freshness verifies against — is overwritten
+ * `deployedBytecode`, which is what freshness verifies against — is changed
  * afterward. `libraryNameBand` reads nothing else off the entry.
+ *
+ * **The rewrite REPLACES `entry.evm.bytecode` rather than mutating its
+ * `linkReferences` field in place, and that is load-bearing, not stylistic.**
+ * `buildRecord` (`ladder-fixtures.ts`) builds `evm.bytecode` as
+ * `{ bytecode: entry.evm.bytecode }` — the corpus compile's own bytecode object,
+ * copied by *reference*, not cloned — and that object lives inside
+ * `ladderCorpus()`'s module-level cache, shared by every driver and every test
+ * in this file that reads pair `append`/`astOnly`/`before` again. An in-place
+ * `entry.evm.bytecode.linkReferences = {...}` would therefore reach through
+ * this one record into the cached corpus itself and poison it for every
+ * subsequent reader — masked only by this driver running last and by vitest's
+ * per-file isolation, i.e. invisible until either changes. Spreading into a new
+ * object leaves the cached original untouched; only this record's own (fresh,
+ * `buildRecord`-constructed) entry object points at the replacement.
  */
 async function driveLibraryNameUnsupported(): Promise<ValidationInputOutcome> {
   const project = freshCandidateProject();
@@ -199,14 +218,35 @@ async function driveLibraryNameUnsupported(): Promise<ValidationInputOutcome> {
   if (entry === undefined) {
     throw new Error(`the fixture record carries no ${SOURCE_KEY}:${CONTRACT}`);
   }
-  entry.evm.bytecode.linkReferences = {
-    [SOURCE_KEY]: { [OVERLONG_LIBRARY_NAME]: [{ start: 0, length: 20 }] },
+  entry.evm.bytecode = {
+    ...entry.evm.bytecode,
+    linkReferences: {
+      [SOURCE_KEY]: { [OVERLONG_LIBRARY_NAME]: [{ start: 0, length: 20 }] },
+    },
   };
   return deriveValidationInput({
     contract: CONTRACT,
     env: project.env,
     deps: ladderDeps(project, { readBuildInfo: buildInfoReader([record]) }),
   });
+}
+
+/**
+ * The pristine pair's `linkReferences`, read straight off `ladderCorpus()`'s
+ * own cached object rather than off anything `buildRecord` produced — the
+ * regression guard for the hazard `driveLibraryNameUnsupported`'s own comment
+ * documents. Cast the same way that driver does, for the same reason: the
+ * corpus's `output` is typed as upstream's `SolcOutput`, not as the narrowed
+ * shape this file's fixtures actually build.
+ */
+function creationLinkReferences(): Record<string, Record<string, unknown>> {
+  const output = corpusCompile(PAIR_ID, 'astOnly', SIDE)
+    .output as unknown as MutableRecordOutput;
+  const entry = output.contracts[SOURCE_KEY]?.[CONTRACT];
+  if (entry === undefined) {
+    throw new Error(`the corpus carries no ${SOURCE_KEY}:${CONTRACT}`);
+  }
+  return entry.evm.bytecode.linkReferences;
 }
 
 const drivers: Record<Cause['kind'], () => Promise<ValidationInputOutcome>> = {
@@ -251,4 +291,21 @@ describe('every refusal cause, driven through deriveValidationInput itself', () 
       expect(diagnosis.remedy).toContain(REMEDY_NAMES[kind]);
     },
   );
+
+  it('does not poison the shared corpus cache when it rewrites link references', async () => {
+    // Independent of whatever order the `it.each` rows above ran in: drive the
+    // one cause that rewrites a bytecode field, itself, and require the
+    // module-level corpus singleton every driver in this file reads to come
+    // back byte-for-byte unchanged — not merely "still parses" or "still has
+    // no library named `OVERLONG_LIBRARY_NAME`", which a shallow-cloned
+    // sibling field could satisfy while the shared object was still replaced
+    // underneath it.
+    const before = creationLinkReferences();
+    expect(before).toEqual({});
+
+    await driveLibraryNameUnsupported();
+
+    expect(creationLinkReferences()).toEqual({});
+    expect(creationLinkReferences()).toBe(before);
+  });
 });
