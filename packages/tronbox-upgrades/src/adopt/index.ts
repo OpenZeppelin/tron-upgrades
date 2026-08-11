@@ -18,6 +18,7 @@ import {
   createOperationToolkit,
   handlesFrom,
   HANDLE_OPTION_KEYS,
+  readWriteBackHash,
   type OperationContext,
   type RawOperationOptions,
 } from '../proxy/toolkit';
@@ -151,11 +152,30 @@ export async function runForceImport(
         'this is a bug in @openzeppelin/tronbox-upgrades, please report it',
     );
   }
-  await toolkit.session.addImplRecord({
-    versionKey,
-    address: canonicalizeAddress(implementationAddress),
-    layout: validated.layout,
+  const implementation = canonicalizeAddress(implementationAddress);
+  const simulatedDeploy = async () => ({
+    address: implementation,
+    // An externally deployed contract may have no host write-back hash. The
+    // engine accepts that shape and validates the already-live bytecode.
+    transactionHash: readWriteBackHash(contract) ?? (undefined as never),
   });
+
+  // Probe with normal reuse first: an exact replay returns the recorded address
+  // without writing. If this version is recorded at another live address, make a
+  // second engine call in merge mode so its own address-union and layout-preserving
+  // semantics own the manifest update.
+  const recorded = await toolkit.fetchOrDeployImplementation(
+    validated,
+    { ...resolved, redeployImplementation: 'onchange' },
+    simulatedDeploy,
+  );
+  if (canonicalizeAddress(recorded) !== implementation) {
+    await toolkit.fetchOrDeployImplementation(
+      validated,
+      { ...resolved, redeployImplementation: 'always' },
+      simulatedDeploy,
+    );
+  }
 
   return Object.freeze({
     kind: found,

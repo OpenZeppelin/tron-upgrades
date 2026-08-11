@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs/promises';
+import { mkdtempSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { afterAll, describe, expect, it } from 'vitest';
 
 import { runForceImport } from '../src/adopt';
 import {
@@ -15,6 +20,22 @@ import { canonicalizeAddress } from '../src/record';
 import { toTronHex } from '../src/record/address';
 import { zeroChainAddress } from '../src/chain';
 import type { ContractAbstraction } from '../src/environment';
+
+const RECORD_DIR = mkdtempSync(path.join(os.tmpdir(), 'tron-force-import-'));
+const PREVIOUS_MANIFEST_DIR = process.env['MANIFEST_DEFAULT_DIR'];
+process.env['MANIFEST_DEFAULT_DIR'] = RECORD_DIR;
+
+afterAll(async () => {
+  try {
+    if (PREVIOUS_MANIFEST_DIR === undefined) {
+      delete process.env['MANIFEST_DEFAULT_DIR'];
+    } else {
+      process.env['MANIFEST_DEFAULT_DIR'] = PREVIOUS_MANIFEST_DIR;
+    }
+  } finally {
+    await fs.rm(RECORD_DIR, { recursive: true, force: true });
+  }
+});
 
 /*
  * Adoption (forceImport) over a recording fake. The failure mode here is a
@@ -37,15 +58,77 @@ interface Spec {
   readonly onChainCode?: string;
   readonly existingProxyKind?: 'transparent' | 'uups';
   readonly kind?: 'transparent' | 'uups' | 'beacon';
+  readonly layout?: unknown;
+  /** Enables the installed engine and a real manifest behind the recording fake. */
+  readonly engineChainId?: string;
 }
 
-function abstraction(deployedBytecode: string | undefined): ContractAbstraction {
+function abstraction(
+  deployedBytecode: string | undefined,
+  transactionHash?: string,
+): ContractAbstraction {
   return {
     contractName: 'Box',
     abi: [],
     bytecode: '0x60806040',
     deployedBytecode,
+    transactionHash,
   } as unknown as ContractAbstraction;
+}
+
+function engineProvider(chainId: string, code = CODE) {
+  return {
+    async send(method: string): Promise<unknown> {
+      switch (method) {
+        case 'eth_chainId':
+          return chainId;
+        case 'eth_getCode':
+          return code;
+        case 'eth_getTransactionByHash':
+          return {};
+        case 'eth_getTransactionReceipt':
+          return { status: '0x1' };
+        case 'web3_clientVersion':
+          return 'TronBox/Test';
+        case 'anvil_metadata':
+        case 'hardhat_metadata':
+          throw new Error(`${method} is unavailable`);
+        default:
+          throw new Error(`unexpected engine RPC ${method}`);
+      }
+    },
+  };
+}
+
+async function manifestFor(chainId: string) {
+  const { Manifest } = await import('@openzeppelin/upgrades-core');
+  return new Manifest(Number.parseInt(chainId.slice(2), 16));
+}
+
+async function implementationRecord(chainId: string) {
+  const data = await (await manifestFor(chainId)).read();
+  return data.impls['vkey'];
+}
+
+async function writeEngineDeployment(
+  chainId: string,
+  address: string,
+  transactionHash: string | undefined,
+  layout: unknown,
+): Promise<void> {
+  const engine = await import('@openzeppelin/upgrades-core');
+  await engine.fetchOrDeployGetDeployment(
+    { linkedWithoutMetadata: 'vkey' } as never,
+    engineProvider(chainId) as never,
+    async () =>
+      ({
+        address,
+        txHash: transactionHash,
+        layout,
+      }) as never,
+    {},
+    false,
+  );
 }
 
 function buildFake(spec: Spec = {}) {
@@ -69,9 +152,6 @@ function buildFake(spec: Spec = {}) {
         return spec.existingProxyKind !== undefined
           ? ({ kind: spec.existingProxyKind } as never)
           : undefined;
-      },
-      addImplRecord: async (record: { versionKey: string }) => {
-        writes.push(`impl:${record.versionKey}`);
       },
     } as never,
     chain: {
@@ -110,7 +190,7 @@ function buildFake(spec: Spec = {}) {
         input: {} as never,
         validations: {},
         version: { linkedWithoutMetadata: 'vkey' },
-        layout: { of: name },
+        layout: spec.layout ?? { of: name },
         encodedArgs: '0x',
       };
     },
@@ -135,9 +215,39 @@ function buildFake(spec: Spec = {}) {
     },
     ownerOf: async () => null,
     inferKind: async () => 'uups' as const,
-    fetchOrDeployImplementation: async () => {
+    fetchOrDeployImplementation: async (
+      validated: Parameters<
+        OperationToolkit['fetchOrDeployImplementation']
+      >[0],
+      resolvedOptions: Parameters<
+        OperationToolkit['fetchOrDeployImplementation']
+      >[1],
+      deploy: Parameters<
+        OperationToolkit['fetchOrDeployImplementation']
+      >[2],
+    ) => {
       log.push('fetchOrDeployImplementation');
-      return IMPL;
+      if (spec.engineChainId !== undefined) {
+        const engine = await import('@openzeppelin/upgrades-core');
+        const deployment = await engine.fetchOrDeployGetDeployment(
+          validated.version as never,
+          engineProvider(spec.engineChainId) as never,
+          async () => {
+            const writeBack = await deploy();
+            return {
+              address: writeBack.address,
+              txHash: writeBack.transactionHash,
+              layout: validated.layout,
+            } as never;
+          },
+          {},
+          resolvedOptions.redeployImplementation === 'always',
+        );
+        return deployment.address;
+      }
+      const writeBack = await deploy();
+      writes.push('impl:vkey');
+      return writeBack.address;
     },
     hostDeploy: async () => {
       log.push('hostDeploy');
@@ -262,8 +372,7 @@ describe('replay preserves the baseline, and adoption sends nothing', () => {
   it('an identical replay writes no second proxy record (scenario 7)', async () => {
     const fake = buildFake({ ...TRANSPARENT, existingProxyKind: 'transparent' });
     await runForceImport(fake.context, ADDR, abstraction(CODE));
-    // The impl write remains — its merge semantics keep the baseline — but no
-    // proxy record is appended.
+    // The engine reuses the implementation record without appending a proxy record.
     expect(fake.writes).toEqual(['impl:vkey']);
   });
 
@@ -283,9 +392,87 @@ describe('replay preserves the baseline, and adoption sends nothing', () => {
     ] as Spec[]) {
       const fake = buildFake(spec);
       await runForceImport(fake.context, ADDR, abstraction(CODE));
-      for (const banned of ['queue', 'hostDeploy', 'sendUpgradeCall', 'confirm', 'requireDeployer', 'fetchOrDeployImplementation']) {
+      expect(fake.log).toContain('fetchOrDeployImplementation');
+      for (const banned of ['queue', 'hostDeploy', 'sendUpgradeCall', 'confirm', 'requireDeployer']) {
         expect(fake.log).not.toContain(banned);
       }
     }
+  });
+});
+
+describe('adoption delegates implementation records to the engine', () => {
+  it('writes the same implementation entry as an engine-routed deployment', async () => {
+    const deployedChain = '0x7f1701';
+    const adoptedChain = '0x7f1702';
+    const address = canonicalizeAddress(ADDR);
+    const transactionHash = `0x${'17'.repeat(32)}`;
+    const layout = { of: 'Box' };
+
+    await writeEngineDeployment(
+      deployedChain,
+      address,
+      transactionHash,
+      layout,
+    );
+    const adopted = buildFake({ engineChainId: adoptedChain });
+    await runForceImport(
+      adopted.context,
+      address,
+      abstraction(CODE, transactionHash),
+    );
+
+    expect(JSON.stringify(await implementationRecord(adoptedChain))).toBe(
+      JSON.stringify(await implementationRecord(deployedChain)),
+    );
+  });
+
+  it('leaves the implementation entry byte-for-byte unchanged on replay', async () => {
+    const chainId = '0x7f1703';
+    const fake = buildFake({ engineChainId: chainId });
+
+    await runForceImport(fake.context, ADDR, abstraction(CODE));
+    const before = JSON.stringify(await implementationRecord(chainId));
+    await runForceImport(fake.context, ADDR, abstraction(CODE));
+
+    expect(JSON.stringify(await implementationRecord(chainId))).toBe(before);
+  });
+
+  it('unions a second address for the same version into allAddresses', async () => {
+    const chainId = '0x7f1704';
+    const fake = buildFake({ engineChainId: chainId });
+    const first = canonicalizeAddress(ADDR);
+    const second = canonicalizeAddress(IMPL);
+
+    await runForceImport(fake.context, first, abstraction(CODE));
+    await runForceImport(fake.context, second, abstraction(CODE));
+
+    expect(await implementationRecord(chainId)).toEqual({
+      address: first,
+      layout: { of: 'Box' },
+      allAddresses: [first, second],
+    });
+  });
+
+  it('preserves the recorded layout when another address has the same version', async () => {
+    const chainId = '0x7f1705';
+    const first = canonicalizeAddress(ADDR);
+    const second = canonicalizeAddress(IMPL);
+
+    await runForceImport(
+      buildFake({ engineChainId: chainId, layout: { of: 'baseline' } }).context,
+      first,
+      abstraction(CODE),
+    );
+    await runForceImport(
+      buildFake({ engineChainId: chainId, layout: { of: 'challenger' } }).context,
+      second,
+      abstraction(CODE),
+    );
+
+    expect(await implementationRecord(chainId)).toEqual({
+      address: first,
+      layout: { of: 'baseline' },
+      allAddresses: [first, second],
+    });
   });
 });
