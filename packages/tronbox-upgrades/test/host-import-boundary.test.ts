@@ -97,19 +97,12 @@ function externalSpecifiers(): readonly string[] {
 }
 
 /**
- * The one module this boundary's `createRequire` ban exempts, resolved
- * rather than hand-written, so a rename fails loudly instead of leaving the
- * compensating assertions ranging over `undefined`.
- */
-const PERMITTED_LOADER = path.join('validation-input', 'compiler.ts');
-
-/**
  * A resolver call rendered for an equality assertion: where it is, what it is
  * invoked through, and what the **checker** says each argument is.
  *
  * Deliberately carries no line number. The value of this row is that it is stable
- * across every edit that does not change the resolver's reach — a line number would
- * make it churn on any edit above `loadCompiler` and train the next reader to update
+ * across every edit that does not change a resolver's reach — a line number would
+ * make it churn on any surrounding edit and train the next reader to update
  * the expectation without reading it.
  */
 function renderResolverCall(site: ResolverCallSite): string {
@@ -117,19 +110,6 @@ function renderResolverCall(site: ResolverCallSite): string {
     .map(argument => `${argument.text}: ${argument.type}`)
     .join(', ');
   return `${site.relative}: ${site.callee}(${args})`;
-}
-
-function loaderSource(): ScannedSource {
-  const found = allSources().find(
-    source => source.relative === PERMITTED_LOADER,
-  );
-  if (found === undefined) {
-    throw new Error(
-      `${PERMITTED_LOADER} is missing: this boundary's one createRequire exemption has ` +
-        'no subject, so the assertions bounding it would be vacuous.',
-    );
-  }
-  return found;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,17 +170,6 @@ describe('no module in the plugin imports the host, by any path', () => {
       `environment${path.sep}ambiguity.ts: node:path (import)`,
       `environment${path.sep}artifacts.ts: node:path (import)`,
       `environment${path.sep}paths.ts: node:path (import)`,
-      // Added by the validation ladder, and the row is the *reason* its own
-      // `node:module` row below is safe. `soljson-path.ts` is where the seam took
-      // ownership of the host's `~/.tronbox/{solc,evm-solc}/soljson_v<version>.js`
-      // convention, and `node:path` is all it needs: the home directory arrives as an
-      // argument, because `node:os` is forbidden seam-wide
-      // (`test/performance-and-reuse.test.ts:129-130`, `:684-687`) and the
-      // seam's purity invariant makes the seam a function of its arguments
-      // alone (`:441`). What it returns is an `AbsolutePath`, and the
-      // AbsolutePath brand invariant is what the loader's clause 3 below reads
-      // as provenance.
-      `environment${path.sep}soljson-path.ts: node:path (import)`,
       // Added by the option/result surface. These two rows are also read off
       // the same directory-rule scan: `src/options/**` may import
       // `@openzeppelin/upgrades-core` and nothing else, while `src/output/**`
@@ -217,9 +186,9 @@ describe('no module in the plugin imports the host, by any path', () => {
       // below records the row as the second sanctioned runtime route beside
       // record/manifest.ts). `ethers` is static on purpose: it is the same
       // runtime peer the record layer already carries, and a constructed
-      // require here would have widened the one site the loader clause below
-      // permits — measured, when this suite refused exactly that shape on the
-      // toolkit's first run.
+      // require here would have violated the createRequire ban below — which
+      // now has zero exemptions — measured, when this suite refused exactly
+      // that shape on the toolkit's first run.
       `proxy${path.sep}toolkit.ts: @openzeppelin/upgrades-core (dynamic-import)`,
       `proxy${path.sep}toolkit.ts: ethers (import)`,
       `proxy${path.sep}upgrade-proxy.ts: ethers (import)`,
@@ -270,43 +239,29 @@ describe('no module in the plugin imports the host, by any path', () => {
       `record${path.sep}sidecar.ts: node:fs/promises (import)`,
       `record${path.sep}sidecar.ts: node:path (import)`,
       `record${path.sep}types.ts: @openzeppelin/upgrades-core (import)`,
-      // Added by the validation ladder — seven rows, additive, nothing removed
-      // and nothing loosened. Read as a directory rule the way the
-      // option/result surface's rows are:
+      // The validation pipeline's rows — read as a directory rule the way the
+      // option/result surface's rows are. Two rows this list used to carry are
+      // gone with the embedded compiler (the Foundry-model decision,
+      // 2026-08-07), and their absence is load-bearing: `node:module` in
+      // `validation-input/compiler.ts` was the package's ONE `createRequire`
+      // exemption, and `node:os` in `pipeline.ts` was its one ambient-machine
+      // read (the `~/.tronbox` cache's home directory). Neither has a reason
+      // to exist in a pipeline that never loads a compiler, so the ban on the
+      // require-constructing primitive below is back to universal — zero
+      // exemptions — and this pin is what keeps either row from returning
+      // unnoticed.
       //
-      // - **`node:module` in `validation-input/compiler.ts` is the whole package's
-      //   only one, and it is the `createRequire` exemption's other half.** The ban
-      //   on the primitive is amended for that file alone; the two blocks that pay for
-      //   the amendment are titled, each on one line so a grep finds it:
-      //
-      //   "bounds where the one permitted constructed require can point"
-      //   "bounds the type of what the one permitted constructed require is invoked with"
-      //
-      //   This row is what makes the amendment auditable from the import side, because
-      //   a second module reaching for `node:module` fails here whether or not it
-      //   names `createRequire`.
-      // - **`node:os` in `pipeline.ts` is the only ambient-machine read in the
-      //   validation ladder**, and it sits in the module that already owns the
-      //   directory's injectable host surface (`exists`, `readSource`,
-      //   `loadCompiler`). It is *not* in the seam and must not move there:
-      //   `test/performance-and-reuse.test.ts:129-130` names `os` in the
-      //   directory-rule scan's forbidden list and `:684-687` excludes it from
-      //   the permitted set recorded there. `src/environment/soljson-path.ts`
-      //   owns the `~/.tronbox` convention and takes the home directory as an
-      //   argument for exactly that reason.
       // - **`node:fs` in `pipeline.ts` is the second importer in the package**, and
       //   the assertion that used to count them lives in its own block below,
       //   scoped to the seam it was written about.
       // - `node:path` in `import-graph.ts` and `source-key.ts` is the
-      //   validation ladder's own path arithmetic; `@openzeppelin/upgrades-core`
+      //   validation pipeline's own path arithmetic; `@openzeppelin/upgrades-core`
       //   in `identity.ts` and
       //   `solc-input.ts` is the validation engine, a declared runtime dependency,
       //   and the type-only/runtime split of both is pinned below.
-      `validation-input${path.sep}compiler.ts: node:module (import)`,
       `validation-input${path.sep}identity.ts: @openzeppelin/upgrades-core (import)`,
       `validation-input${path.sep}import-graph.ts: node:path (import)`,
       `validation-input${path.sep}pipeline.ts: node:fs (import)`,
-      `validation-input${path.sep}pipeline.ts: node:os (import)`,
       `validation-input${path.sep}solc-input.ts: @openzeppelin/upgrades-core (import)`,
       `validation-input${path.sep}source-key.ts: node:path (import)`,
     ]);
@@ -461,70 +416,36 @@ describe('no module in the plugin imports the host, by any path', () => {
     }
   });
 
-  it('names no require-constructing primitive under src/, outside the one loader that pays for it', () => {
+  it('names no require-constructing primitive anywhere under src/', () => {
     /*
-     * The second half of completeness, **amended by the validation ladder for
-     * exactly one file, and instrumented rather than merely excused.**
+     * The second half of completeness — **a universal ban again, with the
+     * history of its one exemption kept because the exemption's removal is
+     * load-bearing.**
      *
-     * **The original ban's stated reason, with one correction it earned.**
-     * `createRequire` hands back a resolver rooted wherever the caller likes. The ban
-     * claimed that `module.createRequire(…)('tronbox/…')` *is* caught by the specifier
-     * pin above and that only `createRequire(…)(someName)` escapes it. **That was
-     * wrong, and fixture A in the non-vacuity block below measures it wrong rather
-     * than arguing it:** `recordSpecifierArgument` fires only for a callee spelled
-     * literally `require`, `require.resolve` or `import`, so a call through the
-     * *constructed* resolver is invisible to both the specifier pin and the
-     * dynamic-site check — whether its argument is a literal or a variable. Both
-     * halves of the hazard were outside the scan, not one, which makes the ban more
-     * load-bearing than its own comment claimed and the assertions replacing it
-     * correspondingly more so.
+     * **The ban's reason, corrected once and still true.** `createRequire`
+     * hands back a resolver rooted wherever the caller likes, and a call
+     * through the *constructed* resolver is invisible to both the specifier
+     * pin and the dynamic-site check — whether its argument is a literal or a
+     * variable (`recordSpecifierArgument` fires only for a callee spelled
+     * literally `require`, `require.resolve` or `import`; fixture A in the
+     * non-vacuity block below measures this rather than arguing it). So the
+     * property this boundary actually protects is **no module under `src/`
+     * can reach the host by a path the specifier scan cannot see**, and
+     * forbidding the primitive is a sound, cheap proxy for it while nothing
+     * legitimate needs the primitive.
      *
-     * So the property this boundary actually protects is **no module under `src/` can
-     * reach the host by a path the specifier scan cannot see**, and forbidding the
-     * primitive was a *proxy* for it: sound, cheap, and sound only while nothing
-     * legitimate needed the primitive.
-     *
-     * **Something legitimate now does.** `src/validation-input/compiler.ts` loads an
-     * emscripten `soljson_v<version>.js` out of the user's own `~/.tronbox` cache.
-     * There is no other route: the file is CommonJS, it is named at runtime, and the
-     * host's own resolution has three `process.exit(1)` sites, so calling the host is
-     * both forbidden by this invariant and fatal to the user's process. And the need
-     * will not age out — the compile path is now the **fallback** under a lazy
-     * ladder (compile when the host's build record is
-     * stale or absent, or when AST-only refuses on a shape that needs slot data), so
-     * the loader stays reachable rather than becoming dead code.
-     *
-     * **So the instrument is remade to measure the property instead of the proxy.**
-     * An allow-list entry on its own would be a *weakening*: for the exempted file
-     * the old ban's protection drops to exactly zero, and the ban has caught real
-     * leaks. The blocks below therefore give the exempted file positive assertions
-     * about **where its constructed require can point**, which the ban never provided
-     * for any file — one over the parse, one over the type-checker, and a non-vacuity
-     * block for each:
-     *
-     * "bounds where the one permitted constructed require can point"
-     * "bounds the type of what the one permitted constructed require is invoked with"
-     *
-     * Outside that file the ban is unchanged — and pinned as an *equality* rather than
-     * a filter, so a second exemption fails here instead of being absorbed.
-     *
-     * **The parse-level half is not sufficient on its own, and that is measured.**
-     * `AbsolutePath` on the loader's parameter binds its *callers*; inside the body the
-     * resolver is a general CommonJS resolver, so a nested binding shadowing the
-     * parameter at type `string` satisfies every text and identifier pin while erasing
-     * the brand. The type-checked block is what refuses it, and it is the only
-     * assertion in this file that does.
-     *
-     * **This follows the property-path exception's `_json` precedent, three
-     * days old.** That guard was a pattern over forbidden access chains;
-     * `_json` was added to it and, in the same pass,
-     * `test/trust-boundary.test.ts:443-500` recorded why the pattern could
-     * *not* simply be widened to `bytecode` / `source` / `sourcePath` — those are
-     * member names on the record the seam legitimately hands out, so a wider pattern
-     * would forbid the supported path along with the unsupported one. The answer
-     * there was to scope the instrument to where the hazard is and add a second,
-     * name-based clause (`ContractHandle`, `:477`). Same move here: the primitive is
-     * not the hazard, an unbounded *target* is.
+     * **For one span of this repository's history, something legitimate did.**
+     * `src/validation-input/compiler.ts` loaded an emscripten
+     * `soljson_v<version>.js` out of the user's own `~/.tronbox` cache, and
+     * this block carried a one-file exemption paid for by two compensating
+     * clause blocks bounding where that constructed require could point. The
+     * Foundry-model decision (2026-08-07) deleted the embedded compiler —
+     * validation reads the host's build record and never loads solc — so the
+     * exemption lost its subject and the ban is universal again. What remains
+     * of the compensating machinery is the type-checked sweep below
+     * ("sees no constructed require anywhere under src/"), kept because it
+     * catches the two shapes this identifier sweep cannot (a resolver under
+     * another name, and one constructed and invoked inline).
      *
      * `test/real-tronbox.test.ts` uses `createRequire` deliberately and is not
      * a subject: this boundary ranges over the plugin, and the test suite
@@ -546,185 +467,46 @@ describe('no module in the plugin imports the host, by any path', () => {
         : [`${source.relative}: ${named.join(', ')}`];
     });
 
-    // Exactly one row, and it names *which* primitive: `_load` and
-    // `_resolveFilename` stay forbidden in the exempted file too. They are
-    // `Module`'s private internals, they resolve against a caller-chosen parent, and
-    // nothing in the loader needs them — an exemption that admitted them would be
-    // wider than the need that bought it.
-    expect(namers).toEqual([`${PERMITTED_LOADER}: createRequire`]);
+    expect(namers).toEqual([]);
   });
 
-  it('bounds where the one permitted constructed require can point', () => {
-    // The compensating half. Each assertion below is something the ban asserted
-    // about *no* file, so together they are strictly stronger than the ban they
-    // replace — for the exempted file the ban's contribution was zero, and outside it
-    // the ban is intact.
-    const loader = loaderSource();
-
-    // 1 · Constructed once, and against this module's own file. `__filename` is the
-    //     plugin's own location, so the resolver's base is the plugin — not a
-    //     directory chosen from a config value, and not the host's tree.
-    expect(callSites([loader], 'createRequire').map(site => site.args)).toEqual([
-      ['__filename'],
-    ]);
-
-    // 2 · The binding invoked is the one `createRequire` produced, and its argument is
-    //     *spelled* the loader's own parameter — never a literal, never an expression
-    //     built inside the body. This is where the ban's protection starts being
-    //     replaced rather than dropped, because `runtimeRequire(x)` is invisible to
-    //     both the specifier pin and the dynamic-site check (measured in the
-    //     non-vacuity block below).
-    //
-    //     It does not *finish* the job, and the limit is worth stating precisely:
-    //     `callSites` matches a callee by name and reports its arguments as written, so
-    //     this clause reasons about spellings. A resolver under another name, or an
-    //     argument that is a different binding of the same name, both satisfy it —
-    //     clause 6 is what those fail.
-    //
-    //     The two `toContain`s are exact code text, not prose — the same instrument
-    //     this file's "passes the real errors.ts" block already uses on that module's
-    //     comment. Cited by name rather than by line because a line number inside the
-    //     file that holds it drifts on the next edit. `callSites` matches by callee
-    //     name, so tying the name to the construction is what makes the argument pin
-    //     mean anything at all.
-    expect(loader.text).toContain(
-      'const runtimeRequire = createRequire(__filename);',
-    );
-    expect(
-      callSites([loader], 'runtimeRequire').map(site => site.args),
-    ).toEqual([['soljsonPath']]);
-
-    // 3 · And the *declared parameter* is a **seam-minted** absolute path. The
-    //     AbsolutePath brand invariant makes `AbsolutePath` mintable only by
-    //     `assertAbsolutePath` in
-    //     `src/environment/paths.ts`, so the type is evidence of provenance: the
-    //     value was composed by `src/environment/soljson-path.ts` out of the host's
-    //     own `~/.tronbox` convention. A package name, a relative path or any
-    //     `string` is a compile error **at the call site** — which is the scope of what
-    //     this clause buys, and the scope the comment on `loadCompiler` used to
-    //     overstate. `tsc` enforces the signature; this pins that the signature is
-    //     still the one `tsc` is enforcing, because the *reason* it matters is
-    //     invisible from the signature alone. What the resolver is handed *inside* the
-    //     body is clause 6's subject, not this one's.
-    expect(loader.text).toContain(
-      'export function loadCompiler(soljsonPath: AbsolutePath): CompilerHandle {',
-    );
-    expect(
-      loader.importSpecifiers.filter(specifier => /paths$/.test(specifier)),
-      'the loader reaches for the brand minter instead of receiving a branded value',
-    ).toEqual([]);
-
-    // 4 · No string literal in the file names the host, in any of the shapes
-    //     `HOST_SPECIFIER` covers — bare name, subpath, the version-aliased install
-    //     names, a future `@tronbox/*` scope. Anchored, so the module's own refusal
-    //     text may still say "TronBox" while nothing may *begin* with it.
-    expect(
-      loader.stringLiterals.filter(literal => HOST_SPECIFIER.test(literal)),
-      'the loader holds a literal that names the host',
-    ).toEqual([]);
-
-    // 5 · And no literal other than the module's own import specifiers is
-    //     path-shaped, so there is no fragment of a filesystem path in the file to
-    //     assemble a specifier out of — `.tronbox/solc/…` included, which clause 4
-    //     does not reach because it does not start with the host's name.
-    const ownSpecifiers = new Set(
-      loader.moduleSpecifiers.map(entry => entry.specifier),
-    );
-    expect(
-      loader.stringLiterals.filter(
-        literal => !ownSpecifiers.has(literal) && /[\\/~]/.test(literal),
-      ),
-      'the loader holds a path-shaped literal that is not one of its own imports',
-    ).toEqual([]);
-
-    // Clause 6 — the same bound read off the **type-checker** rather than the text —
-    // is the sibling block below. It is deliberately not the seventh assertion in
-    // this one: `expect` throws, so an assertion placed after clause 2 only ever runs
-    // when clause 2 passed, and the shapes clause 6 exists for are precisely the ones
-    // clause 2 mis-reports. Measured, not assumed — a second call through the
-    // resolver aimed at the host makes clause 2 fail first, and clause 6's verdict on
-    // the same file was never reached. A compensating clause whose red is conditional
-    // on a weaker clause going green is not independently observable, which is the
-    // same reason `externalSpecifiers()`' four readers live in four blocks.
-  });
-
-  it('bounds the type of what the one permitted constructed require is invoked with', () => {
+  it('sees no constructed require anywhere under src/, read off the type-checker', () => {
     /*
-     * **Clause 6. The clause that measures the resolver's reach rather than its
-     * spelling, and the one the block above cannot express.**
+     * **The type-checked half of the ban, kept from the exemption era because
+     * it catches what the identifier sweep cannot.**
      *
-     * Clauses 2 and 3 there are pins on *code text and identifier spelling*, which is
-     * weaker than it reads. `AbsolutePath` on `loadCompiler`'s parameter constrains
-     * every **caller**; it says nothing about the body, where `runtimeRequire` is a
-     * general CommonJS resolver in scope and `runtimeRequire('tronbox/…')`
-     * type-checks. So clause 3's `toContain` on the signature is evidence about the
-     * call sites and no evidence about the one line that matters, and clause 2 accepts
-     * any binding that merely happens to be *spelled* `soljsonPath` — including a
-     * nested one shadowing the parameter at type `string`, which was recorded in that
-     * block as an uncaught residual. This is that residual being caught instead of
-     * documented.
+     * The identifier sweep above matches the primitive by *name*, which two
+     * shapes defeat: a resolver bound under any other name, and one
+     * constructed and invoked inline with no binding at all — both measured
+     * in "clause 6 fires on …" below. `resolverCallSites()` asks the checker
+     * instead: *which* values under `src/` are `createRequire` products —
+     * derived from the construction site rather than matched by name, so a
+     * rename, a hand-off to a helper and an inline
+     * `createRequire(__filename)(…)` all stay in range. Same mechanism and
+     * same `ts.Program` as the type-checked interpolation scan's
+     * `typedInterpolations()`.
      *
-     * `resolverCallSites()` asks the checker two things a parse cannot answer: *which*
-     * values under `src/` are `createRequire` products — derived from the construction
-     * site rather than matched by name, so a rename, a hand-off to a helper and an
-     * inline `createRequire(__filename)(…)` all stay in range — and what the checker's
-     * **type** for each argument is at that position. Same mechanism and same
-     * `ts.Program` as the type-checked interpolation scan's `typedInterpolations()`;
-     * the four shapes it catches and clause 2 does not are measured in "clause 6
-     * fires on …" below.
+     * The expectation was one row while the embedded compiler's loader held
+     * the package's single exemption; with the Foundry model it is the empty
+     * set, and the fixtures below are what keep an empty answer evidence of
+     * absence rather than of a scan that stopped seeing.
      */
-    const resolverCalls = resolverCallSites();
-
-    // One row, over all of `src/` rather than over the exempted file alone: a second
-    // module that constructed a resolver would appear here even if it never named
-    // `createRequire` in a form the identifier sweep recognises.
     expect(
-      resolverCalls.map(renderResolverCall),
-      'a constructed require under src/ is invoked somewhere other than the one ' +
-        'permitted site, or with something other than a branded absolute path',
-    ).toEqual([`${PERMITTED_LOADER}: runtimeRequire(soljsonPath: AbsolutePath)`]);
-
-    // And the type rendered `AbsolutePath` is *the seam's*. `typeToString` renders a
-    // name, so a local `type AbsolutePath = string` in the loader would produce a row
-    // identical to the one above while admitting every string; the alias's declaration
-    // site is what separates the brand from a same-named shim. The AbsolutePath
-    // brand invariant makes the brand mintable only by `assertAbsolutePath`, so
-    // the declaring module *is* the provenance claim — and it is
-    // `environment/types.ts`, inside the seam.
-    const [resolverArgument] = resolverCalls[0]?.args ?? [];
-    expect(
-      resolverArgument?.isIdentifier,
-      'the resolver is invoked with an expression rather than a bound identifier',
-    ).toBe(true);
-    expect(
-      resolverArgument?.typeDeclaredIn,
-      "the resolver's argument is branded by something other than the seam's own type",
-    ).toBe(path.join('environment', 'types.ts'));
-
-    // **The residual, named rather than implied.** `stringLiterals` does not collect
-    // the text parts of a template literal with substitutions, so
-    // `` runtimeRequire(`${x}/.tronbox/…`) `` slips past clauses 4 and 5 — clause 2
-    // catches it because the argument is not the bare parameter, and clause 6 because
-    // a template's type is `string` rather than `AbsolutePath`. What survives both is
-    // narrower than the residual this replaces: a value that genuinely carries the
-    // brand, which requires `assertAbsolutePath` to have minted it and therefore an
-    // absolute filesystem path — not a package specifier at all. Reaching a host
-    // *file* by absolute path stays possible in principle, and it is unreachable
-    // through this signature unless the seam composes that path; packaging inherits
-    // it with the rest of the mechanized boundary check. Stated because a compensating
-    // instrument whose gaps are unrecorded is how the next amendment gets argued from
-    // a false baseline.
+      resolverCallSites().map(renderResolverCall),
+      'a constructed require exists under src/ — the createRequire ban has no ' +
+        'exemptions any more, so whatever this row names has to go',
+    ).toEqual([]);
   });
 
   it('fires on a constructed require that points anywhere but the parameter', () => {
-    // Non-vacuity for the two clauses that are not `tsc`'s. Both fixtures are text
+    // Non-vacuity for the ban's reason. Both fixtures are text
     // rather than files, for the reason the violating fixtures below are: a real
     // module under `src/` would violate the invariant it exists to test.
 
     // A · The host, reached by a constructed require with a literal specifier. The
-    //     measurement the whole amendment rests on: the specifier pin and the
-    //     dynamic-site check both report **nothing**, which is precisely why the ban
-    //     existed and precisely why replacing it needs clause 2.
+    //     measurement the whole ban rests on: the specifier pin and the
+    //     dynamic-site check both report **nothing**, which is precisely why the
+    //     primitive is forbidden rather than merely its host-shaped uses.
     const literalTarget = scanText(
       [
         "import { createRequire } from 'node:module';",
@@ -735,8 +517,8 @@ describe('no module in the plugin imports the host, by any path', () => {
     );
     expect(
       hostSpecifiers(literalTarget),
-      'the specifier pin caught a constructed require after all, which would make ' +
-        'clause 2 unnecessary — re-read the amendment before deleting it',
+      'the specifier pin caught a constructed require after all — re-read the ' +
+        'ban rationale before weakening it',
     ).toEqual([]);
     expect(
       literalTarget.dynamicSpecifierSites,
@@ -746,16 +528,16 @@ describe('no module in the plugin imports the host, by any path', () => {
     expect(
       callSites([literalTarget], 'runtimeRequire').map(site => site.args),
     ).toEqual([["'tronbox/package.json'"]]);
-    // And so does clause 4, independently — the layering is real, not nominal.
+    // And the host-literal sweep sees it independently — the layering is real.
     expect(
       literalTarget.stringLiterals.filter(literal =>
         HOST_SPECIFIER.test(literal),
       ),
     ).toEqual(['tronbox/package.json']);
 
-    // B · A computed specifier — the case the original ban's own comment named as
-    //     the one no static scan can see. Clause 4 has nothing to catch here, so
-    //     clause 2 is the only thing standing between this shape and the invariant.
+    // B · A computed specifier — the case no specifier scan can see. A literal
+    //     sweep has nothing to catch here, so the ban on the primitive is the
+    //     only thing standing between this shape and the invariant.
     const computedTarget = scanText(
       [
         "import { createRequire } from 'node:module';",
@@ -770,31 +552,24 @@ describe('no module in the plugin imports the host, by any path', () => {
       computedTarget.stringLiterals.filter(literal =>
         HOST_SPECIFIER.test(literal),
       ),
-      'clause 4 cannot see a computed target, which is why clause 2 exists',
+      'a literal sweep cannot see a computed target, which is why the ban exists',
     ).toEqual([]);
     expect(
       callSites([computedTarget], 'runtimeRequire').map(site => site.args),
     ).toEqual([['name']]);
-
-    // And the instrument agrees with the real module, which is the half a pair of
-    // synthetic fixtures cannot give: the argument the loader actually passes is the
-    // parameter, and the two fixtures above are the two ways it could stop being.
-    expect(
-      callSites([loaderSource()], 'runtimeRequire').map(site => site.args),
-    ).toEqual([['soljsonPath']]);
   });
 
   // -------------------------------------------------------------------------
-  // Non-vacuity for clause 6
+  // Non-vacuity for the type-checked resolver sweep
   // -------------------------------------------------------------------------
 
   /**
-   * The shapes clause 6 exists for, one fixture each.
+   * The shapes the type-checked sweep exists for, one fixture each.
    *
-   * A compensating assertion that has never been seen to fail is not evidence of
-   * anything, and clause 6 is the compensating half of an *exemption* — so its
-   * non-vacuity is not optional. Two of these four defeat clauses 2 and 3 while
-   * satisfying them, which is the whole reason clause 6 was added; the other two
+   * An instrument whose live expectation is the empty set has to be shown
+   * non-vacuous, or an empty answer is indistinguishable from a scan that
+   * stopped seeing. Two of these four defeat the identifier sweep while a
+   * name-based call-site match reports nothing; the other two
    * measure the claim that the resolver is identified **by type rather than by
    * name**, which is what makes the first two catchable at all.
    *
@@ -818,8 +593,9 @@ describe('no module in the plugin imports the host, by any path', () => {
     readonly declaredIn: string | undefined;
   }[] = [
     {
-      // The residual clause 6 closes. The signature is the loader's, the argument is
-      // spelled exactly what clause 2 pins, and the resolver still points anywhere.
+      // The residual the type-checked sweep closes: the signature looks like the
+      // old loader's, the argument is spelled like a branded parameter, and the
+      // resolver still points anywhere.
       label: 'a parameter shadowed at type string',
       name: 'shadowed.ts',
       body: [
@@ -833,7 +609,7 @@ describe('no module in the plugin imports the host, by any path', () => {
       declaredIn: undefined,
     },
     {
-      // Why clause 6b reads the declaration site: this row is shape-identical to the
+      // Why the sweep reads the declaration site: this row is shape-identical to the
       // real one, and the brand admits every string.
       label: 'a same-named brand declared locally',
       name: 'local-brand.ts',
@@ -847,8 +623,8 @@ describe('no module in the plugin imports the host, by any path', () => {
       declaredIn: 'local-brand.ts',
     },
     {
-      // The resolver is not found by its name — `callSites([…], 'runtimeRequire')`,
-      // which clause 2 uses, reports nothing here.
+      // The resolver is not found by its name — a name-based call-site match
+      // (`callSites([…], 'runtimeRequire')`) reports nothing here.
       label: 'a resolver binding under any other name',
       name: 'renamed.ts',
       body: [
@@ -872,7 +648,7 @@ describe('no module in the plugin imports the host, by any path', () => {
   ];
 
   it.each(resolverFixtures)(
-    'clause 6 fires on $label',
+    'the type-checked sweep fires on $label',
     ({ label, name, body, rows, declaredIn }) => {
       const fixtureRoot = path.join(packageRoot, 'fixtures');
       const text = [RESOLVER_FIXTURE_PREAMBLE, ...body, ''].join('\n');
@@ -884,21 +660,18 @@ describe('no module in the plugin imports the host, by any path', () => {
       expect(sites.map(renderResolverCall), label).toEqual(rows);
       expect(sites[0]?.args[0]?.typeDeclaredIn, label).toBe(declaredIn);
 
-      // And none of these is a branded path from the seam, which is the one thing
-      // clause 6 accepts. Stated as the complement so the fixture proves the
-      // assertion *discriminates* rather than merely produces a row.
-      expect(
-        renderResolverCall(sites[0] as ResolverCallSite),
-        `${label} rendered as the permitted row`,
-      ).not.toBe(`${PERMITTED_LOADER}: runtimeRequire(soljsonPath: AbsolutePath)`);
+      // And each produces a non-empty answer, which is what makes the live
+      // sweep's empty set evidence of absence: an instrument that reported []
+      // on these four shapes would report [] on everything.
+      expect(sites.length, `${label} produced no row at all`).toBeGreaterThan(0);
     },
   );
 
-  it('clause 2 cannot see two of the four shapes clause 6 catches', () => {
+  it('a name-based match cannot see two of the four shapes the sweep catches', () => {
     // The layering, measured. `callSites` matches a callee by *name*, so a resolver
-    // under any other name — or none — is invisible to clause 2 no matter what it is
+    // under any other name — or none — is invisible to it no matter what it is
     // invoked with. This is the same kind of measurement fixtures A and B above make
-    // for the specifier pin, applied to clause 2 itself.
+    // for the specifier pin, applied to the name-based match itself.
     for (const { name, body } of resolverFixtures.slice(2)) {
       const scanned = scanText(
         [RESOLVER_FIXTURE_PREAMBLE, ...body, ''].join('\n'),
@@ -906,8 +679,8 @@ describe('no module in the plugin imports the host, by any path', () => {
       );
       expect(
         callSites([scanned], 'runtimeRequire'),
-        `${name} was caught by clause 2 after all, which would make clause 6 ` +
-          'redundant for this shape — re-read the amendment before deleting it',
+        `${name} was caught by a name-based match after all, which would make ` +
+          'the type-checked sweep redundant for this shape — re-read before deleting',
       ).toEqual([]);
     }
   });

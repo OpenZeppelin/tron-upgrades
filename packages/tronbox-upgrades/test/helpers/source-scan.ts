@@ -725,32 +725,28 @@ export interface TypedArgument {
  * A call made **through a `createRequire` product** — anywhere under `src/`,
  * whatever the binding holding it is named.
  *
- * The host-import boundary's clause 6, and the reason it needs a `ts.Program`
- * rather than the bare parse the rest of this module uses. The host-import
- * boundary bans `createRequire` under `src/` because a call through the
- * *constructed* resolver is invisible to the specifier scan —
+ * The host-import boundary's type-checked sweep, and the reason it needs a
+ * `ts.Program` rather than the bare parse the rest of this module uses. The
+ * host-import boundary bans `createRequire` under `src/` because a call
+ * through the *constructed* resolver is invisible to the specifier scan —
  * `recordSpecifierArgument` fires only for a callee spelled literally
- * `require` / `require.resolve` / `import`. One file is exempted
- * (`validation-input/compiler.ts`), so for that file the ban's protection is zero
- * and something has to bound where its resolver can point.
- *
- * **The bound has to be the type, not the spelling.** `AbsolutePath` on
- * `loadCompiler`'s parameter constrains callers, not the body: inside the body the
- * resolver is a general CommonJS resolver in scope, and a text pin on the argument's
- * *name* is satisfied by any binding that happens to be spelled `soljsonPath` —
- * including a nested one shadowing the parameter at type `string`, which is the
- * residual the block that reads this used to record as uncaught.
+ * `require` / `require.resolve` / `import`. The ban is universal again — its
+ * one exemption, the embedded compiler's soljson loader, was deleted with the
+ * compiler under the Foundry-model decision (2026-08-07) — and this sweep is
+ * kept because it is what makes the ban's empty answer trustworthy: an
+ * identifier sweep matches the primitive by name, which a resolver bound
+ * under another name, or constructed and invoked inline, defeats.
  *
  * **The resolver type is derived, not named.** `NodeRequire` is not hardcoded here;
  * the type is read off the `createRequire` call site itself and every callee whose
- * type is that same type is a subject. So renaming `runtimeRequire`, passing the
+ * type is that same type is a subject. So renaming the binding, passing the
  * resolver to a helper, or invoking `createRequire(__filename)(…)` inline are all
  * still in range — none of which a name-matched scan sees.
  *
  * The one composition this rests on: that `createRequire` is the only way a resolver
  * gets minted under `src/`, which is pinned independently by the `forbidden` regex
  * over `allSources()` in `host-import-boundary.test.ts` (`_load` and
- * `_resolveFilename` stay banned outright, in the exempted file too).
+ * `_resolveFilename` are banned outright too).
  */
 export interface ResolverCallSite {
   readonly relative: string;

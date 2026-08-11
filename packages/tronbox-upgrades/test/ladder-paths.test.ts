@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { BuildInfoReadResult } from '../src/environment';
 import { deriveValidationInput } from '../src/validation-input';
-import { ValidationInputInvariantError } from '../src/validation-input/errors';
+import type { ValidationInput } from '../src/validation-input';
 import { verifyBuildRecordFreshness } from '../src/validation-input/identity';
 
 import {
@@ -21,6 +21,7 @@ import {
   deployedBytecodeOf,
   engineVerdict,
   expectInput,
+  expectRefusal,
   ladderDeps,
   ladderProject,
   metadataTailStart,
@@ -36,42 +37,40 @@ import {
   unreadableBuildInfoReader,
   upgradePair,
   upgradePairsFixture,
-  countingLoader,
-  type CorpusCompile,
   type LadderProject,
 } from './helpers/ladder-fixtures';
 
 /**
- * The validation ladder's **lazy ladder** — the four paths, their compile
- * counts, and a discriminator for each.
+ * The Foundry-model pipeline — two paths, zero compiles, and a discriminator
+ * for each.
  *
  * ── WHY EVERY FIXTURE HERE CARRIES A SECOND ASSERTION ────────────────────────
  *
- * A compile count is the ladder's primary observable and on its own it measures
- * almost nothing, because every count in the table is also produced by a pipeline
- * that is broken in a specific way:
+ * The primary observables are the outcome kind and the produced input's
+ * content, and on their own they measure almost nothing, because each is also
+ * produced by a pipeline that is broken in a specific way:
  *
  * | claim | also true of |
  * |---|---|
- * | fresh compiles 0 and reports compatible | a pipeline that validated nothing — an **empty reference layout classifies every variable in the new contract as a safe append**, measured |
- * | stale compiles 1 | always-compile |
- * | absent compiles 1 | a pipeline that treats every record as absent |
- * | escalation compiles 1 on a non-empty report | "escalate on any failure", trivially — a `__gap` pair *is* a non-empty report |
+ * | fresh produces an input and reports compatible | a pipeline that validated nothing — an **empty reference layout classifies every variable in the new contract as a safe append**, measured |
+ * | stale refuses | a pipeline that refuses every record in the world |
+ * | absent refuses | a pipeline that never consults the record at all |
  *
- * So each fixture below pairs its count with something the broken version cannot
- * produce: the fresh path must **refuse a reordering at the same zero compiles**;
- * the stale path must count **0 before and 1 after** a one-byte change to the same
- * project; the absent path must count **0 for a contract the record holds and 1 for
- * one it does not, in one build-info state**; and the escalation must **flip the
- * verdict**, not merely fire.
+ * So each fixture below pairs its claim with something the broken version
+ * cannot produce: the fresh path must **refuse a reordering from the same
+ * record shape that accepted an append**; the stale refusal must come with a
+ * fresh acceptance of **the same project before one byte of the executable
+ * prefix changed**; and the absent refusal must sit beside a fresh acceptance
+ * **for a contract the same build-info state does hold**.
  *
  * The pairs are real upgrade shapes compiled by the real TVM compiler
  * (`test/fixtures/upgrade-pairs.json`, verified against a persisted
- * AST-only-vs-slot-level compile probe and a persisted P4
- * gate-observability probe), and every layout below is the one
- * `upgrades-core` actually builds from the input this pipeline produced. No AST is
- * hand-written, because a hand-written AST proves the pipeline copies fields rather
- * than that the reconstruction works.
+ * AST-only-vs-slot-level compile probe), and every layout below is the one
+ * `upgrades-core` actually builds from the input this pipeline produced. No AST
+ * is hand-written, because a hand-written AST proves the pipeline copies fields
+ * rather than that the reconstruction works. The paired `<hash>.json` inputs
+ * are the corpus compiles' own real solc inputs, because the fresh path's whole
+ * claim is that the recorded input is handed on verbatim.
  */
 
 const fixture = upgradePairsFixture();
@@ -87,9 +86,9 @@ function pairProject(pairId: string, side: 'before' | 'after'): LadderProject {
     sourceText: pairSource(pair, side),
     record: {
       source: pairSource(pair, side),
-      // The artifact's two bytecodes come from the **host-only** compile, because
-      // that is the selection TronBox uses — so a compile-arm identity match here
-      // is the compile-arm selection working end to end rather than a fixture
+      // The artifact's two bytecodes come from the host-shaped compile, because
+      // that is the selection TronBox uses — so a freshness match here is the
+      // record-vs-artifact comparison working end to end rather than a fixture
       // agreeing with itself.
       bytecode: artifactBytecodeFor(hostCompile, SOURCE_KEY, CONTRACT),
       deployedBytecode: artifactDeployedBytecodeFor(
@@ -111,11 +110,7 @@ function recordFor(pairId: string, side: 'before' | 'after', file?: string) {
 }
 
 /** The layout a consumer holds for the target, off a produced input. */
-function layoutOfInput(input: {
-  readonly solcInput: CorpusCompile['input'];
-  readonly solcOutput: CorpusCompile['output'];
-  readonly solcVersion: string;
-}) {
+function layoutOfInput(input: ValidationInput) {
   // `input.solcVersion` is the LONG form and it is passed through unchanged, which
   // is a property worth exercising rather than sidestepping: `validate` feeds it to
   // the namespace-annotation version gate, so a consumer handed the long form would
@@ -123,44 +118,41 @@ function layoutOfInput(input: {
   return consumerLayout(input.solcInput, input.solcOutput, input.solcVersion, FQ);
 }
 
-/** One derivation on the fresh path, asserted to have loaded no compiler. */
+/** One derivation on the fresh path. */
 async function deriveFresh(pairId: string, side: 'before' | 'after') {
   const project = pairProject(pairId, side);
-  const loader = countingLoader();
   const outcome = await deriveValidationInput({
     contract: CONTRACT,
     env: project.env,
     deps: ladderDeps(project, {
-      loader,
       readBuildInfo: buildInfoReader([recordFor(pairId, side)]),
     }),
   });
   const input = expectInput(outcome);
-  return { project, loader, input };
+  return { project, input };
 }
 
-/** ─── the fresh path, zero compiles, and the vacuity trap closed ──── */
+/** ─── the fresh path, and the vacuity trap closed ─────────────────── */
 
-describe('fresh: zero compiles, and the same fixture still refuses', () => {
-  it('produces an input with no compiler located, loaded or compiled', async () => {
-    const { loader, input } = await deriveFresh('append', 'before');
+describe('fresh: the record pair is consumed, and the same fixture still refuses', () => {
+  it('produces an input from the build record, AST-only by construction', async () => {
+    const { input } = await deriveFresh('append', 'before');
 
-    expect(loader.loads()).toBe(0);
-    expect(loader.compiles()).toBe(0);
     expect(input.provenance.basis.kind).toBe('build-record-ast');
     expect(input.fidelity.kind).toBe('declaration-order-only');
   });
 
-  it('records which file verified and how many candidates it read', async () => {
+  it('records which file verified, how many candidates, and which pair fed the input', async () => {
     const { input } = await deriveFresh('append', 'before');
     const basis = input.provenance.basis;
-    if (basis.kind !== 'build-record-ast') {
-      throw new Error(`expected a build-record basis, got ${basis.kind}`);
-    }
 
     expect(basis.gate.kind).toBe('fresh');
     expect(basis.gate.file).toBe(`${BUILD_INFO_DIR}/aaaa.output.json`);
     expect(basis.gate.candidates).toBe(1);
+    // The pair is the `.output`-stripped sibling of the record that verified —
+    // the reader's own derivation, recorded so the audit trail names the file
+    // the consumer's spans will be decoded against.
+    expect(basis.inputFile).toBe(`${BUILD_INFO_DIR}/aaaa.json`);
     // The long version is the artifact's own, verified by the bytecode match
     // rather than by two version strings agreeing.
     expect(basis.compilerLongVersion).toBe(fixture.compiler.longVersion);
@@ -186,7 +178,7 @@ describe('fresh: zero compiles, and the same fixture still refuses', () => {
     expect(input.fidelity.missingFor).toEqual([FQ]);
   });
 
-  it('carries the record\'s own contracts, sources and input keys', async () => {
+  it("carries the record's own contracts and sources, and the pair's own input keys", async () => {
     const { input } = await deriveFresh('append', 'before');
 
     expect(Object.keys(input.solcOutput.contracts)).toEqual([SOURCE_KEY]);
@@ -194,36 +186,28 @@ describe('fresh: zero compiles, and the same fixture still refuses', () => {
       CONTRACT,
     ]);
     expect(Object.keys(input.solcOutput.sources)).toEqual([SOURCE_KEY]);
-    // The consumer reads `solcInput.sources[source].content` for every source the
-    // output carries, so the two key spaces have to be the same one.
+    // The input is the pair's, verbatim, so its key set is the pair's whole
+    // key set — which must cover every key the projected output carries, or
+    // the gate would have rejected the pair as unusable.
     expect(Object.keys(input.solcInput.sources)).toEqual([SOURCE_KEY]);
     expect(input.provenance.sourceKeys).toEqual([SOURCE_KEY]);
-    expect(input.provenance.reconstructedFrom).toBe('contracts-directory');
+    expect(input.provenance.partition.closure).toEqual([SOURCE_KEY]);
   });
 
   it(
-    'ACCEPTS an append and REFUSES a reordering at the same zero compiles — ' +
+    'ACCEPTS an append and REFUSES a reordering from the same record shape — ' +
       'which a pipeline validating nothing cannot do',
     async () => {
-      // THE DISCRIMINATOR. Both halves run the whole ladder on the fresh path,
-      // both load no compiler, and the two answers differ — so the reference
-      // layout demonstrably carries information. The third assertion is what
-      // makes that a proof rather than a hope: the *empty* layout accepts the
-      // reordering, so "accepts" is exactly what a vacuous pipeline would have
-      // returned for both rows.
+      // THE DISCRIMINATOR. Both halves run the whole pipeline on the fresh
+      // path and the two answers differ — so the reference layout demonstrably
+      // carries information. The third assertion is what makes that a proof
+      // rather than a hope: the *empty* layout accepts the reordering, so
+      // "accepts" is exactly what a vacuous pipeline would have returned for
+      // both rows.
       const appendBefore = await deriveFresh('append', 'before');
       const appendAfter = await deriveFresh('append', 'after');
       const reorderBefore = await deriveFresh('reorder', 'before');
       const reorderAfter = await deriveFresh('reorder', 'after');
-
-      for (const derived of [
-        appendBefore,
-        appendAfter,
-        reorderBefore,
-        reorderAfter,
-      ]) {
-        expect(derived.loader.loads()).toBe(0);
-      }
 
       const appended = engineVerdict(
         layoutOfInput(appendBefore.input),
@@ -256,8 +240,6 @@ describe('fresh: zero compiles, and the same fixture still refuses', () => {
     for (const pair of fixture.pairs) {
       const before = await deriveFresh(pair.id, 'before');
       const after = await deriveFresh(pair.id, 'after');
-      expect(before.loader.loads()).toBe(0);
-      expect(after.loader.loads()).toBe(0);
 
       const verdict = engineVerdict(
         layoutOfInput(before.input),
@@ -276,7 +258,11 @@ describe('fresh: zero compiles, and the same fixture still refuses', () => {
     }
 
     // And the score, so a fixture edit that quietly turned an unsafe row into an
-    // accepted one fails here as well as above.
+    // accepted one fails here as well as above. The two false positives are the
+    // two shapes declaration order cannot decide — a `__gap` consumption and an
+    // intra-slot repacking — and under the Foundry model they stay REFUSED:
+    // there is no escalation compile to decide them with positions any more,
+    // and a conservative refusal is the direction this plugin is allowed to err.
     const falseNegatives = fixture.pairs.filter(
       pair => !pair.safe && pair.astOnly.accepts,
     );
@@ -313,37 +299,171 @@ describe('fresh: zero compiles, and the same fixture still refuses', () => {
       'before',
       `${BUILD_INFO_DIR}/bbbb.output.json`,
     );
-    const loader = countingLoader();
 
     const input = expectInput(
       await deriveValidationInput({
         contract: CONTRACT,
         env: project.env,
         deps: ladderDeps(project, {
-          loader,
           readBuildInfo: buildInfoReader([freshRecord, staleRecord]),
         }),
       }),
     );
 
-    expect(loader.loads()).toBe(0);
     const basis = input.provenance.basis;
-    if (basis.kind !== 'build-record-ast') {
-      throw new Error('a two-candidate directory did not reach the fresh path');
-    }
     expect(basis.gate.file).toBe(`${BUILD_INFO_DIR}/bbbb.output.json`);
     expect(basis.gate.candidates).toBe(2);
+    expect(basis.inputFile).toBe(`${BUILD_INFO_DIR}/bbbb.json`);
   });
 });
 
-/** ─── stale, one compile, and the A/B on one byte ─────────────────── */
+/** ─── the recorded input is what consumers receive, verbatim ──────── */
 
-describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
-  /** The compile arm's answer: this plugin's own compile, with layouts. */
-  function pluginCompileOutput(pairId: string, side: 'before' | 'after') {
-    return corpusCompile(pairId, 'slotLevel', side).output;
-  }
+describe("fresh: the pair's content is the produced solcInput (the ex-M2 kill)", () => {
+  it("hands on the paired file's content verbatim — both sentinels survive", async () => {
+    // The ex-M2 wrong-span kill: two sentinels planted in the PAIR — one
+    // settings key, one source-content marker absent from the disk tree —
+    // both must survive into the produced input untouched, because the input
+    // handed to consumers is the recorded compile's own input rather than a
+    // reconstruction from the current contracts directory. Source text on
+    // disk can drift from what was compiled while the bytecode still
+    // verifies, and spans decode against the recorded text, not the drifted
+    // one.
+    const project = pairProject('append', 'before');
+    const before = corpusCompile('append', 'astOnly', 'before');
+    const recordedContent = `${pairSource(upgradePair('append'), 'before')}\n// recorded-not-disk`;
+    const outcome = await deriveValidationInput({
+      contract: CONTRACT,
+      env: project.env,
+      deps: ladderDeps(project, {
+        readBuildInfo: buildInfoReader([
+          buildRecord({
+            from: before,
+            sourceKey: SOURCE_KEY,
+            contractName: CONTRACT,
+            pairSettings: { __task8Sentinel: 'survives-verbatim' },
+            pairSources: { [SOURCE_KEY]: { content: recordedContent } },
+          }),
+        ]),
+      }),
+    });
+    const input = expectInput(outcome);
+    expect(
+      (input.solcInput.settings as Record<string, unknown>)['__task8Sentinel'],
+    ).toBe('survives-verbatim');
+    expect(input.solcInput.sources[SOURCE_KEY]?.content).toBe(recordedContent);
+    // And the disk text is NOT what the consumer received, which is the whole
+    // point: the fixture's project source deliberately lacks the marker.
+    expect(project.record.source).not.toContain('recorded-not-disk');
+  });
 
+  it('rejects a record whose pair is MISSING, naming the reason per file', async () => {
+    const project = pairProject('append', 'before');
+    const { cause } = expectRefusal(
+      await deriveValidationInput({
+        contract: CONTRACT,
+        env: project.env,
+        deps: ladderDeps(project, {
+          readBuildInfo: buildInfoReader([
+            buildRecord({
+              from: corpusCompile('append', 'astOnly', 'before'),
+              sourceKey: SOURCE_KEY,
+              contractName: CONTRACT,
+              pair: 'absent',
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(cause.kind).toBe('build-record-stale');
+    if (cause.kind !== 'build-record-stale') {
+      throw new Error('narrowing');
+    }
+    expect(cause.rejected).toEqual([
+      { file: `${BUILD_INFO_DIR}/aaaa.output.json`, reason: 'input-pair-absent' },
+    ]);
+  });
+
+  it('rejects a pair that exists and does not parse, distinctly from absence', async () => {
+    // The `inputFile`-set / `input`-undefined split is the reader's own
+    // contract (`BuildInfoFile`), and the two reasons stay apart so the
+    // diagnosis can say "could not parse" only where there is a file to parse.
+    const project = pairProject('append', 'before');
+    const { cause } = expectRefusal(
+      await deriveValidationInput({
+        contract: CONTRACT,
+        env: project.env,
+        deps: ladderDeps(project, {
+          readBuildInfo: buildInfoReader([
+            buildRecord({
+              from: corpusCompile('append', 'astOnly', 'before'),
+              sourceKey: SOURCE_KEY,
+              contractName: CONTRACT,
+              pair: 'unparseable',
+            }),
+          ]),
+        }),
+      }),
+    );
+    if (cause.kind !== 'build-record-stale') {
+      throw new Error(`expected build-record-stale, got ${cause.kind}`);
+    }
+    expect(cause.rejected).toEqual([
+      {
+        file: `${BUILD_INFO_DIR}/aaaa.output.json`,
+        reason: 'input-pair-unparseable',
+      },
+    ]);
+  });
+
+  it('rejects a pair that parses but is not the input of this output', async () => {
+    // Two shapes of the same dishonesty: a pair that is not solc standard-JSON
+    // input at all, and a pair that lacks a source the record's own output
+    // covers. Either would make the consumer decode this output's spans
+    // against the wrong text, so both are `input-pair-unusable`.
+    const project = pairProject('append', 'before');
+    const genuine = buildRecord({
+      from: corpusCompile('append', 'astOnly', 'before'),
+      sourceKey: SOURCE_KEY,
+      contractName: CONTRACT,
+    });
+
+    for (const unusableInput of [
+      { language: 'Vyper', sources: {}, settings: { outputSelection: {} } },
+      {
+        language: 'Solidity',
+        // Parses, has the right shape, and lacks the closure's one source.
+        sources: { 'Other.sol': { content: 'contract Other {}' } },
+        settings: { outputSelection: {} },
+      },
+    ]) {
+      const { cause } = expectRefusal(
+        await deriveValidationInput({
+          contract: CONTRACT,
+          env: project.env,
+          deps: ladderDeps(project, {
+            readBuildInfo: buildInfoReader([
+              { ...genuine, input: unusableInput },
+            ]),
+          }),
+        }),
+      );
+      if (cause.kind !== 'build-record-stale') {
+        throw new Error(`expected build-record-stale, got ${cause.kind}`);
+      }
+      expect(cause.rejected).toEqual([
+        {
+          file: `${BUILD_INFO_DIR}/aaaa.output.json`,
+          reason: 'input-pair-unusable',
+        },
+      ]);
+    }
+  });
+});
+
+/** ─── stale: refusal, and the A/B on one byte ─────────────────────── */
+
+describe('stale: a refusal that names its evidence, and 0-vs-1 byte decides it', () => {
   /**
    * The A/B runs on `constants-and-immutables`, whose deployed bytecode is 944 hex
    * digits with an 838-digit executable region — a contract with real state, a
@@ -430,12 +550,12 @@ describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
   );
 
   it(
-    'counts 0 compiles, then 1 for the same project after one byte of the ' +
-      'executable prefix changes — and nothing else about the fixture moves',
+    'accepts, then REFUSES the same project after one byte of the executable ' +
+      'prefix changes — and nothing else about the fixture moves',
     async () => {
       // THE DISCRIMINATOR. One project, one build record, one mutation. A
-      // pipeline that always compiles reports 1 on both rows; one that never
-      // consults the record reports 0 on both.
+      // pipeline that refuses every record fails the first row; one that never
+      // verifies content passes the second row with an input.
       const compiled = standalone(STALE_FIXTURE);
       const project = standaloneProject(STALE_FIXTURE);
       const genuine = deployedBytecodeOf(
@@ -451,73 +571,56 @@ describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
       // tail — measured by the row above, not asserted here.
       expect(mutated.slice(0, 2)).toBe(genuine.slice(0, 2));
 
-      const freshRecord = () =>
-        buildRecord({
-          from: compiled.astOnly,
-          sourceKey: compiled.sourceKey,
-          contractName: compiled.contract,
-        });
-
-      const fresh = countingLoader({ output: compiled.slotLevel.output });
       const freshOutcome = await deriveValidationInput({
         contract: compiled.contract,
         env: project.env,
         deps: ladderDeps(project, {
-          loader: fresh,
-          readBuildInfo: buildInfoReader([freshRecord()]),
-        }),
-      });
-      expect(expectInput(freshOutcome).provenance.basis.kind).toBe(
-        'build-record-ast',
-      );
-      expect(fresh.loads()).toBe(0);
-      expect(fresh.compiles()).toBe(0);
-
-      const staleProject = standaloneProject(STALE_FIXTURE);
-      const stale = countingLoader({ output: compiled.slotLevel.output });
-      const staleOutcome = await deriveValidationInput({
-        contract: compiled.contract,
-        env: staleProject.env,
-        deps: ladderDeps(staleProject, {
-          loader: stale,
           readBuildInfo: buildInfoReader([
             buildRecord({
               from: compiled.astOnly,
               sourceKey: compiled.sourceKey,
               contractName: compiled.contract,
-              deployedObject: mutated,
             }),
           ]),
         }),
       });
+      expect(expectInput(freshOutcome).provenance.basis.kind).toBe(
+        'build-record-ast',
+      );
 
-      expect(stale.loads()).toBe(1);
-      expect(stale.compiles()).toBe(1);
-      const staleInput = expectInput(staleOutcome);
-      const basis = staleInput.provenance.basis;
-      if (basis.kind !== 'plugin-compile') {
-        throw new Error('a stale record did not reach the compile arm');
+      const staleProject = standaloneProject(STALE_FIXTURE);
+      const { cause, diagnosis } = expectRefusal(
+        await deriveValidationInput({
+          contract: compiled.contract,
+          env: staleProject.env,
+          deps: ladderDeps(staleProject, {
+            readBuildInfo: buildInfoReader([
+              buildRecord({
+                from: compiled.astOnly,
+                sourceKey: compiled.sourceKey,
+                contractName: compiled.contract,
+                deployedObject: mutated,
+              }),
+            ]),
+          }),
+        }),
+      );
+
+      expect(cause.kind).toBe('build-record-stale');
+      if (cause.kind !== 'build-record-stale') {
+        throw new Error('narrowing');
       }
-      expect(basis.reason).toBe('build-record-stale');
-      // Narrowed rather than asserted, because `rejected` lives only on the stale
-      // arm of `BuildRecordGate` — the same idiom the absent-path rows use, and it
-      // keeps the wrong gate a failure instead of an `any`.
-      if (basis.gate.kind !== 'stale') {
-        throw new Error(
-          `a mutated executable prefix produced a ${basis.gate.kind} gate`,
-        );
-      }
-      expect(basis.gate.rejected).toEqual([
+      expect(cause.rejected).toEqual([
         {
           file: `${BUILD_INFO_DIR}/aaaa.output.json`,
           reason: 'deployed-bytecode-differs',
         },
       ]);
-      expect(staleInput.fidelity.kind).toBe('slot-level');
+      expect(diagnosis.remedy).toContain('tronbox compile --all');
     },
   );
 
-  it('still counts 0 then 1 on a bodiless pair, where the region is nine bytes', async () => {
+  it('still flips on a bodiless pair, where the region is nine bytes', async () => {
     // The same A/B on `append`, whose executable region is 18 hex digits — the
     // short end of the corpus. Both rows here and both rows above, because a
     // staleness lever that only worked on large contracts would be a lever that
@@ -530,33 +633,24 @@ describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
     expect(metadataTailStart(genuine)).toBe(18);
 
     const freshProject = pairProject('append', 'before');
-    const fresh = countingLoader({
-      output: pluginCompileOutput('append', 'before'),
-    });
     expect(
       expectInput(
         await deriveValidationInput({
           contract: CONTRACT,
           env: freshProject.env,
           deps: ladderDeps(freshProject, {
-            loader: fresh,
             readBuildInfo: buildInfoReader([recordFor('append', 'before')]),
           }),
         }),
       ).provenance.basis.kind,
     ).toBe('build-record-ast');
-    expect(fresh.compiles()).toBe(0);
 
     const staleProject = pairProject('append', 'before');
-    const stale = countingLoader({
-      output: pluginCompileOutput('append', 'before'),
-    });
-    const staleInput = expectInput(
+    const { cause } = expectRefusal(
       await deriveValidationInput({
         contract: CONTRACT,
         env: staleProject.env,
         deps: ladderDeps(staleProject, {
-          loader: stale,
           readBuildInfo: buildInfoReader([
             buildRecord({
               from: corpusCompile('append', 'astOnly', 'before'),
@@ -568,62 +662,64 @@ describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
         }),
       }),
     );
-    expect(stale.compiles()).toBe(1);
-    expect(staleInput.provenance.basis.kind).toBe('plugin-compile');
+    expect(cause.kind).toBe('build-record-stale');
   });
 
   it('names every rejected candidate and why, rather than only that one failed', async () => {
     const project = pairProject('append', 'before');
     const before = corpusCompile('append', 'astOnly', 'before');
     const genuine = deployedBytecodeOf(before.output, SOURCE_KEY, CONTRACT).object;
-    const loader = countingLoader({
-      output: corpusCompile('append', 'slotLevel', 'before').output,
-    });
 
-    const outcome = await deriveValidationInput({
-      contract: CONTRACT,
-      env: project.env,
-      deps: ladderDeps(project, {
-        loader,
-        readBuildInfo: buildInfoReader([
-          buildRecord({
-            file: `${BUILD_INFO_DIR}/a.output.json`,
-            from: before,
-            sourceKey: SOURCE_KEY,
-            contractName: CONTRACT,
-            deployedObject: mutateExecutablePrefix(genuine),
-          }),
-          buildRecord({
-            file: `${BUILD_INFO_DIR}/b.output.json`,
-            from: before,
-            sourceKey: SOURCE_KEY,
-            contractName: CONTRACT,
-            omitDeployedBytecode: true,
-          }),
-          buildRecord({
-            file: `${BUILD_INFO_DIR}/c.output.json`,
-            from: before,
-            sourceKey: SOURCE_KEY,
-            contractName: CONTRACT,
-            omitAst: true,
-          }),
-          buildRecord({
-            file: `${BUILD_INFO_DIR}/d.output.json`,
-            from: before,
-            sourceKey: SOURCE_KEY,
-            contractName: CONTRACT,
-            hideContractDefinition: true,
-          }),
-        ]),
+    const { cause, diagnosis } = expectRefusal(
+      await deriveValidationInput({
+        contract: CONTRACT,
+        env: project.env,
+        deps: ladderDeps(project, {
+          readBuildInfo: buildInfoReader([
+            buildRecord({
+              file: `${BUILD_INFO_DIR}/a.output.json`,
+              from: before,
+              sourceKey: SOURCE_KEY,
+              contractName: CONTRACT,
+              deployedObject: mutateExecutablePrefix(genuine),
+            }),
+            buildRecord({
+              file: `${BUILD_INFO_DIR}/b.output.json`,
+              from: before,
+              sourceKey: SOURCE_KEY,
+              contractName: CONTRACT,
+              omitDeployedBytecode: true,
+            }),
+            buildRecord({
+              file: `${BUILD_INFO_DIR}/c.output.json`,
+              from: before,
+              sourceKey: SOURCE_KEY,
+              contractName: CONTRACT,
+              omitAst: true,
+            }),
+            buildRecord({
+              file: `${BUILD_INFO_DIR}/d.output.json`,
+              from: before,
+              sourceKey: SOURCE_KEY,
+              contractName: CONTRACT,
+              hideContractDefinition: true,
+            }),
+            buildRecord({
+              file: `${BUILD_INFO_DIR}/e.output.json`,
+              from: before,
+              sourceKey: SOURCE_KEY,
+              contractName: CONTRACT,
+              pair: 'absent',
+            }),
+          ]),
+        }),
       }),
-    });
+    );
 
-    expect(loader.compiles()).toBe(1);
-    const basis = expectInput(outcome).provenance.basis;
-    if (basis.kind !== 'plugin-compile' || basis.gate.kind !== 'stale') {
-      throw new Error('four unusable candidates did not read as stale');
+    if (cause.kind !== 'build-record-stale') {
+      throw new Error(`five unusable candidates read as ${cause.kind}`);
     }
-    expect(basis.gate.rejected).toEqual([
+    expect(cause.rejected).toEqual([
       {
         file: `${BUILD_INFO_DIR}/a.output.json`,
         reason: 'deployed-bytecode-differs',
@@ -637,7 +733,13 @@ describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
         file: `${BUILD_INFO_DIR}/d.output.json`,
         reason: 'target-definition-absent',
       },
+      { file: `${BUILD_INFO_DIR}/e.output.json`, reason: 'input-pair-absent' },
     ]);
+    // The diagnosis renders every file with its reason, self-contained: the
+    // rejection list is the whole evidence this refusal carries.
+    for (const entry of cause.rejected) {
+      expect(diagnosis.headline).toContain(entry.file);
+    }
   });
 
   it('reports the empty-versus-empty pair as nothing-to-compare, never as verified', () => {
@@ -648,8 +750,7 @@ describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
     // consumer an AST-only input on the strength of a match between two absences.
     //
     // The unit is the subject here rather than the pipeline, because this is the
-    // predicate's own contract and the end-to-end row below cannot read a gate off
-    // an outcome that raises. `verifyBuildRecordFreshness` answers
+    // predicate's own contract. `verifyBuildRecordFreshness` answers
     // `nothing-to-compare` — DELIBERATELY, so an empty-versus-empty match is not a
     // vacuous pass — and that is what is asserted, not a shape this test wished for.
     const empty = { object: '', linkReferences: {} };
@@ -676,7 +777,7 @@ describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
 
     // THE NON-VACUITY CONTROL. Without these two rows the assertions above are
     // satisfied by a predicate that answers `nothing-to-compare` unconditionally,
-    // which would refuse every record in the world and compile every time.
+    // which would refuse every record in the world.
     const real = deployedBytecodeOf(
       standalone('flat').astOnly.output,
       'Box.sol',
@@ -696,14 +797,13 @@ describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
     ).toEqual({ ok: false, reason: 'deployed-bytecode-differs' });
   });
 
-  it('an abstract target compiles rather than passing on a match of two absences', async () => {
-    // The end-to-end half. The compile count is the whole discriminator: a
-    // pipeline that read `'0x' === '0x' + ''` as verified would have taken the
-    // fresh path at ZERO compiles and returned a `build-record-ast` input — a
-    // vacuous "verified". This one rejects the record, compiles, and then relays
-    // upgrades-core's own abstract-contract message unwrapped, which is the
-    // plugin's error-wrapping rule's single exemption and a real user
-    // condition rather than a plugin bug.
+  it('an abstract target REFUSES on a match of two absences, naming the reason', async () => {
+    // Under the compile-arm design this fixture compiled and relayed
+    // upstream's abstract-contract message; under the Foundry model there is
+    // nothing to compile, so the honest outcome is the refusal whose rejected
+    // list says exactly what the record pair could not evidence — and whose
+    // rendered reason says an abstract contract cannot be validated, because
+    // `tronbox compile --all` genuinely cannot fix this one.
     const abstracted = standalone('abstract-target');
     const project = ladderProject({
       contractName: abstracted.contract,
@@ -715,15 +815,12 @@ describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
         source: standaloneSource('abstract-target'),
       },
     });
-    const loader = countingLoader({ output: abstracted.slotLevel.output });
 
-    let raised: unknown;
-    try {
+    const { cause, diagnosis } = expectRefusal(
       await deriveValidationInput({
         contract: abstracted.contract,
         env: project.env,
         deps: ladderDeps(project, {
-          loader,
           readBuildInfo: buildInfoReader([
             buildRecord({
               from: abstracted.astOnly,
@@ -732,57 +829,51 @@ describe('stale: one compile, and 0 before / 1 after one changed byte', () => {
             }),
           ]),
         }),
-      });
-    } catch (error) {
-      raised = error;
-    }
+      }),
+    );
 
-    // It compiled, which is the safe direction: the pair carried no evidence.
-    expect(loader.compiles()).toBe(1);
-    expect(raised).toBeInstanceOf(Error);
-    expect((raised as Error).message).toBe('Abstract contract not allowed here');
-    // Named explicitly, because the alternative reading is that this is the
-    // plugin's own invariant error — which would mean the exemption did not hold
-    // and a user validating an abstract contract would be told to file a bug.
-    expect(raised).not.toBeInstanceOf(ValidationInputInvariantError);
+    if (cause.kind !== 'build-record-stale') {
+      throw new Error(`an abstract target read as ${cause.kind}`);
+    }
+    expect(cause.rejected).toEqual([
+      {
+        file: `${BUILD_INFO_DIR}/aaaa.output.json`,
+        reason: 'nothing-to-compare',
+      },
+    ]);
+    expect(diagnosis.headline).toContain('abstract contract');
   });
 });
 
-/** ─── absent, one compile, three arms and one discriminator ───────── */
+/** ─── absent: refusal, three reasons told apart ───────────────────── */
 
-describe('absent: one compile, and the three reasons told apart', () => {
-  async function deriveWithReader(reader: () => BuildInfoReadResult) {
+describe('absent: a refusal that names which absence, and one state decides both ways', () => {
+  async function refuseWithReader(reader: () => BuildInfoReadResult) {
     const project = pairProject('append', 'before');
-    const loader = countingLoader({
-      output: corpusCompile('append', 'slotLevel', 'before').output,
-    });
     const outcome = await deriveValidationInput({
       contract: CONTRACT,
       env: project.env,
-      deps: ladderDeps(project, { loader, readBuildInfo: reader }),
+      deps: ladderDeps(project, { readBuildInfo: reader }),
     });
-    return { loader, input: expectInput(outcome) };
+    return expectRefusal(outcome);
   }
 
-  it('reads a missing directory as directory-absent and compiles once', async () => {
-    const { loader, input } = await deriveWithReader(absentBuildInfoReader());
-    expect(loader.compiles()).toBe(1);
-    const basis = input.provenance.basis;
-    if (basis.kind !== 'plugin-compile' || basis.gate.kind !== 'absent') {
-      throw new Error('an absent directory did not reach the absent gate');
+  it('reads a missing directory as directory-absent and refuses', async () => {
+    const { cause, diagnosis } = await refuseWithReader(absentBuildInfoReader());
+    expect(cause.kind).toBe('build-record-absent');
+    if (cause.kind !== 'build-record-absent') {
+      throw new Error('narrowing');
     }
-    expect(basis.gate.because).toBe('directory-absent');
-    expect(basis.reason).toBe('build-record-absent');
+    expect(cause.because).toBe('directory-absent');
+    expect(diagnosis.remedy).toContain('tronbox compile --all');
   });
 
-  it('reads an unreadable directory as directory-unreadable and compiles once', async () => {
-    const { loader, input } = await deriveWithReader(unreadableBuildInfoReader());
-    expect(loader.compiles()).toBe(1);
-    const basis = input.provenance.basis;
-    if (basis.kind !== 'plugin-compile' || basis.gate.kind !== 'absent') {
-      throw new Error('an unreadable directory did not reach the absent gate');
+  it('reads an unreadable directory as directory-unreadable', async () => {
+    const { cause } = await refuseWithReader(unreadableBuildInfoReader());
+    if (cause.kind !== 'build-record-absent') {
+      throw new Error(`expected build-record-absent, got ${cause.kind}`);
     }
-    expect(basis.gate.because).toBe('directory-unreadable');
+    expect(cause.because).toBe('directory-unreadable');
   });
 
   it('reads a THROWING reader as directory-unreadable rather than crashing', async () => {
@@ -790,23 +881,21 @@ describe('absent: one compile, and the three reasons told apart', () => {
     // that raises is the same situation for this pipeline: no record can be
     // consulted. Distinguished from the status arm because they are different code
     // paths reaching the same conclusion.
-    const { loader, input } = await deriveWithReader(throwingBuildInfoReader());
-    expect(loader.compiles()).toBe(1);
-    const basis = input.provenance.basis;
-    if (basis.kind !== 'plugin-compile' || basis.gate.kind !== 'absent') {
-      throw new Error('a raising reader did not reach the absent gate');
+    const { cause } = await refuseWithReader(throwingBuildInfoReader());
+    if (cause.kind !== 'build-record-absent') {
+      throw new Error(`expected build-record-absent, got ${cause.kind}`);
     }
-    expect(basis.gate.because).toBe('directory-unreadable');
+    expect(cause.because).toBe('directory-unreadable');
   });
 
   it(
-    'in ONE build-info state, compiles 0 for a contract the record holds and ' +
-      '1 for one it does not',
+    'in ONE build-info state, proceeds for a contract the record holds and ' +
+      'refuses no-record-for-target for one it does not',
     async () => {
-      // THE DISCRIMINATOR. A pipeline that treats every record as absent gives 1
-      // on both rows; one that never checks the pair gives 0 on both. The reader
-      // and the record are the same object for both derivations, so the only
-      // variable is which contract was asked for.
+      // THE DISCRIMINATOR. A pipeline that treats every record as absent
+      // refuses both rows; one that never checks the pair proceeds on both.
+      // The reader and the record are the same object for both derivations, so
+      // the only variable is which contract was asked for.
       //
       // The not-held contract comes from a DIFFERENT compile at the same source
       // key, and it has to: `buildRecord` reproduces the whole `contracts` map solc
@@ -847,15 +936,11 @@ describe('absent: one compile, and the three reasons told apart', () => {
           ),
         },
       });
-      const heldLoader = countingLoader({ output: inherited.slotLevel.output });
       const heldInput = expectInput(
         await deriveValidationInput({
           contract: held,
           env: heldProject.env,
-          deps: ladderDeps(heldProject, {
-            loader: heldLoader,
-            readBuildInfo: reader,
-          }),
+          deps: ladderDeps(heldProject, { readBuildInfo: reader }),
         }),
       );
 
@@ -878,215 +963,122 @@ describe('absent: one compile, and the three reasons told apart', () => {
           ),
         },
       });
-      const otherLoader = countingLoader({ output: absentee.slotLevel.output });
-      const otherInput = expectInput(
+      const { cause } = expectRefusal(
         await deriveValidationInput({
           contract: notHeld,
           env: otherProject.env,
-          deps: ladderDeps(otherProject, {
-            loader: otherLoader,
-            readBuildInfo: reader,
-          }),
+          deps: ladderDeps(otherProject, { readBuildInfo: reader }),
         }),
       );
 
-      expect(heldLoader.compiles()).toBe(0);
       expect(heldInput.provenance.basis.kind).toBe('build-record-ast');
 
-      expect(otherLoader.compiles()).toBe(1);
-      const basis = otherInput.provenance.basis;
-      if (basis.kind !== 'plugin-compile' || basis.gate.kind !== 'absent') {
-        throw new Error('a pair the record lacks did not read as absent');
+      if (cause.kind !== 'build-record-absent') {
+        throw new Error(`a pair the record lacks read as ${cause.kind}`);
       }
       // Not `stale`: a record of some other compile is not a stale record of this
       // one, and the distinction is what stops "no record for you" from being
-      // reported as "your artifact is out of date".
-      expect(basis.gate.because).toBe('no-record-for-target');
+      // reported as "your build record is out of date".
+      expect(cause.because).toBe('no-record-for-target');
     },
   );
 });
 
-/** ─── escalation: one compile, and the verdict flips ──────── */
+/** ─── the four binding Task-8 pins ────────────────────────────────── */
 
-describe('escalation: one compile, one fire, and a changed answer', () => {
-  /**
-   * Both sides of a pair, derived AST-only and then escalated.
-   *
-   * Both sides, because the comparison is what the escalation is for: upstream's
-   * gap arithmetic reads positions from the *original* layout as well as the
-   * updated one, so escalating only the contract this plugin holds would leave the
-   * reference position-less and the answer unchanged. In production the reference
-   * layout comes from the stored manifest rather than from this sub-feature —
-   * recorded in the artifact's Test Notes, because it is the condition under which
-   * the flip below transfers.
-   */
-  async function escalateBothSides(pairId: string) {
-    const sides = await Promise.all(
-      (['before', 'after'] as const).map(async side => {
-        const astOnly = await deriveFresh(pairId, side);
-        const project = pairProject(pairId, side);
-        const loader = countingLoader({
-          output: corpusCompile(pairId, 'slotLevel', side).output,
-        });
-        const escalated = expectInput(
-          await deriveValidationInput({
-            contract: CONTRACT,
-            env: project.env,
-            deps: ladderDeps(project, { loader }),
-            escalateFrom: astOnly.input,
+describe('the Foundry model: absent/stale refuse, fresh consumes the pair', () => {
+  it('(a) an absent build record REFUSES, naming `tronbox compile --all`', async () => {
+    const project = pairProject('append', 'before');
+    const outcome = await deriveValidationInput({
+      contract: CONTRACT,
+      env: project.env,
+      deps: ladderDeps(project, { readBuildInfo: absentBuildInfoReader() }),
+    });
+    const { cause, diagnosis } = expectRefusal(outcome);
+    expect(cause.kind).toBe('build-record-absent');
+    if (cause.kind !== 'build-record-absent') {
+      throw new Error('narrowing');
+    }
+    expect(cause.because).toBe('directory-absent');
+    expect(diagnosis.remedy).toContain('tronbox compile --all');
+    // Eric's rationale rides the remedy, so the user learns why the command
+    // works even on a project TronBox considers up to date.
+    expect(diagnosis.remedy).toContain(
+      'forces recompilation of unchanged sources',
+    );
+  });
+
+  it('(b) a stale record REFUSES, carrying the per-file rejection reasons', async () => {
+    const project = pairProject('append', 'before');
+    const before = corpusCompile('append', 'astOnly', 'before');
+    const genuine = deployedBytecodeOf(before.output, SOURCE_KEY, CONTRACT).object;
+    const outcome = await deriveValidationInput({
+      contract: CONTRACT,
+      env: project.env,
+      deps: ladderDeps(project, {
+        readBuildInfo: buildInfoReader([
+          buildRecord({
+            from: before,
+            sourceKey: SOURCE_KEY,
+            contractName: CONTRACT,
+            deployedObject: mutateExecutablePrefix(genuine),
           }),
-        );
-        return { side, astOnly, escalated, loader };
+        ]),
       }),
-    );
-    const [before, after] = sides;
-    if (before === undefined || after === undefined) {
-      throw new Error('both sides are required');
-    }
-    return { before, after };
-  }
-
-  it('`__gap`: refuses AST-only, ACCEPTS escalated, one compile per side', async () => {
-    const { before, after } = await escalateBothSides('gap-consumption');
-
-    // Before: the AST-only answer, at zero compiles.
-    expect(before.astOnly.loader.loads()).toBe(0);
-    expect(after.astOnly.loader.loads()).toBe(0);
-    const astVerdict = engineVerdict(
-      layoutOfInput(before.astOnly.input),
-      layoutOfInput(after.astOnly.input),
-    );
-    expect(astVerdict.accepts).toBe(false);
-    expect(astVerdict.kinds).toEqual(
-      [...(upgradePair('gap-consumption').astOnly.kinds ?? [])].sort(),
-    );
-
-    // After: exactly one compile per escalation, and the verdict FLIPS.
-    expect(before.loader.compiles()).toBe(1);
-    expect(after.loader.compiles()).toBe(1);
-    expect(before.escalated.fidelity.kind).toBe('slot-level');
-    expect(after.escalated.fidelity.kind).toBe('slot-level');
-
-    const escalatedVerdict = engineVerdict(
-      layoutOfInput(before.escalated),
-      layoutOfInput(after.escalated),
-    );
-    expect(escalatedVerdict).toEqual({ accepts: true, kinds: [] });
-
-    // THE DISCRIMINATOR, stated as one comparison: the two answers differ. An
-    // "escalate on any failure" pipeline that produced an equally position-less
-    // input would fire and still refuse.
-    expect(escalatedVerdict.accepts).not.toBe(astVerdict.accepts);
-  });
-
-  it('FX-4b intra-slot padding: same path, different trigger, same flip', async () => {
-    const { before, after } = await escalateBothSides('intra-slot-padding');
-
-    const astVerdict = engineVerdict(
-      layoutOfInput(before.astOnly.input),
-      layoutOfInput(after.astOnly.input),
-    );
-    expect(astVerdict.accepts).toBe(false);
-    expect(astVerdict.kinds).toEqual(['insert']);
-
-    expect(before.loader.compiles()).toBe(1);
-    expect(after.loader.compiles()).toBe(1);
-    expect(
-      engineVerdict(
-        layoutOfInput(before.escalated),
-        layoutOfInput(after.escalated),
-      ),
-    ).toEqual({ accepts: true, kinds: [] });
-  });
-
-  it('records the fresh gate it escalated from, so the path reads off the input', async () => {
-    const { after } = await escalateBothSides('gap-consumption');
-    const basis = after.escalated.provenance.basis;
-    if (basis.kind !== 'plugin-compile') {
-      throw new Error('an escalation did not produce a compiled input');
-    }
-    expect(basis.reason).toBe('ast-only-escalation');
-    // The gate is the `fresh` one it came from — the record of *escalated from a
-    // verified record*, which is why no separate flag is needed.
-    expect(basis.gate.kind).toBe('fresh');
-    expect(basis.identity.withoutMetadataMatches).toBe(true);
-  });
-
-  it('FIRES ONCE: escalating an already escalated input raises', async () => {
-    const { after } = await escalateBothSides('gap-consumption');
-    const project = pairProject('gap-consumption', 'after');
-    const loader = countingLoader({
-      output: corpusCompile('gap-consumption', 'slotLevel', 'after').output,
     });
-
-    // Structural rather than a counter: what escalation returns is a
-    // `plugin-compile` input, and the gate admits only a `build-record-ast` one.
-    await expect(
-      deriveValidationInput({
-        contract: CONTRACT,
-        env: project.env,
-        deps: ladderDeps(project, { loader }),
-        escalateFrom: after.escalated,
-      }),
-    ).rejects.toThrow(ValidationInputInvariantError);
-
-    expect(loader.compiles()).toBe(0);
-  });
-
-  it('does not loop: the second escalation raises before any compile', async () => {
-    const { after } = await escalateBothSides('gap-consumption');
-    const project = pairProject('gap-consumption', 'after');
-    const loader = countingLoader({
-      output: corpusCompile('gap-consumption', 'slotLevel', 'after').output,
-    });
-
-    let raised: unknown;
-    try {
-      await deriveValidationInput({
-        contract: CONTRACT,
-        env: project.env,
-        deps: ladderDeps(project, { loader }),
-        escalateFrom: after.escalated,
-      });
-    } catch (error) {
-      raised = error;
+    const { cause, diagnosis } = expectRefusal(outcome);
+    expect(cause.kind).toBe('build-record-stale');
+    if (cause.kind !== 'build-record-stale') {
+      throw new Error('narrowing');
     }
-    expect(raised).toBeInstanceOf(ValidationInputInvariantError);
-    expect((raised as Error).message).toContain('ast-only-escalation');
-    // The compile count is the anti-loop assertion: a pipeline that escalated
-    // again would have compiled again first.
-    expect(loader.compiles()).toBe(0);
-    expect(loader.loads()).toBe(0);
-  });
-
-  it('refuses to answer a question about a different contract', async () => {
-    const astOnly = await deriveFresh('append', 'before');
-    const other = standalone('inherited-flat');
-    const source = standaloneSourceOf('inherited-flat');
-    const project = ladderProject({
-      contractName: other.contract,
-      sourceFile: other.sourceKey,
-      sourceText: source,
-      record: {
-        source,
-        bytecode: artifactBytecodeFor(other.astOnly, other.sourceKey, other.contract),
-        deployedBytecode: artifactDeployedBytecodeFor(
-          other.astOnly,
-          other.sourceKey,
-          other.contract,
-        ),
+    expect(cause.rejected).toEqual([
+      {
+        file: `${BUILD_INFO_DIR}/aaaa.output.json`,
+        reason: 'deployed-bytecode-differs',
       },
-    });
-    const loader = countingLoader({ output: other.slotLevel.output });
+    ]);
+    expect(diagnosis.remedy).toContain('tronbox compile --all');
+  });
 
-    await expect(
-      deriveValidationInput({
-        contract: other.contract,
-        env: project.env,
-        deps: ladderDeps(project, { loader }),
-        escalateFrom: astOnly.input,
+  it("(c) the fresh path's solcInput IS the paired file's content, verbatim", async () => {
+    const project = pairProject('append', 'before');
+    const before = corpusCompile('append', 'astOnly', 'before');
+    const recordedContent = `${pairSource(upgradePair('append'), 'before')}\n// recorded-not-disk`;
+    const outcome = await deriveValidationInput({
+      contract: CONTRACT,
+      env: project.env,
+      deps: ladderDeps(project, {
+        readBuildInfo: buildInfoReader([
+          buildRecord({
+            from: before,
+            sourceKey: SOURCE_KEY,
+            contractName: CONTRACT,
+            pairSettings: { __task8Sentinel: 'survives-verbatim' },
+            pairSources: { [SOURCE_KEY]: { content: recordedContent } },
+          }),
+        ]),
       }),
-    ).rejects.toThrow(/derived for/);
-    expect(loader.compiles()).toBe(0);
+    });
+    const input = expectInput(outcome);
+    expect(
+      (input.solcInput.settings as Record<string, unknown>)['__task8Sentinel'],
+    ).toBe('survives-verbatim');
+    expect(input.solcInput.sources[SOURCE_KEY]?.content).toBe(recordedContent);
+  });
+
+  it('(d) the degraded note states only what ran — no re-check promise', async () => {
+    const { project } = await deriveFresh('append', 'before');
+    const note = project.channel.degradedNotes.find(
+      entry => entry.code === 'storage-layout-unavailable',
+    );
+    expect(note?.remedy).not.toContain(
+      'the plugin compiles this one contract itself',
+    );
+    expect(note?.remedy).toBe(
+      'Storage-layout positions were not available from the TronBox build ' +
+        'record, so the comparison used declaration order. See the README ' +
+        'section "Validation without storage layouts" for what that mode can ' +
+        'and cannot decide.',
+    );
   });
 });

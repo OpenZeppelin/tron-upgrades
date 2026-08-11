@@ -13,7 +13,6 @@ import {
   type StorageLayout,
 } from '@openzeppelin/upgrades-core';
 
-import { soljsonPathFor } from '../../src/environment';
 import type {
   ArtifactRecord,
   ArtifactRecordReport,
@@ -22,12 +21,7 @@ import type {
 } from '../../src/environment';
 import type { DegradedNote, OutputChannel } from '../../src/output';
 import type { Cause } from '../../src/validation-input/causes';
-import type { CompilerHandle } from '../../src/validation-input/compiler';
 import type { Diagnosis } from '../../src/validation-input/diagnose';
-import type {
-  SolcStandardInput,
-  SolcStandardOutput,
-} from '../../src/validation-input/solc-input';
 import type {
   ValidationInput,
   ValidationInputDependencies,
@@ -39,9 +33,9 @@ import { absolute } from './readers';
 import { testDir } from './locate';
 
 /**
- * The validation ladder's fixture kit: the nine upgrade pairs, the real solc output they
- * compile to, and the four fakes `deriveValidationInput` needs to run with no
- * filesystem, no `~/.tronbox` and no wasm.
+ * The validation pipeline's fixture kit: the nine upgrade pairs, the real solc
+ * output they compile to, and the fakes `deriveValidationInput` needs to run
+ * with nothing on a real disk.
  *
  * ── Why the pairs live in JSON and the corpus is generated ────────────────────
  *
@@ -513,58 +507,26 @@ export function expectRefusal(outcome: ValidationInputOutcome): {
 
 /** ─── The dependency surface ─────────────────────────────────────────────── */
 
-export const HOME_DIRECTORY = '/home/tester';
-
-/**
- * Where TronBox would cache the compiler for this configuration — resolved through
- * the seam's own function rather than by joining strings here, so a fixture that
- * "makes the compiler present" cannot disagree with the convention the code reads.
- */
-export function cachedCompilerPath(
-  family: 'tvm' | 'evm',
-  resolvedVersion: string,
-  homeDirectory: string = HOME_DIRECTORY,
-): string {
-  const resolved = soljsonPathFor(homeDirectory, { family, resolvedVersion });
-  if (resolved.status !== 'resolved') {
-    throw new Error(`the fixture home directory ${homeDirectory} is not absolute`);
-  }
-  return resolved.soljsonPath;
-}
-
 export interface LadderDepsSpec {
-  readonly loader?: CountingLoader;
   readonly readBuildInfo?: () => BuildInfoReadResult;
-  /** Present by default. Set false to drive cause 1 without the compiler cached. */
-  readonly compilerCached?: boolean;
-  readonly homeDirectory?: string;
 }
 
 /**
  * `deriveValidationInput`'s whole injected surface, assembled from a project.
  *
- * The compiler cache is modelled as a file in the same in-memory tree the sources
- * live in — so `exists` answers one question about one tree, and a fixture cannot
- * accidentally report a compiler present on a path the production resolver would
- * not have looked at.
+ * Three members and nothing else, mirroring the production surface: the
+ * in-memory source tree behind `exists` / `readSource`, and the build-record
+ * reader. The compiler loader, the cache-presence lever and the home
+ * directory all left with the embedded compiler — under the Foundry model
+ * there is nothing to load, so a fixture that could "make the compiler
+ * present" would be modelling a seam that no longer exists.
  */
 export function ladderDeps(
   project: LadderProject,
   spec: LadderDepsSpec = {},
 ): ValidationInputDependencies {
-  const home = spec.homeDirectory ?? HOME_DIRECTORY;
-  const cached =
-    spec.compilerCached === false
-      ? undefined
-      : cachedCompilerPath(
-          project.env.compiler.family,
-          project.env.compiler.resolvedVersion,
-          home,
-        );
-  const loader = spec.loader;
   return {
-    exists: candidate =>
-      candidate === cached || project.filesystem.exists?.(candidate) === true,
+    exists: candidate => project.filesystem.exists?.(candidate) === true,
     readSource: candidate => {
       const read = project.filesystem.readSource;
       if (read === undefined) {
@@ -572,89 +534,9 @@ export function ladderDeps(
       }
       return read(candidate);
     },
-    ...(loader === undefined
-      ? { loadCompiler: forbiddenLoader() }
-      : { loadCompiler: loader.load }),
     ...(spec.readBuildInfo === undefined
       ? {}
       : { readBuildInfo: spec.readBuildInfo }),
-    homeDirectory: () => home,
-  };
-}
-
-/** ─── The counting compiler loader ───────────────────────────────────────── */
-
-export interface CountingLoader {
-  /** Pass as `deps.loadCompiler`. */
-  readonly load: (soljsonPath: string) => CompilerHandle;
-  /** How many times a compiler was loaded. The ladder's primary observable. */
-  readonly loads: () => number;
-  /** How many times `compile` was invoked on a loaded handle. */
-  readonly compiles: () => number;
-  readonly inputs: () => readonly SolcStandardInput[];
-  readonly paths: () => readonly string[];
-}
-
-export interface CountingLoaderSpec {
-  readonly longVersion?: string;
-  /** What `compile` answers. Defaults to an output with no contracts. */
-  readonly output?: SolcStandardOutput;
-  /** Throw instead of answering — for the wasm-abort and retirement arms. */
-  readonly thrown?: () => never;
-}
-
-/**
- * A `loadCompiler` whose call count is the assertion.
- *
- * Counting *loads* rather than *compiles* is deliberate and it is the stronger
- * observable: on the fresh path no compiler is located, loaded or version-compared,
- * so a load count of zero rules out the whole compiler-bearing arm rather than only
- * the `compile` call at the end of it. Both counts are exposed because they are
- * different claims — a load with no compile would be a path that read `~/.tronbox`
- * for nothing.
- */
-export function countingLoader(spec: CountingLoaderSpec = {}): CountingLoader {
-  const fixture = upgradePairsFixture();
-  const longVersion = spec.longVersion ?? fixture.compiler.longVersion;
-  const paths: string[] = [];
-  const inputs: SolcStandardInput[] = [];
-  let compiles = 0;
-  let retired = false;
-
-  const emptyOutput: SolcStandardOutput = { contracts: {}, sources: {} };
-
-  return {
-    load: soljsonPath => {
-      paths.push(soljsonPath);
-      return {
-        longVersion,
-        compile: input => {
-          if (retired) {
-            throw new Error('the fixture handle was already used and retired');
-          }
-          compiles += 1;
-          inputs.push(input);
-          if (spec.thrown !== undefined) {
-            retired = true;
-            spec.thrown();
-          }
-          return spec.output ?? emptyOutput;
-        },
-      };
-    },
-    loads: () => paths.length,
-    compiles: () => compiles,
-    inputs: () => inputs,
-    paths: () => paths,
-  };
-}
-
-/** A `loadCompiler` that fails the test if it is called at all. */
-export function forbiddenLoader(): (soljsonPath: string) => CompilerHandle {
-  return soljsonPath => {
-    throw new Error(
-      `a compiler was loaded from ${soljsonPath} on a path that must load none`,
-    );
   };
 }
 
@@ -676,8 +558,30 @@ export interface BuildRecordSpec {
   readonly omitDeployedBytecode?: boolean;
   /** Rename the contract definition in the AST so the target is not declared. */
   readonly hideContractDefinition?: boolean;
+  /**
+   * The paired `<hash>.json` compiler-input lever. `'present'` (the default)
+   * carries the corpus compile's own real input; `'absent'` models a pair
+   * TronBox never wrote; `'unparseable'` models a pair that exists on disk and
+   * fails to parse (`inputFile` set, `input` undefined — the exact split
+   * `BuildInfoFile` documents).
+   */
+  readonly pair?: 'present' | 'absent' | 'unparseable';
+  /** Merged over the pair's `settings` — the settings-sentinel lever. */
+  readonly pairSettings?: Readonly<Record<string, unknown>>;
+  /** Merged over the pair's `sources` — the content-sentinel lever. */
+  readonly pairSources?: Readonly<Record<string, { readonly content: string }>>;
   /** Extra `contracts` / `sources` entries merged in, e.g. a second contract. */
   readonly alsoFor?: readonly Omit<BuildRecordSpec, 'file'>[];
+}
+
+/** One record as {@link buildInfoReader} consumes it: the output plus its pair. */
+export interface BuildRecordDocument {
+  readonly file: string;
+  readonly output: unknown;
+  /** Absent or `undefined` models a missing pair; see {@link BuildRecordSpec.pair}. */
+  readonly input?: unknown;
+  /** `true` models a pair that exists and fails to parse. */
+  readonly inputUnparseable?: boolean;
 }
 
 /**
@@ -705,12 +609,10 @@ export interface BuildRecordSpec {
  * `projectBuildRecord` has to have — that it copies the **whole** `contracts` map for
  * each closure key rather than filtering it by contract name.
  */
-export function buildRecord(spec: BuildRecordSpec): {
-  readonly file: string;
-  readonly output: unknown;
-} {
+export function buildRecord(spec: BuildRecordSpec): BuildRecordDocument {
   const contracts: Record<string, unknown> = {};
   const sources: Record<string, unknown> = {};
+  const inputSources: Record<string, { readonly content: string }> = {};
 
   const add = (one: Omit<BuildRecordSpec, 'file'>): void => {
     const compiled = one.from.output;
@@ -758,6 +660,14 @@ export function buildRecord(spec: BuildRecordSpec): {
         ? withoutContractDefinition(sourceEntry, one.contractName)
         : sourceEntry;
     }
+
+    // The pair carries every source the compile was handed, not only the
+    // target's key — it is solc's whole input, the way TronBox wrote it.
+    for (const [key, entry] of Object.entries(one.from.input.sources)) {
+      if (typeof entry.content === 'string') {
+        inputSources[key] = { content: entry.content };
+      }
+    }
   };
 
   add(spec);
@@ -765,9 +675,30 @@ export function buildRecord(spec: BuildRecordSpec): {
     add(extra);
   }
 
+  // The paired `<hash>.json`: the corpus compile's own real solc input, so a
+  // fixture's pair is the input that genuinely produced the output beside it.
+  // The two sentinel levers exist so a test can prove the pipeline hands the
+  // PAIR's content onward verbatim rather than reassembling it from disk.
+  // Upstream's `SolcInput` type declares neither `language` nor arbitrary
+  // settings keys, so the corpus input is read through one structural view.
+  const recordedInput = spec.from.input as unknown as {
+    readonly language?: unknown;
+    readonly settings?: Readonly<Record<string, unknown>>;
+  };
+  const pairDocument: unknown = {
+    language: recordedInput.language ?? 'Solidity',
+    sources: { ...inputSources, ...spec.pairSources },
+    settings: {
+      ...recordedInput.settings,
+      ...spec.pairSettings,
+    },
+  };
+
   return {
     file: spec.file ?? `${BUILD_INFO_DIR}/aaaa.output.json`,
     output: { contracts, sources },
+    input: spec.pair === 'absent' || spec.pair === 'unparseable' ? undefined : pairDocument,
+    ...(spec.pair === 'unparseable' ? { inputUnparseable: true } : {}),
   };
 }
 
@@ -796,7 +727,7 @@ export function deployedBytecodeOf(
     throw new Error(`deployedBytecode.object for ${contractName} is not a string`);
   }
   // `SolcBytecode` rather than a structural literal, because that is the type
-  // `verifyBuildRecordFreshness` and `compareArtifactIdentity` accept — a helper
+  // `verifyBuildRecordFreshness` and `libraryNameBand` accept — a helper
   // that returned `linkReferences: unknown` would force every caller wanting to
   // exercise those to cast, which moves the one boundary cast into the tests and
   // multiplies it. The map's shape is checked here instead.
@@ -971,20 +902,31 @@ export function mutateMetadataTail(object: string): string {
   return flipDigitAt(object, index);
 }
 
-/** A reader over a fixed set of records, in the order given. */
+/**
+ * A reader over a fixed set of records, in the order given.
+ *
+ * The paired compiler-input file rides along the way `BuildInfoFile` documents:
+ * `inputFile` is derived by stripping the `.output` suffix and is `undefined`
+ * only when the pair is modelled absent; a pair modelled unparseable keeps its
+ * `inputFile` and drops its `input`, which is the reader's own split.
+ */
 export function buildInfoReader(
-  records: readonly { readonly file: string; readonly output: unknown }[],
+  records: readonly BuildRecordDocument[],
 ): () => BuildInfoReadResult {
   return () => ({
     status: 'files',
-    files: records.map(record => ({
-      file: absolute(record.file),
-      output: record.output,
-      // No ladder fixture built over this reader exercises the paired
-      // compiler-input file.
-      inputFile: undefined,
-      input: undefined,
-    })),
+    files: records.map(record => {
+      const pairAbsent =
+        record.input === undefined && record.inputUnparseable !== true;
+      return {
+        file: absolute(record.file),
+        output: record.output,
+        inputFile: pairAbsent
+          ? undefined
+          : absolute(record.file.replace(/\.output\.json$/, '.json')),
+        input: record.inputUnparseable === true ? undefined : record.input,
+      };
+    }),
   });
 }
 

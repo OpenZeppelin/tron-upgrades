@@ -12,7 +12,6 @@ import {
   buildInfoReader,
   ladderCorpus,
   consumerLayout,
-  countingLoader,
   degradedCodes,
   expectInput,
   ladderDeps,
@@ -55,14 +54,12 @@ const FLAT = 'flat';
 async function deriveStandalone(id: string) {
   const project = standaloneProject(id);
   const compiled = standalone(id);
-  const loader = countingLoader();
   const outcome = await deriveValidationInput({
     contract: compiled.contract,
     env: project.env,
     deps: ladderDeps(project, {
-      loader,
       // A fresh build record for the standalone, so the derivation takes the
-      // zero-compile path — which is the mode the shortfall statement is about.
+      // record path — which is the mode the shortfall statement is about.
       readBuildInfo: buildInfoReader([
         buildRecord({
           from: compiled.astOnly,
@@ -72,14 +69,15 @@ async function deriveStandalone(id: string) {
       ]),
     }),
   });
-  return { project, loader, input: expectInput(outcome) };
+  return { project, input: expectInput(outcome) };
 }
 
 describe('the namespace is recognised without any compile', () => {
   it('finds the annotated namespace in the fresh-path output', async () => {
-    const { loader, input } = await deriveStandalone(NAMESPACED);
-    expect(loader.compiles()).toBe(0);
-
+    const { input } = await deriveStandalone(NAMESPACED);
+    // No compiler exists to count any more: the pipeline's dependency surface
+    // has no loader member, so "without any compile" is structural rather
+    // than a counted observable.
     const compiled = standalone(NAMESPACED);
     const namespaces = declaresNamespacedStorage(
       input.solcOutput,
@@ -143,10 +141,11 @@ describe('the position shortfall is real in the reduced mode and absent with a l
      * `storageLayout` request fills positions for FLAT storage only: a
      * namespaced struct is not a state variable, so its members stay
      * position-less unless the engine's injected-variable compilation runs —
-     * which this plugin performs in no mode, escalation included. That is why
-     * `stateNamespaceShortfall` is called on every arm rather than only the
-     * fresh one, and why escalating a namespaced refusal cannot add the
-     * missing precision.
+     * which this plugin never performs. That is why the shortfall statement
+     * rides the producing path unconditionally, and why no compile — the
+     * plugin has none — could have added the missing precision even when it
+     * had one: the corpus's own slot-level compile, asserted here, still
+     * carries no namespace positions.
      */
     const compiled = standalone(NAMESPACED);
     const layout = consumerLayout(
