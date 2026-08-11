@@ -163,6 +163,12 @@
       "sourceKey": "Box.sol",
       "note": "No deployed bytecode at all: the record's `.object` is empty and the artifact's is `'0x'`, which compare equal and would report 'verified' having compared nothing.",
       "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nabstract contract Abstracted {\n    uint256 stored;\n\n    function mustImplement() external virtual returns (uint256);\n}\n"
+    },
+    "reinitializer-note": {
+      "contract": "ReinitDerived",
+      "sourceKey": "Box.sol",
+      "note": "A base contract's own function carries a modifier literally named 'reinitializer', with no '@custom:oz-upgrades-validate-as-initializer' annotation. Validating the derived contract walks the base's possible initializers and upstream's own dist/validate/run/initializer.js:getPossibleInitializers logs a Note there, unconditionally on the modifier's name and independent of the derived contract's own errors (there are none: the base's initializers map ends up empty, so the missing-initializer-call check this note's caller gates never runs). This is the corpus's one real (not synthesized) engine Note.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract ReinitBase {\n    modifier reinitializer(uint8 version) {\n        _;\n    }\n\n    function bump(uint8 version) public reinitializer(version) {}\n}\n\ncontract ReinitDerived is ReinitBase {\n    uint256 stored;\n\n    function get() external view returns (uint256) {\n        return stored;\n    }\n}\n"
     }
   },
   "measuredArithmetic": {

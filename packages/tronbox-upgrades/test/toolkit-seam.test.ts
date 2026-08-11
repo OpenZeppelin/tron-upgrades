@@ -5,6 +5,7 @@ import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
 import { UPGRADE_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/upgrade-proxy';
 import { CheatcodeSlotCollisionError, LinkVerificationFailedError } from '../src/deploy';
 import { migrateShapedHandles } from './helpers/handles';
+import { realToolkitProject } from './helpers/toolkit-project';
 
 /*
  * The toolkit seam, exercised through the REAL `createOperationToolkit` —
@@ -142,5 +143,103 @@ describe('hostDeploy refuses a trailing plain-object argument before it deploys 
     await expect(
       context.toolkit.hostDeploy(abstraction as never, [1, { overwrite: false }]),
     ).rejects.toThrow(CheatcodeSlotCollisionError);
+  });
+});
+
+/*
+ * The degraded-output channel, made truthful (Eric's review, r3739084431):
+ * `captureEngineWarnings` had zero production callers and the two silent
+ * accepts of a non-`'unique'` artifact resolution never told anyone. Both
+ * suites below drive the REAL toolkit — the real environment seam's
+ * `env.artifacts` (a real ambiguity index over a real `build-info`
+ * directory) and the real `@openzeppelin/upgrades-core` engine — because
+ * that is the one combination that proves the *wiring*, not merely the
+ * capture mechanism `output/engine.ts`'s own suite already covers with
+ * synthetic writes.
+ *
+ * `realToolkitProject` materializes a `ladder-corpus.json` standalone
+ * compile onto a real temp directory, matching TronBox's own on-disk shape
+ * closely enough for `deriveValidationInput`'s unmocked `fs.existsSync` /
+ * `fs.readFileSync` / `fileSystemBuildInfoReader.read` to succeed.
+ */
+describe('the degraded-output channel is truthful: every capturable engine call and both indeterminate-resolution accepts now disclose (r3739084431)', () => {
+  it('validateImplementation records artifact-name-indeterminate when env.artifacts.resolve reports non-unique', async () => {
+    const project = realToolkitProject({
+      standaloneId: 'stateless',
+      withMalformedCompanion: true,
+    });
+    const context = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: { kind: 'transparent' },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+
+    await context.toolkit.validateImplementation(project.contractName, context.resolved);
+
+    const note = context.toolkit.channel.recorded.find(
+      entry => entry.code === 'artifact-name-indeterminate',
+    );
+    expect(note).toBeDefined();
+    expect(note?.summary).toBe(
+      `${project.contractName}: the build-info index could not be built, so artifact-name collisions could not be checked.`,
+    );
+    expect(note?.detail).toEqual([
+      'The abstraction still came from the host resolver for this exact name.',
+    ]);
+    expect(note?.remedy).toBe(
+      'Run `tronbox compile --all` to rebuild the build-info directory, or rename the colliding contract.',
+    );
+  });
+
+  it('validateImplementation surfaces a real engine.validate() Note as engine-note on the channel', async () => {
+    // The reinitializer-note standalone: a base contract's function carries a
+    // modifier literally named `reinitializer`, which upstream's
+    // `dist/validate/run/initializer.js:getPossibleInitializers` reports with
+    // `logNote` — verified directly against the installed engine (not only
+    // asserted here) to fire exactly once for this fixture, unconditional on
+    // the derived contract's own (empty) error list.
+    const project = realToolkitProject({ standaloneId: 'reinitializer-note' });
+    const context = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: { kind: 'transparent' },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+
+    // The capture window's own reason for existing: prove the engine's write
+    // never reaches the terminal raw. A spy rather than a fixed console.error
+    // reference, because `captureEngineWarnings` saves-and-restores whatever
+    // is installed when it opens — restoring past the wiring gap this task
+    // closes would otherwise go unnoticed by an assertion that only checked
+    // `channel.recorded`.
+    const rawWrites: unknown[][] = [];
+    const originalConsoleError = console.error;
+    console.error = (...args: unknown[]): void => {
+      rawWrites.push(args);
+    };
+    try {
+      await context.toolkit.validateImplementation(project.contractName, context.resolved);
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    expect(
+      rawWrites.some(args =>
+        args.some(
+          arg => typeof arg === 'string' && arg.includes('Reinitializers are not included'),
+        ),
+      ),
+    ).toBe(false);
+
+    const note = context.toolkit.channel.recorded.find(
+      entry => entry.code === 'engine-note',
+    );
+    expect(note).toBeDefined();
+    expect(note?.summary).toBe(
+      'Reinitializers are not included in validations by default',
+    );
   });
 });

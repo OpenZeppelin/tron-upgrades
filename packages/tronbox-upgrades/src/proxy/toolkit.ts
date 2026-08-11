@@ -55,6 +55,7 @@ import { Interface } from 'ethers';
 import { requireProxyArtifact } from './artifacts';
 import { EmptyInitializerRefusedError } from './errors';
 import type { UpgradeOptions } from '../options/types';
+import { captureEngineWarnings } from '../output/engine';
 
 /** The subset of a resolved options object the operations read here. */
 export interface ResolvedForProxyOps {
@@ -531,13 +532,28 @@ export async function createOperationToolkit(request: {
         input.solcInput as never,
         input.solcOutput as never,
       );
-      const validations = engine.validate(
-        input.solcOutput as never,
-        decoder,
-        input.solcVersion,
-        input.solcInput as never,
+      const validations = captureEngineWarnings(channel, 'validate', () =>
+        engine.validate(
+          input.solcOutput as never,
+          decoder,
+          input.solcVersion,
+          input.solcInput as never,
+        ),
       );
       const resolution = env.artifacts.resolve(contractName);
+      if (resolution.status !== 'unique') {
+        // The operation's own statement for the collision the validation
+        // pipeline deliberately proceeds through in silence (see
+        // `validation-input/pipeline.ts:artifactAbstraction`, whose own doc
+        // comment names this call site as the one that owns it) — recorded
+        // here rather than there so the disclosure has exactly one source.
+        channel.degraded({
+          code: 'artifact-name-indeterminate',
+          summary: `${contractName}: the build-info index could not be built, so artifact-name collisions could not be checked.`,
+          detail: ['The abstraction still came from the host resolver for this exact name.'],
+          remedy: 'Run `tronbox compile --all` to rebuild the build-info directory, or rename the colliding contract.',
+        });
+      }
       const abstraction =
         resolution.status === 'unique'
           ? resolution.contract
@@ -578,13 +594,15 @@ export async function createOperationToolkit(request: {
       const kindForErrors =
         resolvedOptions.kind ??
         engine.inferProxyKind(validations as never, version as never);
-      const errors = engine.getErrors(
-        validations as never,
-        version as never,
-        {
-          ...resolvedOptions.engineOptions,
-          kind: kindForErrors,
-        } as never,
+      const errors = captureEngineWarnings(channel, 'getErrors', () =>
+        engine.getErrors(
+          validations as never,
+          version as never,
+          {
+            ...resolvedOptions.engineOptions,
+            kind: kindForErrors,
+          } as never,
+        ),
       );
       if (errors.length > 0) {
         const report = new engine.UpgradeableContractErrorReport(errors as never);
@@ -803,10 +821,12 @@ export async function createOperationToolkit(request: {
     },
 
     async assertStorageCompatible(currentLayout, validated, resolvedOptions) {
-      const report = engine.getStorageUpgradeReport(
-        currentLayout as never,
-        validated.layout as never,
-        resolvedOptions.engineOptions as never,
+      const report = captureEngineWarnings(channel, 'getStorageUpgradeReport', () =>
+        engine.getStorageUpgradeReport(
+          currentLayout as never,
+          validated.layout as never,
+          resolvedOptions.engineOptions as never,
+        ),
       );
       if (!report.ok) {
         throw new Error(
