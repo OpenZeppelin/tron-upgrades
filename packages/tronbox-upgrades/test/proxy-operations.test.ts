@@ -10,6 +10,8 @@ import type {
 } from '../src/proxy/toolkit';
 import {
   BeaconProxyRefusedError,
+  EmptyInitializerRefusedError,
+  InitialOwnerUnsupportedKindError,
   InitializerDataRequiredError,
   NotTransparentProxyError,
   StaleProxyRecordError,
@@ -516,6 +518,33 @@ describe('deployProxy — the order is the contract', () => {
     await expect(
       runDeployProxy(fake.context, fakeAbstraction({}), [42]),
     ).rejects.toThrow(OptionValueError);
+  });
+
+  it('initialOwner with an explicit kind:uups is refused by name — nothing deploys', async () => {
+    // The parity target's own refusal (`upgrades-core@1.46
+    // dist/usage-error.js:72 InitialOwnerUnsupportedKindError`): a UUPS
+    // proxy has no admin for the option to configure, so accepting it would
+    // silently drop the one thing the caller asked for.
+    const fake = buildFake({
+      resolved: { kind: 'uups', initialOwner: OWNER_BASE58 },
+    });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(InitialOwnerUnsupportedKindError);
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('queue');
+  });
+
+  it('initialOwner with an INFERRED uups kind takes the same refusal', async () => {
+    const fake = buildFake({
+      inferredKind: 'uups',
+      resolved: { initialOwner: OWNER_BASE58 },
+    });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(InitialOwnerUnsupportedKindError);
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('queue');
   });
 
   it('initializer:false is refused by name — the ported proxy rejects empty init data', async () => {

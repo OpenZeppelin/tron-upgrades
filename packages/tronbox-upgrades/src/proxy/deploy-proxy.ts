@@ -23,6 +23,7 @@ import { transactionIdentity, operationNotes } from '../results/types';
 import type { DeployedProxy } from '../results/types';
 import { PROXY_CONTRACT_NAMES } from './artifacts';
 import {
+  InitialOwnerUnsupportedKindError,
   InitializerDataRequiredError,
   ProxyAdminAsOwnerError,
   StaleProxyRecordError,
@@ -128,6 +129,18 @@ export async function runDeployProxy(
     throw new Error(
       'unreachable: requireProxyKind admits only transparent | uups here',
     );
+  }
+
+  // 3b — `initialOwner` names the transparent proxy admin's owner, and a
+  //      UUPS proxy has no admin for it to configure: accepting the option
+  //      would silently drop the one thing the caller asked for, so it takes
+  //      the parity target's own refusal (see the error class) — whether the
+  //      kind was explicit or inferred just above, and deterministically:
+  //      before the replay decision, so a rerun refuses identically instead
+  //      of reusing past an option that can never be honoured. Beacon was
+  //      refused by the narrowing already.
+  if (kind === 'uups' && resolved.initialOwner !== undefined) {
+    throw new InitialOwnerUnsupportedKindError(kind);
   }
 
   // 4 — only now may the context's missing deployer refuse.

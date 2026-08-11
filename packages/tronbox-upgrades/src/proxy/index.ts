@@ -12,6 +12,7 @@ export { decideDeployReplay, isAlreadyCurrent, type DeployReplayDecision } from 
 export {
   BeaconProxyRefusedError,
   EmptyInitializerRefusedError,
+  InitialOwnerUnsupportedKindError,
   InitializerDataRequiredError,
   NotTransparentProxyError,
   ProxyAdminAsOwnerError,

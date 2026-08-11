@@ -83,6 +83,7 @@ export {
 export {
   BeaconProxyRefusedError,
   EmptyInitializerRefusedError,
+  InitialOwnerUnsupportedKindError,
   InitializerDataRequiredError,
   NotTransparentProxyError,
   ProxyAdminAsOwnerError,

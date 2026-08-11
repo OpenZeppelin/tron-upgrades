@@ -224,6 +224,30 @@ export class StaleProxyRecordError extends ProxyOperationRefusedError {
 }
 
 /**
+ * `initialOwner` was supplied for a proxy kind that has no admin for it to
+ * own: a UUPS proxy authorizes upgrades through the implementation itself,
+ * so accepting the option would silently drop the one thing the caller asked
+ * for. Mirrors the parity target's refusal — upstream throws
+ * `InitialOwnerUnsupportedKindError` from `deployProxy` before anything
+ * deploys (verified root-exported at `@openzeppelin/upgrades-core@1.46.0`,
+ * `dist/usage-error.js:72`) — as a local class, because this family's
+ * consumers may not import the engine: it loads only behind the toolkit
+ * factory's deferred imports, and the entry's dynamic-edge set is pinned by
+ * exact specifier.
+ */
+export class InitialOwnerUnsupportedKindError extends ProxyOperationRefusedError {
+  readonly code = 'initial-owner-unsupported-kind';
+  constructor(readonly kind: string) {
+    super(
+      `The \`initialOwner\` option is not supported for this kind of proxy ` +
+        `('${kind}'). Set the initial owner as part of your contract's ` +
+        `initializer arguments instead.`,
+    );
+    this.name = 'InitialOwnerUnsupportedKindError';
+  }
+}
+
+/**
  *`initialOwner` looks like a ProxyAdmin contract: the v5 transparent
  * proxy deploys its OWN admin owned by `initialOwner`, so handing it an
  * existing ProxyAdmin is almost always a v4-era habit that buries the real
