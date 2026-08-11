@@ -77,4 +77,13 @@ describe('the 8 previously-missing per-operation option types, now on the entry'
     const refused: DeployBeaconProxyOptions = { kind: 'beacon' };
     expect(refused).toBeDefined();
   });
+
+  it('DeployBeaconOptions and UpgradeBeaconOptions refuse `kind` too, from `../src` — the same fix applied to all three beacon ops', () => {
+    // @ts-expect-error `kind` is not a member of `DeployBeaconOptions`: `deployBeacon` shares `BEACON_ACCEPTED_OPTIONS` with `deployBeaconProxy` and refuses `kind` the same way.
+    const deployBeaconRefused: DeployBeaconOptions = { kind: 'beacon' };
+    // @ts-expect-error `kind` is not a member of `UpgradeBeaconOptions`: `upgradeBeacon` shares `BEACON_ACCEPTED_OPTIONS` too.
+    const upgradeBeaconRefused: UpgradeBeaconOptions = { kind: 'beacon' };
+    expect(deployBeaconRefused).toBeDefined();
+    expect(upgradeBeaconRefused).toBeDefined();
+  });
 });

@@ -9,6 +9,7 @@ import {
 import { NothingToAdoptError } from '../src/adopt/errors';
 import {
   BeaconInitialOwnerRequiredError,
+  EmptyInitializerRefusedError,
   OptionsInArgsPositionError,
   UpgradeVerificationFailedError,
 } from '../src/proxy/errors';
@@ -46,6 +47,8 @@ interface Spec {
   readonly unconfiguredSender?: boolean;
   /** Overrides `resolved.initialOwner` (default: unset). */
   readonly initialOwner?: string;
+  /** Overrides `resolved.initializer` (default: unset). */
+  readonly initializer?: string | false;
 }
 
 const ABI = [
@@ -186,7 +189,7 @@ function buildFake(spec: Spec = {}) {
 
   const resolved: ResolvedForProxyOps = {
     kind: undefined,
-    initializer: undefined,
+    initializer: spec.initializer,
     constructorArgs: spec.constructorArgs ?? [],
     redeployImplementation: 'onchange',
     unsafeAllowLinkedLibraries: false,
@@ -260,6 +263,22 @@ describe('deployBeaconProxy', () => {
     await runDeployBeaconProxy(fake.context, BEACON, abstraction('Box'), [42]);
     expect(fake.log).toContain('recordProxy:beacon');
     expect(fake.log).toContain('hostDeploy:BeaconProxy');
+  });
+
+  it('initializer:false is refused by name — the same class as deployProxy, not a beacon-proxy exemption', async () => {
+    // The same-input-same-class proof for the beacon path: `encodeInitializer`
+    // is the one choke point `deployProxy` and `deployBeaconProxy` both
+    // encode their initializer through, and it refuses `initializer: false`
+    // identically regardless of kind — verified here for `'beacon'` directly,
+    // where it was previously untested. `EmptyInitializerRefusedError`'s own
+    // message no longer suggests "use a beacon proxy" as an escape from this
+    // exact refusal (see the class's doc comment).
+    const fake = buildFake({ initializer: false });
+    await expect(
+      runDeployBeaconProxy(fake.context, BEACON, abstraction('Box'), [42]),
+    ).rejects.toBeInstanceOf(EmptyInitializerRefusedError);
+    expect(fake.log).not.toContain('queue');
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
   });
 });
 

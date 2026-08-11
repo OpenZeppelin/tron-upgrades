@@ -128,9 +128,15 @@ export class UpgradeVerificationFailedError extends ProxyOperationRefusedError {
 }
 
 /**
- * The ported TRC1967Proxy rejects empty initialization data for both kinds,
- * so the refusal happens here — before any spend — with the two
- * user mistakes distinguished, because their remedies differ.
+ * The ported TRC1967Proxy rejects empty initialization data for transparent
+ * and UUPS kinds, and `encodeInitializer` — the one choke point every kind's
+ * initializer is encoded through, `deployProxy` and `deployBeaconProxy`
+ * alike — refuses the same shape uniformly for `'beacon'` too, so the
+ * refusal happens here before any spend, with the two user mistakes
+ * distinguished, because their remedies differ. **Neither remedy is "use a
+ * beacon proxy instead"**: a beacon proxy reaches this exact class through
+ * the exact same encoding step (`beacon/index.ts:runDeployBeaconProxy`), so
+ * that would lead the caller straight back into the same refusal.
  *
  * **The sole class for this refusal.** `deployProxy`'s own pre-flight (the
  * explicit `initializer: false` arm, before the queue) used to throw a
@@ -153,11 +159,10 @@ export class EmptyInitializerRefusedError extends ProxyOperationRefusedError {
         ? `\`initializer: false\` is not supported for kind "${kind}": the ` +
           `ported TRC1967Proxy rejects empty initialization data, so an ` +
           `uninitialized proxy cannot be deployed. Initialize in the same ` +
-          `transaction, or use a beacon proxy.`
+          `transaction.`
         : `Uninitialized deployment is not supported for kind "${kind}": the ` +
           `contract has no default initializer and the ported TRC1967Proxy ` +
-          `rejects empty initialization data. Add an initializer function or ` +
-          `use a beacon proxy.`,
+          `rejects empty initialization data. Add an initializer function.`,
     );
     this.name = 'EmptyInitializerRefusedError';
   }

@@ -174,6 +174,21 @@ describe('the option surface composes upstream types and never re-declares a mem
     expect(upgradeBeacon.unsafeSkipStorageCheck).toBe(true);
   });
 
+  it('DeployBeaconOptions and UpgradeBeaconOptions also refuse `kind` — the same type/runtime fix as DeployBeaconProxyOptions', () => {
+    // `deployBeacon` and `upgradeBeacon` share `BEACON_ACCEPTED_OPTIONS` with
+    // `deployBeaconProxy`, and that list excludes `'kind'` for all three
+    // (verified directly: `beacon/index.ts`'s one constant, read by all
+    // three operations). `StandaloneOptions`/`UpgradeOptions` themselves
+    // still carry `kind` — `DeployProxyOptions` and `DeployImplementationOptions`
+    // need it — so these two aliases build on `Omit<_, 'kind'>` instead.
+    // @ts-expect-error `kind` is not a member: deployBeacon refuses the option entirely (`OPTION_UNKNOWN`), never narrows a wrong value.
+    const deployBeaconRefusesKind: DeployBeaconOptions = { kind: 'beacon' };
+    // @ts-expect-error `kind` is not a member: upgradeBeacon refuses the option entirely (`OPTION_UNKNOWN`), never narrows a wrong value.
+    const upgradeBeaconRefusesKind: UpgradeBeaconOptions = { kind: 'beacon' };
+    expect(deployBeaconRefusesKind).toBeDefined();
+    expect(upgradeBeaconRefusesKind).toBeDefined();
+  });
+
   it('refuses a value outside the closed set at compile time, so a typo cannot type-check', () => {
     /*
      * The sibling's failure, made unwritable. `packages/hardhat-tron-upgrades/src/utils/options.ts:ValidationOptions`

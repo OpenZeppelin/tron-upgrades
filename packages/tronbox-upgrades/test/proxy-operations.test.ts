@@ -591,6 +591,10 @@ describe('deployProxy — the order is the contract', () => {
     await expect(
       runDeployProxy(fake.context, fakeAbstraction({}), [42]),
     ).rejects.toBeInstanceOf(EmptyInitializerRefusedError);
+    // Pre-spend: step 6 refuses before the queue is ever entered, so no
+    // implementation and no proxy reach the host.
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
+    expect(fake.log).not.toContain('queue');
   });
 
   it('an omitted initializer with zero args TRIES initialize() — the ABI decides, not the arg count', async () => {
@@ -807,6 +811,83 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     expect(fake.upgradeCallData).not.toBe('0x');
   });
 
+  // The README's hex-`call` divergence row, executed rather than described:
+  // `encodeCall` (upgrade-proxy.ts) resolves a plain-string or a `{ fn }`
+  // name through `Interface.encodeFunctionData`/`getFunction`, and — verified
+  // directly against the installed `ethers` before writing this suite —
+  // neither ever consults argument count to disambiguate an overloaded bare
+  // name. `encodeFunctionData(fragment, values)` calls `this.getFunction(fragment)`
+  // with NO `values` argument at all when `fragment` is a string
+  // (`node_modules/ethers/lib.commonjs/abi/interface.js:743-751`), so there is
+  // no arity-based selection on this path for any argument count, unlike the
+  // (also imperfect) `getFunction(name, values)` path `encodeInitializer` uses.
+  const overloadedAbi = [
+    {
+      type: 'function',
+      name: 'reinitialize',
+      inputs: [],
+      outputs: [],
+      stateMutability: 'nonpayable',
+    },
+    {
+      type: 'function',
+      name: 'reinitialize',
+      inputs: [{ name: 'v', type: 'uint8' }],
+      outputs: [],
+      stateMutability: 'nonpayable',
+    },
+  ];
+
+  it('a bare overloaded call name raises ethers\' own ambiguity error, not a named refusal — before the queue', async () => {
+    const fake = buildFake({ resolved: { call: 'reinitialize' } });
+    let caught: unknown;
+    try {
+      await runUpgradeProxy(
+        fake.context,
+        PROXY_ADDR,
+        fakeAbstraction({ abi: overloadedAbi }),
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    // Raw ethers, not this plugin's own refusal family: no `code` this
+    // plugin defines, and `ethers`' own diagnostic name and text.
+    expect((caught as { code?: unknown }).code).toBe('INVALID_ARGUMENT');
+    expect((caught as Error).message).toContain('ambiguous function description');
+    expect(fake.log).not.toContain('queue');
+  });
+
+  it('args do not disambiguate an overloaded call name either, even inside the { fn, args } form', async () => {
+    const fake = buildFake({
+      resolved: { call: { fn: 'reinitialize', args: [5] } },
+    });
+    await expect(
+      runUpgradeProxy(fake.context, PROXY_ADDR, fakeAbstraction({ abi: overloadedAbi })),
+    ).rejects.toThrow('ambiguous function description');
+  });
+
+  it('the full signature in { fn, args } disambiguates and encodes the arguments', async () => {
+    const fake = buildFake({
+      resolved: { call: { fn: 'reinitialize(uint8)', args: [5] } },
+    });
+    await runUpgradeProxy(fake.context, PROXY_ADDR, fakeAbstraction({ abi: overloadedAbi }));
+    expect(fake.upgradeCallData).toBe(
+      new Interface(overloadedAbi as never).encodeFunctionData('reinitialize(uint8)', [5]),
+    );
+  });
+
+  it('the plain-string call form always encodes zero arguments, even when the string names a full signature', async () => {
+    // `encodeCall`'s string branch is `iface.encodeFunctionData(call, [])` —
+    // unconditionally `[]` — so a full signature string with a non-empty
+    // parameter list is resolved (unambiguous by itself) but then encoded
+    // with no arguments, which `ethers` refuses as a missing argument.
+    const fake = buildFake({ resolved: { call: 'reinitialize(uint8)' } });
+    await expect(
+      runUpgradeProxy(fake.context, PROXY_ADDR, fakeAbstraction({ abi: overloadedAbi })),
+    ).rejects.toThrow(/missing argument/i);
+  });
+
   it('a validation refusal dispatches nothing and writes no record', async () => {
     const fake = buildFake({ validateThrows: new Error('not upgrade-safe') });
     await expect(
@@ -863,6 +944,18 @@ describe('deployProxy — the positional-overloads refusal, ahead of the toolkit
     // by this guard.
     await expect(
       deployProxy(fakeAbstraction({}), [42]),
+    ).rejects.not.toBeInstanceOf(OptionsInArgsPositionError);
+  });
+
+  it('an array whose single element is a struct carrying option-shaped keys is still an args array, never mistaken for options', async () => {
+    // `Array.isArray` short-circuits `assertNoOptionsInArgsPosition` before
+    // it ever inspects an element's own keys — so a constructor argument
+    // that happens to be an object with a key like `initializer` (a
+    // perfectly legitimate struct-shaped constructor argument) is not
+    // confused with an options object landing in the wrong position, which
+    // only happens when `args` ITSELF is not an array.
+    await expect(
+      deployProxy(fakeAbstraction({}), [{ initializer: false }]),
     ).rejects.not.toBeInstanceOf(OptionsInArgsPositionError);
   });
 });

@@ -149,8 +149,20 @@ export type DeployProxyOptions = StandaloneOptions & InitializerOption;
 export type UpgradeProxyOptions = UpgradeOptions & CallOption;
 export type PrepareUpgradeOptions = UpgradeOptions;
 export type DeployImplementationOptions = StandaloneOptions;
-export type DeployBeaconOptions = StandaloneOptions;
-export type UpgradeBeaconOptions = UpgradeOptions;
+/**
+ * **A recorded divergence from the parity target, the same pattern as
+ * {@link DeployBeaconProxyOptions}'s own `kind` omission below:** a beacon
+ * has exactly one kind, so `deployBeacon`'s accepted-options list
+ * (`beacon/index.ts:BEACON_ACCEPTED_OPTIONS`) refuses `kind` outright. Built
+ * as `Omit<StandaloneOptions, 'kind'>` rather than a fresh composition —
+ * `StandaloneOptions` itself keeps `kind` (`DeployProxyOptions` and
+ * `DeployImplementationOptions` both need it, and both genuinely accept it
+ * at runtime), so the member is dropped locally, on this alias only, rather
+ * than widening the omission to every type built from the shared base.
+ */
+export type DeployBeaconOptions = Omit<StandaloneOptions, 'kind'>;
+/** Same divergence, same reason, same pattern: see {@link DeployBeaconOptions}. */
+export type UpgradeBeaconOptions = Omit<UpgradeOptions, 'kind'>;
 /**
  * **Two recorded divergences from the parity target, both in this one type:**
  *
@@ -158,7 +170,12 @@ export type UpgradeBeaconOptions = UpgradeOptions;
  *    is an upstream inconsistency — the Hardhat plugin's equivalent does
  *    include it — harmless in Truffle where the fields are inert, but on
  *    TRON it would leave one operation with no confirmation control, which is
- *    itself a second recorded divergence.
+ *    itself a second recorded divergence. **Type-shape only, today**:
+ *    `timeout`/`pollingInterval` resolve with defaults on every operation,
+ *    this one included, but nothing yet threads them to the confirmation
+ *    wait (`proxy/toolkit.ts`'s `confirm` always uses the host's own fixed
+ *    bound) — a separate, pre-existing gap this composition choice does not
+ *    itself close.
  * 2. It omits `ProxyKindOption`, where the parity-shaped type would include
  *    it. A beacon proxy has exactly one kind, so `deployBeaconProxy`'s own
  *    accepted-options list (`beacon/index.ts:BEACON_ACCEPTED_OPTIONS`) refuses

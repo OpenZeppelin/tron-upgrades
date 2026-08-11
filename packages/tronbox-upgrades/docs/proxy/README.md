@@ -36,9 +36,12 @@ What happened, in order: your implementation was **validated for upgrade safety 
 anything spent**, the implementation and the proxy were deployed through TronBox's own
 migration queue, the proxy's transaction was **confirmed on-chain with its receipt checked**
 — a reverted deployment is a failure, never an apparent success — and the proxy was recorded
-in the deployment record beside your artifacts. `kind: 'uups'` selects a TRC1967 proxy;
-the default is transparent, which deploys its own admin owned by `initialOwner` (default:
-the sending account).
+in the deployment record beside your artifacts. `kind: 'uups'` selects a TRC1967 proxy and
+`kind: 'transparent'` selects one that deploys its own admin, owned by `initialOwner`
+(default: the sending account). Omit `kind` and the plugin infers it from the validated
+implementation — a UUPS entry point (`upgradeTo`/`upgradeToAndCall`) selects TRC1967;
+transparent is the fallback only when no such entry point is found, never an unconditional
+default.
 
 **Always `await` the operations.** The reasons — and the precise meaning of "returned" —
 are on the [deployment and transactions](../deploy/README.md) page.
@@ -88,7 +91,7 @@ The two operations declare very different things about a rerun:
 | storage-incompatible | the new layout moves or removes existing state; the message names the change |
 | beacon proxy | this proxy's implementation lives on its beacon — upgrade the beacon |
 | unknown proxy generation | the reported `UPGRADE_INTERFACE_VERSION` is outside what this plugin knows; nothing was sent |
-| empty initializer | the ported TRC1967Proxy rejects uninitialized deployment for both kinds; add an initializer or use a beacon proxy |
+| empty initializer | `encodeInitializer` — the one choke point every kind's initializer is encoded through, including a beacon proxy's own — refuses uninitialized deployment uniformly; add an initializer the ABI answers |
 | `initialOwner` is a ProxyAdmin | the v5 transparent proxy deploys its own admin; passing an existing ProxyAdmin is almost always a v4 habit — the message names the skip option if you really mean it |
 | stale proxy record | a prior deployment's record cannot vouch for the address the artifact already names; see above |
 

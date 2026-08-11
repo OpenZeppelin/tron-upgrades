@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { assertNoOptionsInArgsPosition, createOperationToolkit } from '../src/proxy/toolkit';
 import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
 import { UPGRADE_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/upgrade-proxy';
+import { BEACON_ACCEPTED_OPTIONS } from '../src/beacon';
 import { OptionsInArgsPositionError } from '../src/proxy/errors';
+import { UnknownOptionError } from '../src/options';
 import { CheatcodeSlotCollisionError, LinkVerificationFailedError } from '../src/deploy';
 import { migrateShapedHandles } from './helpers/handles';
 import { realToolkitProject } from './helpers/toolkit-project';
@@ -72,6 +74,23 @@ describe('the toolkit reads the resolver output at the right level (B1)', () => 
     // `resolved.validation.unsafeAllowLinkedLibraries`, where upstream's
     // `withValidationDefaults` derives it from the `unsafeAllow` grant.
     expect(context.resolved.unsafeAllowLinkedLibraries).toBe(true);
+  });
+
+  it('BEACON_ACCEPTED_OPTIONS refuses `kind` at runtime — the same list deployBeacon, deployBeaconProxy and upgradeBeacon all share', async () => {
+    // Executed, not read from the type: a JS caller who bypasses the (now
+    // fixed) DeployBeaconOptions/UpgradeBeaconOptions type-level refusal and
+    // hands `kind` to the real resolver still gets refused, through the one
+    // constant all three beacon operations pass as `acceptedOptions`.
+    const shape = migrateShapedHandles();
+    await expect(
+      createOperationToolkit({
+        handles: shape.handles,
+        rawOptions: { kind: 'beacon' },
+        acceptedOptions: BEACON_ACCEPTED_OPTIONS,
+        processEnv: {},
+        mode: 'validate-only',
+      }),
+    ).rejects.toBeInstanceOf(UnknownOptionError);
   });
 });
 
