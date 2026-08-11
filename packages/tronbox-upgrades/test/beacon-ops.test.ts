@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  deployBeaconProxy,
   runDeployBeacon,
   runDeployBeaconProxy,
   runUpgradeBeacon,
@@ -8,6 +9,7 @@ import {
 import { NothingToAdoptError } from '../src/adopt/errors';
 import {
   BeaconInitialOwnerRequiredError,
+  OptionsInArgsPositionError,
   UpgradeVerificationFailedError,
 } from '../src/proxy/errors';
 import {
@@ -309,5 +311,22 @@ describe('upgradeBeacon', () => {
     expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
     expect(fake.log).not.toContain('confirm');
     expect(fake.log.some(e => e.startsWith('callThroughFacade'))).toBe(false);
+  });
+});
+
+/*
+ * `deployBeaconProxy` (the production entry) refuses the dropped
+ * positional-overloads shape before it ever builds a toolkit — same guard,
+ * same reasoning as `deployProxy`'s own (`test/proxy-operations.test.ts`).
+ */
+describe('deployBeaconProxy — the positional-overloads refusal, ahead of the toolkit', () => {
+  it('refuses an options object passed where args belongs, before any environment resolution', async () => {
+    await expect(
+      deployBeaconProxy(
+        BEACON,
+        abstraction('Box'),
+        { initializer: false } as unknown as readonly unknown[],
+      ),
+    ).rejects.toBeInstanceOf(OptionsInArgsPositionError);
   });
 });

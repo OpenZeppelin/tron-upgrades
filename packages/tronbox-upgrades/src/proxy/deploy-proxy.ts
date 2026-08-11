@@ -23,13 +23,14 @@ import { transactionIdentity, operationNotes } from '../results/types';
 import type { DeployedProxy } from '../results/types';
 import { PROXY_CONTRACT_NAMES } from './artifacts';
 import {
+  EmptyInitializerRefusedError,
   InitialOwnerUnsupportedKindError,
-  InitializerDataRequiredError,
   ProxyAdminAsOwnerError,
   StaleProxyRecordError,
 } from './errors';
 import { decideDeployReplay } from './replay';
 import {
+  assertNoOptionsInArgsPosition,
   createOperationToolkit,
   handlesFrom,
   HANDLE_OPTION_KEYS,
@@ -172,7 +173,7 @@ export async function runDeployProxy(
   // empty-data refusal belongs.
   const initializerResolution = resolveInitializer(resolved.initializer, args.length);
   if (initializerResolution.kind === 'none') {
-    throw new InitializerDataRequiredError(name, 'initializer-false');
+    throw new EmptyInitializerRefusedError(kind, 'initializer-false');
   }
   const abi = (contract as { abi?: readonly unknown[] }).abi ?? [];
   // The RESOLUTION's own function name is what gets encoded — never a second,
@@ -294,6 +295,10 @@ export async function deployProxy(
   args: readonly unknown[] = [],
   options: RawOperationOptions = {},
 ): Promise<DeployedProxy> {
+  // Refused before anything else, including the toolkit build: the dropped
+  // positional-overloads shape must never reach the record session or the
+  // environment resolver.
+  assertNoOptionsInArgsPosition('deployProxy', args, DEPLOY_PROXY_ACCEPTED_OPTIONS);
   // The record session reconciles only addresses it is given, so the replay
   // decision's verdict exists exactly when the prior address is named here.
   const prior = readPriorDeployedAddress(contract);

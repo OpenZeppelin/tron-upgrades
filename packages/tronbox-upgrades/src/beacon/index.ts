@@ -17,6 +17,7 @@ import {
 import { transactionIdentity, operationNotes } from '../results/types';
 import type { DeployedBeacon, DeployedProxy, UpgradedProxy } from '../results/types';
 import {
+  assertNoOptionsInArgsPosition,
   createOperationToolkit,
   handlesFrom,
   HANDLE_OPTION_KEYS,
@@ -196,6 +197,8 @@ export async function deployBeaconProxy(
   args: readonly unknown[] = [],
   options: RawOperationOptions = {},
 ): Promise<DeployedProxy> {
+  // Refused before anything else — see `deployProxy`'s own guard for why.
+  assertNoOptionsInArgsPosition('deployBeaconProxy', args, BEACON_ACCEPTED_OPTIONS);
   const context = await createOperationToolkit({
     handles: handlesFrom(options),
     rawOptions: options,

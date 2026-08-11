@@ -131,6 +131,16 @@ export class UpgradeVerificationFailedError extends ProxyOperationRefusedError {
  * The ported TRC1967Proxy rejects empty initialization data for both kinds,
  * so the refusal happens here — before any spend — with the two
  * user mistakes distinguished, because their remedies differ.
+ *
+ * **The sole class for this refusal.** `deployProxy`'s own pre-flight (the
+ * explicit `initializer: false` arm, before the queue) used to throw a
+ * second, near-identical class, `InitializerDataRequiredError` — this one
+ * absorbed it: same input, same class, whether the refusal comes from that
+ * pre-flight or from `encodeInitializer`'s ABI-has-no-default-initializer
+ * arm. `InitializerDataRequiredError` carried a `contractName` field this
+ * class does not; it is not migrated here, because every call site already
+ * has the proxy `kind` in hand (a more actionable field for this message)
+ * and nothing outside the deleted class ever read `contractName`.
  */
 export class EmptyInitializerRefusedError extends ProxyOperationRefusedError {
   readonly code = 'empty-initializer-refused';
@@ -150,45 +160,6 @@ export class EmptyInitializerRefusedError extends ProxyOperationRefusedError {
           `use a beacon proxy.`,
     );
     this.name = 'EmptyInitializerRefusedError';
-  }
-}
-
-/**
- * `resolveInitializer` resolved the operation's `initializer` to
- * `{ kind: 'none' }` — only an explicit `initializer: false` produces one,
- * since the omitted case follows the parity target's TRY-FIRST rule and lets
- * the ABI decide inside `encodeInitializer`. That leaves the deploy with no
- * initialization data — and unlike upstream's `ERC1967Proxy`, the ported
- * TRC1967Proxy and TransparentUpgradeableProxy REJECT an empty init-data
- * constructor argument (a deliberate parity break, safer than upstream).
- * Refusing here, before any spend, turns that guaranteed on-chain revert
- * into a named pre-flight error that states its own remedy. The
- * `'no-arguments'` cause is retired from `deployProxy` by the TRY-FIRST
- * rule — an argument-less deploy now succeeds or takes the encode step's
- * `EmptyInitializerRefusedError` — and stays declared only until the decided
- * consolidation of this class with that one.
- */
-export class InitializerDataRequiredError extends ProxyOperationRefusedError {
-  readonly code = 'initializer-data-required';
-  constructor(
-    readonly contractName: string,
-    readonly because: 'initializer-false' | 'no-arguments',
-  ) {
-    super(
-      because === 'initializer-false'
-        ? `\`initializer: false\` is not supported for ${contractName}: the ` +
-          `ported TRC1967Proxy and TransparentUpgradeableProxy reject empty ` +
-          `initialization data — a deliberate parity break, safer than ` +
-          `upstream's ERC1967Proxy. An uninitialized proxy cannot be ` +
-          `deployed on TRON; add an initializer function instead.`
-        : `${contractName} was deployed with no arguments and no ` +
-          `\`initializer\` option: the ported TRC1967Proxy and ` +
-          `TransparentUpgradeableProxy reject empty initialization data — a ` +
-          `deliberate parity break, safer than upstream's ERC1967Proxy — so ` +
-          `an uninitialized deploy is not supported on TRON. Add an ` +
-          `initializer function.`,
-    );
-    this.name = 'InitializerDataRequiredError';
   }
 }
 
@@ -297,5 +268,39 @@ export class ProxyAdminAsOwnerError extends ProxyOperationRefusedError {
         `\`unsafeSkipProxyAdminCheck\`.`,
     );
     this.name = 'ProxyAdminAsOwnerError';
+  }
+}
+
+/**
+ * The old Hardhat/Truffle-shaped API also accepted an options object in the
+ * position `args` now occupies — `deployProxy(Contract, opts)`,
+ * `deployBeaconProxy(beaconAddress, Contract, opts)` — with no separate
+ * argument list at all. That overload is gone: `args` is always the
+ * constructor/initializer argument list, and an options object landing there
+ * is never reinterpreted as options. Left unrefused, the object would either
+ * throw an opaque native error the first time something tries to spread it
+ * (`[...args]` on a plain object is a `TypeError`), or — worse — get treated
+ * as a single positional argument, silently misencoding the call. Refused
+ * here, by name, before anything spends.
+ */
+export class OptionsInArgsPositionError extends ProxyOperationRefusedError {
+  readonly code = 'options-in-args-position';
+  constructor(
+    readonly operation: string,
+    readonly receivedType: string,
+    readonly looksLikeOptions: boolean,
+  ) {
+    super(
+      `${operation}'s argument list must be an array, but received a ` +
+        `${receivedType}` +
+        (looksLikeOptions
+          ? ' that carries option keys — it looks like an options object was ' +
+            'passed positionally, where the argument list belongs.'
+          : '.') +
+        ` There is no overload that accepts options in this position: pass ` +
+        `an array of constructor/initializer arguments (or an empty array) ` +
+        `here, and any options as the following argument.`,
+    );
+    this.name = 'OptionsInArgsPositionError';
   }
 }

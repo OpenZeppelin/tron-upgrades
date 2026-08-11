@@ -1,7 +1,7 @@
 import { Interface } from 'ethers';
 import { describe, expect, it } from 'vitest';
 
-import { runDeployProxy } from '../src/proxy/deploy-proxy';
+import { deployProxy, runDeployProxy } from '../src/proxy/deploy-proxy';
 import { runUpgradeProxy } from '../src/proxy/upgrade-proxy';
 import type {
   OperationContext,
@@ -12,8 +12,8 @@ import {
   BeaconProxyRefusedError,
   EmptyInitializerRefusedError,
   InitialOwnerUnsupportedKindError,
-  InitializerDataRequiredError,
   NotTransparentProxyError,
+  OptionsInArgsPositionError,
   StaleProxyRecordError,
   UpgradeVerificationFailedError,
 } from '../src/proxy/errors';
@@ -581,10 +581,16 @@ describe('deployProxy — the order is the contract', () => {
   });
 
   it('initializer:false is refused by name — the ported proxy rejects empty init data', async () => {
+    // The sole class for this refusal, across every operation: the
+    // formerly-separate `InitializerDataRequiredError` was absorbed into
+    // `EmptyInitializerRefusedError` (Nahim's consolidation decision) —
+    // same input, same class, whether the refusal is thrown here (the
+    // explicit `initializer: false` pre-flight) or from `encodeInitializer`
+    // (the ABI-has-no-default-initializer arm).
     const fake = buildFake({ resolved: { initializer: false } });
     await expect(
       runDeployProxy(fake.context, fakeAbstraction({}), [42]),
-    ).rejects.toThrow(InitializerDataRequiredError);
+    ).rejects.toBeInstanceOf(EmptyInitializerRefusedError);
   });
 
   it('an omitted initializer with zero args TRIES initialize() — the ABI decides, not the arg count', async () => {
@@ -831,5 +837,32 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     expect(fake.log).not.toContain('confirm');
     expect(fake.log.some(e => e.startsWith('sendUpgradeCall:'))).toBe(false);
     expect(fake.log).not.toContain('recordProxy');
+  });
+});
+
+/*
+ * `deployProxy` (the production entry, not `runDeployProxy`) refuses the
+ * dropped positional-overloads shape before it ever builds a toolkit — so
+ * this needs no environment or chain fixture: a garbage `args` never reaches
+ * `createOperationToolkit`, `resolveEnvironment`, or the record session.
+ */
+describe('deployProxy — the positional-overloads refusal, ahead of the toolkit', () => {
+  it('refuses an options object passed where args belongs, before any environment resolution', async () => {
+    await expect(
+      deployProxy(
+        fakeAbstraction({}),
+        { initializer: false } as unknown as readonly unknown[],
+      ),
+    ).rejects.toBeInstanceOf(OptionsInArgsPositionError);
+  });
+
+  it('a real array of constructor args is never mistaken for options', async () => {
+    // Past the positional check, `deployProxy` reaches `createOperationToolkit`,
+    // which throws its own (unrelated) absent-environment error outside a
+    // TronBox context — proving the array was accepted rather than refused
+    // by this guard.
+    await expect(
+      deployProxy(fakeAbstraction({}), [42]),
+    ).rejects.not.toBeInstanceOf(OptionsInArgsPositionError);
   });
 });

@@ -13,6 +13,7 @@ import {
   BeaconProxyRefusedError,
   EmptyInitializerRefusedError,
   NotTransparentProxyError,
+  OptionsInArgsPositionError,
   ProxyAdminAsOwnerError,
   ProxyArtifactCollisionError,
   ProxyArtifactMissingError,
@@ -234,6 +235,7 @@ describe('the proxy refusal family: distinct codes, distinct messages, one base'
     new UpgradeVerificationFailedError('TProxy', 'TNew', 'TOld'),
     new EmptyInitializerRefusedError('uups', 'initializer-false'),
     new ProxyAdminAsOwnerError('TAdmin'),
+    new OptionsInArgsPositionError('deployProxy', 'object', true),
   ];
 
   it('every refusal is in the family with a distinct code and message', () => {

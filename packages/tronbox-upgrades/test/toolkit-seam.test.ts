@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { createOperationToolkit } from '../src/proxy/toolkit';
+import { assertNoOptionsInArgsPosition, createOperationToolkit } from '../src/proxy/toolkit';
 import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
 import { UPGRADE_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/upgrade-proxy';
+import { OptionsInArgsPositionError } from '../src/proxy/errors';
 import { CheatcodeSlotCollisionError, LinkVerificationFailedError } from '../src/deploy';
 import { migrateShapedHandles } from './helpers/handles';
 import { realToolkitProject } from './helpers/toolkit-project';
@@ -241,5 +242,64 @@ describe('the degraded-output channel is truthful: every capturable engine call 
     expect(note?.summary).toBe(
       'Reinitializers are not included in validations by default',
     );
+  });
+});
+
+/*
+ * The positional-overloads refusal: the old Hardhat/Truffle-shaped API also
+ * accepted an options object where `args` now lives. `assertNoOptionsInArgsPosition`
+ * is the guard every operation with a positional `args` calls first, before
+ * anything else — these tests pin the pure function directly, independent of
+ * which operation wires it in.
+ */
+describe('assertNoOptionsInArgsPosition — the dropped positional-overloads shape', () => {
+  it('passes an array through untouched, empty or not', () => {
+    expect(() =>
+      assertNoOptionsInArgsPosition('deployProxy', [], DEPLOY_PROXY_ACCEPTED_OPTIONS),
+    ).not.toThrow();
+    expect(() =>
+      assertNoOptionsInArgsPosition('deployProxy', [42, 'x'], DEPLOY_PROXY_ACCEPTED_OPTIONS),
+    ).not.toThrow();
+  });
+
+  it('refuses an options-shaped object by name, naming the recognised keys', () => {
+    let caught: OptionsInArgsPositionError | undefined;
+    try {
+      assertNoOptionsInArgsPosition(
+        'deployProxy',
+        { initializer: false },
+        DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      );
+    } catch (error) {
+      caught = error as OptionsInArgsPositionError;
+    }
+    expect(caught).toBeInstanceOf(OptionsInArgsPositionError);
+    expect(caught?.operation).toBe('deployProxy');
+    expect(caught?.looksLikeOptions).toBe(true);
+    expect(caught?.message).toContain('deployProxy');
+    expect(caught?.message).toContain('options object');
+  });
+
+  it('still refuses a non-array that carries no recognised option key, with a generic message', () => {
+    let caught: OptionsInArgsPositionError | undefined;
+    try {
+      assertNoOptionsInArgsPosition('deployBeaconProxy', 'oops', UPGRADE_PROXY_ACCEPTED_OPTIONS);
+    } catch (error) {
+      caught = error as OptionsInArgsPositionError;
+    }
+    expect(caught).toBeInstanceOf(OptionsInArgsPositionError);
+    expect(caught?.looksLikeOptions).toBe(false);
+    expect(caught?.receivedType).toBe('string');
+  });
+
+  it('refuses null the same way — typeof null is "object" but it carries no keys', () => {
+    let caught: OptionsInArgsPositionError | undefined;
+    try {
+      assertNoOptionsInArgsPosition('deployProxy', null, DEPLOY_PROXY_ACCEPTED_OPTIONS);
+    } catch (error) {
+      caught = error as OptionsInArgsPositionError;
+    }
+    expect(caught).toBeInstanceOf(OptionsInArgsPositionError);
+    expect(caught?.looksLikeOptions).toBe(false);
   });
 });

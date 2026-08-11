@@ -53,7 +53,7 @@ import {
 } from '../deploy';
 import { Interface } from 'ethers';
 import { requireProxyArtifact } from './artifacts';
-import { EmptyInitializerRefusedError } from './errors';
+import { EmptyInitializerRefusedError, OptionsInArgsPositionError } from './errors';
 import type { UpgradeOptions } from '../options/types';
 import { captureEngineWarnings } from '../output/engine';
 
@@ -263,6 +263,36 @@ export const HANDLE_OPTION_KEYS: readonly string[] = [
 ];
 
 /**
+ * Refuses the dropped positional-overloads shape: `args` must be an array.
+ * The old Hardhat/Truffle-shaped API also accepted an options object in this
+ * position (`deployProxy(Contract, opts)`), and silently reinterpreting one
+ * as the argument list is worse than a compile error would have been — it is
+ * either a confusing native `TypeError` a few calls downstream, or a value
+ * that quietly encodes wrong. Called BEFORE anything else, in every operation
+ * that takes a positional `args`, so the refusal is the very first thing a
+ * caller who fell into the old habit sees.
+ *
+ * `acceptedOptions` is used only to make the message MORE specific when it
+ * can — whether `args` happens to carry a key the operation would have
+ * accepted as an option — never to change whether this throws: a non-array
+ * `args` is refused unconditionally.
+ */
+export function assertNoOptionsInArgsPosition(
+  operation: string,
+  args: unknown,
+  acceptedOptions: readonly string[],
+): void {
+  if (Array.isArray(args)) {
+    return;
+  }
+  const looksLikeOptions =
+    typeof args === 'object' &&
+    args !== null &&
+    acceptedOptions.some(key => key in (args as Record<string, unknown>));
+  throw new OptionsInArgsPositionError(operation, typeof args, looksLikeOptions);
+}
+
+/**
  * Encodes initializer data over the abstraction's public `abi`. `'0x'` is a
  * refusal, not a value: the ported TRC1967Proxy rejects empty
  * initialization data for both kinds.
@@ -283,9 +313,6 @@ export function encodeInitializer(
   const name = initializer ?? 'initialize';
   const fragment = iface.getFunction(name, [...args] as never);
   if (fragment === null) {
-    if (initializer === undefined && args.length === 0) {
-      throw new EmptyInitializerRefusedError(kind, 'no-default-initializer');
-    }
     throw new EmptyInitializerRefusedError(kind, 'no-default-initializer');
   }
   const data = iface.encodeFunctionData(fragment, [...args] as never);
