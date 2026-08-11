@@ -56,6 +56,14 @@ interface FakeSpec {
   readonly existingProxyRecord?: boolean;
   readonly constructorArgs?: readonly unknown[];
   /**
+   * What the fake's `inferKind` answers — the engine-side inference over a
+   * validated implementation. Defaults to `'transparent'`, the answer the
+   * engine gives for a contract with no public upgrade entry point.
+   */
+  readonly inferredKind?: 'transparent' | 'uups' | 'beacon';
+  /** Overrides the abstraction's ABI (the initializer-rule tests need one). */
+  readonly abi?: readonly unknown[];
+  /**
    * Makes the fake's `validateImplementation` throw instead of returning a
    * validation result — the refusal both operations' step 1 can take, and
    * the one this suite uses to pin that the refusal blocks every side
@@ -110,7 +118,7 @@ const RESULT_ABI = [
 function fakeAbstraction(spec: FakeSpec): ContractAbstraction {
   return {
     contractName: 'Box',
-    abi: RESULT_ABI,
+    abi: spec.abi ?? RESULT_ABI,
     bytecode: '0x60806040',
     isDeployed: () => spec.priorAddress != null,
     address: spec.priorAddress ?? undefined,
@@ -308,7 +316,7 @@ function buildFake(spec: FakeSpec = {}): Fake {
 
     async inferKind() {
       log.push('inferKind');
-      return 'transparent';
+      return spec.inferredKind ?? 'transparent';
     },
 
     async processProxyKind() {
@@ -471,6 +479,36 @@ describe('deployProxy — the order is the contract', () => {
       'hostDeploy:Box',
       'hostDeploy:TRC1967Proxy',
     ]);
+  });
+
+  it('an omitted kind is INFERRED from the validated implementation — a UUPS shape selects the TRC1967 artifact', async () => {
+    // The parity break this pins: upstream resolves an omitted kind through
+    // `inferProxyKind` BEFORE anything selects an artifact
+    // (`upgrades-core@1.46 dist/proxy-kind.js:34-41`), so a UUPS-shaped
+    // implementation deployed with no `kind` gets a TRC1967 proxy — never a
+    // silently-transparent one whose admin the caller does not expect.
+    const fake = buildFake({ inferredKind: 'uups' });
+    await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
+    expect(fake.log).toContain('inferKind');
+    // Inference reads the VALIDATED implementation, so it cannot run first.
+    expect(fake.log.indexOf('validate')).toBeLessThan(
+      fake.log.indexOf('inferKind'),
+    );
+    expect(fake.log).toContain('proxyArtifact:TRC1967Proxy');
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
+      'hostDeploy:Box',
+      'hostDeploy:TRC1967Proxy',
+    ]);
+  });
+
+  it('an explicit kind consults no inference at all', async () => {
+    const fake = buildFake({
+      inferredKind: 'uups',
+      resolved: { kind: 'transparent' },
+    });
+    await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
+    expect(fake.log).not.toContain('inferKind');
+    expect(fake.log).toContain('proxyArtifact:TransparentUpgradeableProxy');
   });
 
   it('kind:beacon is refused by name, never silently downgraded to transparent', async () => {

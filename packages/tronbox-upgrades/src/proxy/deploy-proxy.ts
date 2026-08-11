@@ -90,10 +90,50 @@ export async function runDeployProxy(
     resolved.unsafeAllowLinkedLibraries,
   );
 
-  // 3 — only now may the context's missing deployer refuse.
+  // 3 — the kind, resolved right after validation because inference READS
+  //     the validated implementation: an explicit kind is narrowed (never
+  //     silently downgraded), an omitted kind is INFERRED — the parity
+  //     target resolves an omitted kind through `inferProxyKind` before
+  //     anything selects an artifact (`upgrades-core@1.46
+  //     dist/proxy-kind.js:34-41`, reached ahead of the implementation
+  //     validation), so `deployProxy(BoxUUPS, ...)` with no `kind` deploys a
+  //     UUPS proxy, never a silently-transparent one. `toolkit.inferKind` is
+  //     the same engine machinery `validateImplementation` just used for its
+  //     own error check, so the two resolutions cannot disagree.
+  //
+  // The two option-resolution helpers load ONLY here, behind a dynamic
+  // import of the SAME specifier `toolkit.ts` already uses: `../options/
+  // resolve` holds the package's one static engine value-import, so
+  // `test/entry-point-closure.test.ts` forbids it from this module's own
+  // static closure, and `test/record-structure.test.ts` pins the entry's
+  // whole deferred-edge set by exact specifier — a second, differently-
+  // spelled dynamic import of the same file (e.g. the `../options` face)
+  // would add a distinct edge and fail that pin for no behavioural reason.
+  // `resolved` already carries the caller's raw `kind`/`initializer` (Task
+  // 1-2's B1 fix) — this call interprets them, it does not re-resolve them.
+  const { requireProxyKind, resolveInitializer } = await import(
+    '../options/resolve'
+  );
+  const kind = resolved.kind ?? (await toolkit.inferKind(validated));
+  // Never silently downgraded: a caller who names a kind this operation does
+  // not support gets a named refusal, not a transparent proxy contradicting
+  // what they asked for. The narrowing runs on BOTH paths — an inferred
+  // `'beacon'` cannot arrive from the installed engine (`inferProxyKind`
+  // answers only 'uups' | 'transparent'; `dist/validate/query.js:174-183`),
+  // but the member's type says it could, so it takes the same refusal an
+  // explicit one does rather than silently selecting an artifact for it.
+  requireProxyKind(kind, ['transparent', 'uups'], 'deployProxy');
+  if (kind === 'beacon') {
+    // `requireProxyKind` threw above; this is TypeScript's proof of it.
+    throw new Error(
+      'unreachable: requireProxyKind admits only transparent | uups here',
+    );
+  }
+
+  // 4 — only now may the context's missing deployer refuse.
   const deployer = toolkit.requireDeployer();
 
-  // 4 — replay recognition, before any spend.
+  // 5 — replay recognition, before any spend.
   const prior = toolkit.priorDeployedAddress(contract);
   const decision = decideDeployReplay(prior, toolkit.replayVerdicts());
   if (decision.kind === 'refuse') {
@@ -118,31 +158,8 @@ export async function runDeployProxy(
     });
   }
 
-  // 5 — pre-queue refusals that need no chain.
+  // 6 — pre-queue refusals that need no chain.
   assertNoCheatcodeCollision(resolved.constructorArgs);
-
-  // The two option-resolution helpers load ONLY here, behind a dynamic
-  // import of the SAME specifier `toolkit.ts` already uses: `../options/
-  // resolve` holds the package's one static engine value-import, so
-  // `test/entry-point-closure.test.ts` forbids it from this module's own
-  // static closure, and `test/record-structure.test.ts` pins the entry's
-  // whole deferred-edge set by exact specifier — a second, differently-
-  // spelled dynamic import of the same file (e.g. the `../options` face)
-  // would add a distinct edge and fail that pin for no behavioural reason.
-  // `resolved` already carries the caller's raw `kind`/`initializer` (Task
-  // 1-2's B1 fix) — this call interprets them, it does not re-resolve them.
-  const { requireProxyKind, resolveInitializer } = await import(
-    '../options/resolve'
-  );
-
-  // Never silently downgraded: a caller who names a kind this operation does
-  // not support gets a named refusal, not a transparent proxy contradicting
-  // what they asked for. `kind: undefined` (nothing supplied) is the one
-  // value this narrowing does not see — `deployProxy` still defaults it.
-  if (resolved.kind !== undefined) {
-    requireProxyKind(resolved.kind, ['transparent', 'uups'], 'deployProxy');
-  }
-  const kind = resolved.kind ?? 'transparent';
 
   // The ported TRC1967Proxy/TransparentUpgradeableProxy reject empty
   // initialization data — safer than upstream's ERC1967Proxy, and a
@@ -163,10 +180,10 @@ export async function runDeployProxy(
   // could drift from the one `resolveInitializer` just computed.
   const initData = encodeInitializer(abi, kind, args, initializerResolution.fn);
 
-  // 6 — the sender, resolved once, threaded to preflight and comparison.
+  // 7 — the sender, resolved once, threaded to preflight and comparison.
   const sender = toolkit.resolveSender();
 
-  // 7 — the proxy artifact and, for transparent, the initialOwner
+  // 8 — the proxy artifact and, for transparent, the initialOwner
   //     probe (revert means "not a ProxyAdmin"; transport raises).
   const proxyName =
     kind === 'transparent'
@@ -190,7 +207,7 @@ export async function runDeployProxy(
     }
   }
 
-  // 8 — ONE queued step: implementation, proxy, confirmation, verification
+  // 9 — ONE queued step: implementation, proxy, confirmation, verification
   //     (the settlement contract belongs to the queue seam).
   const outcome = await toolkit.queue(deployer, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
@@ -235,7 +252,7 @@ export async function runDeployProxy(
     return writeBack;
   });
 
-  // 8b — the recognition key, completed. The replay module documents the key
+  // 9b — the recognition key, completed. The replay module documents the key
   //     as the artifact's per-network write-back, but the queue's OWN
   //     write-backs left the logical contract naming the implementation it
   //     deployed along the way — a replayed migration reading that entry
@@ -249,7 +266,7 @@ export async function runDeployProxy(
   replayMemory.address = outcome.address;
   replayMemory.transactionHash = outcome.transactionHash;
 
-  // 9 — the wildcard statement: a required effect of the wildcard
+  // 10 — the wildcard statement: a required effect of the wildcard
   //     path, stated where the user reads output.
   if (toolkit.network.configuredId.syntax === 'wildcard') {
     toolkit.channel.note(

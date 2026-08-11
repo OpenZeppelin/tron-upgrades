@@ -556,12 +556,33 @@ export async function createOperationToolkit(request: {
         [...resolvedOptions.constructorArgs] as never,
       );
       const version = engine.getVersion(unlinked, bytecode, encodedArgs);
+      /*
+       * The kind `getErrors` judges with: the caller's, or — omitted — the
+       * engine's own inference over the run data just derived. This mirrors
+       * the parity target's ordering, where `processProxyKind` resolves the
+       * kind BEFORE the error check runs (`upgrades-core@1.46
+       * dist/proxy-kind.js:34-41` falls back to `inferProxyKind` for a
+       * proxy-less deploy) — never a fabricated `'transparent'`, which would
+       * suppress the uups-only `missing-public-upgradeto` judgement for every
+       * caller who chose no kind (`dist/validate/overrides.js:86-88` filters
+       * that error for transparent/beacon). At 1.46 the substitution is
+       * provably invisible in the output — `inferProxyKind` answers `'uups'`
+       * only when the upgrade entry point exists
+       * (`dist/validate/query.js:170-183`), exactly the case where
+       * `getErrors` never records the error (`query.js:138-144`) — but the
+       * exactness is what keeps a future kind-gated judgement from silently
+       * diverging. Same machinery as `inferKind` below, so the two cannot
+       * disagree.
+       */
+      const kindForErrors =
+        resolvedOptions.kind ??
+        engine.inferProxyKind(validations as never, version as never);
       const errors = engine.getErrors(
         validations as never,
         version as never,
         {
           ...resolvedOptions.engineOptions,
-          kind: resolvedOptions.kind ?? 'transparent',
+          kind: kindForErrors,
         } as never,
       );
       if (errors.length > 0) {
