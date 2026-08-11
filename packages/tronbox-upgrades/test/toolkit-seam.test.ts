@@ -8,7 +8,7 @@ import { RECORD_DIR, restoreRecordDir } from './helpers/prime-record-dir';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { InvalidDeployment } from '@openzeppelin/upgrades-core';
+import { getStorageUpgradeReport, InvalidDeployment } from '@openzeppelin/upgrades-core';
 
 import { assertNoOptionsInArgsPosition, createOperationToolkit } from '../src/proxy/toolkit';
 import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
@@ -17,6 +17,9 @@ import {
   DEPLOY_BEACON_ACCEPTED_OPTIONS,
   DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS,
   UPGRADE_BEACON_ACCEPTED_OPTIONS,
+  deployBeacon,
+  deployBeaconProxy,
+  upgradeBeacon,
 } from '../src/beacon';
 import { forceImport } from '../src/adopt';
 import { ImplementationNotPreviouslyDeployedError, OptionsInArgsPositionError } from '../src/proxy/errors';
@@ -189,7 +192,33 @@ describe('the toolkit reads the resolver output at the right level (B1)', () => 
     expect(context.resolved.engineOptions['unsafeAllow']).toEqual(['constructor']);
   });
 
-  it('upgradeBeacon still resolves every option it actually consumes, including the storage-check pair deployBeacon does not', async () => {
+  /*
+   * Fix round 1 (owner's scoping correction): `deployBeacon` ACCEPTS
+   * `unsafeAllowRenames`/`unsafeSkipStorageCheck` — an earlier pass at this
+   * list refused them, on the theory that OUR code never reads them for a
+   * fresh deploy. That theory is right about our code and wrong about the
+   * rule: the engine ignoring an option for one operation is not the same
+   * as that operation refusing it, and refusing it here would diverge from
+   * `deployProxy`/`deployImplementation`/`validateImplementation`/
+   * `forceImport`, which all accept the identical pair for the identical
+   * reason. This pins ACCEPTANCE (no throw, threaded into `engineOptions`
+   * exactly like `upgradeBeacon`'s) — the inertness itself is proven by
+   * execution in the "genuinely inert for a fresh deploy" suite below.
+   */
+  it('deployBeacon accepts unsafeAllowRenames/unsafeSkipStorageCheck — the engine ignores them for a fresh deploy, but that is not this operation refusing them', async () => {
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: shape.handles,
+      rawOptions: { unsafeAllowRenames: true, unsafeSkipStorageCheck: true },
+      acceptedOptions: DEPLOY_BEACON_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    expect(context.resolved.engineOptions['unsafeAllowRenames']).toBe(true);
+    expect(context.resolved.engineOptions['unsafeSkipStorageCheck']).toBe(true);
+  });
+
+  it('upgradeBeacon still resolves every option it actually consumes, including the storage-check pair — genuinely load-bearing here, merely accepted-and-forwarded on deployBeacon', async () => {
     const shape = migrateShapedHandles();
     const context = await createOperationToolkit({
       handles: shape.handles,
@@ -348,6 +377,141 @@ describe('validateImplementation — unsafeAllow flips a REAL engine verdict ove
       accepted.resolved,
     );
     expect(validated.name).toBe(project.contractName);
+  });
+});
+
+/*
+ * Fix round 1's central execution proof: `unsafeAllowRenames` and
+ * `unsafeSkipStorageCheck` are read at exactly one site anywhere in the
+ * installed engine — `getStorageUpgradeReport`
+ * (`upgrades-core/dist/storage/index.js:54` for the skip-check short-circuit,
+ * `:64` for the comparator's rename tolerance) — which our own
+ * `assertStorageCompatible` (`proxy/toolkit.ts`) calls unmodified. This drives
+ * that REAL, installed function directly, with two minimal hand-built
+ * `StorageLayout` objects (the public shape `storage/layout.d.ts` declares;
+ * no corpus compile needed, since a bare rename or type change needs no
+ * Solidity source to demonstrate), proving both flags genuinely flip a real
+ * verdict — which is the fact that makes them worth accepting on every
+ * validating operation rather than dropping them.
+ */
+describe('unsafeAllowRenames/unsafeSkipStorageCheck flip a REAL storage-comparison verdict — the pair\'s one actual read site', () => {
+  const numberType = { label: 'uint256', numberOfBytes: '32' };
+
+  it('unsafeAllowRenames: a bare label change is flagged without it, cleared with it', () => {
+    const original = {
+      storage: [
+        { contract: 'V1', label: 'x', type: 't_uint256', src: 'file.sol:1', offset: 0, slot: '0' },
+      ],
+      types: { t_uint256: numberType },
+    };
+    const updated = {
+      storage: [
+        { contract: 'V2', label: 'renamed', type: 't_uint256', src: 'file.sol:1', offset: 0, slot: '0' },
+      ],
+      types: { t_uint256: numberType },
+    };
+    const baseOpts = {
+      kind: 'transparent' as const,
+      unsafeAllow: [],
+      unsafeAllowCustomTypes: false,
+      unsafeAllowLinkedLibraries: false,
+      unsafeAllowRenames: false,
+      unsafeSkipStorageCheck: false,
+    };
+
+    const withoutFlag = getStorageUpgradeReport(original, updated, baseOpts);
+    expect(withoutFlag.ok).toBe(false);
+
+    const withFlag = getStorageUpgradeReport(original, updated, {
+      ...baseOpts,
+      unsafeAllowRenames: true,
+    });
+    expect(withFlag.ok).toBe(true);
+  });
+
+  it('unsafeSkipStorageCheck: a genuine type change is flagged without it, bypassed entirely with it', () => {
+    const original = {
+      storage: [
+        { contract: 'V1', label: 'x', type: 't_uint256', src: 'file.sol:1', offset: 0, slot: '0' },
+      ],
+      types: { t_uint256: numberType },
+    };
+    const updated = {
+      storage: [
+        { contract: 'V2', label: 'x', type: 't_string_storage', src: 'file.sol:1', offset: 0, slot: '0' },
+      ],
+      types: { t_string_storage: { label: 'string', numberOfBytes: '32' } },
+    };
+    const baseOpts = {
+      kind: 'transparent' as const,
+      unsafeAllow: [],
+      unsafeAllowCustomTypes: false,
+      unsafeAllowLinkedLibraries: false,
+      unsafeAllowRenames: false,
+      unsafeSkipStorageCheck: false,
+    };
+
+    const withoutFlag = getStorageUpgradeReport(original, updated, baseOpts);
+    expect(withoutFlag.ok).toBe(false);
+
+    const withFlag = getStorageUpgradeReport(original, updated, {
+      ...baseOpts,
+      unsafeSkipStorageCheck: true,
+    });
+    expect(withFlag.ok).toBe(true);
+  });
+});
+
+/*
+ * The other half of the same proof: the identical pair, accepted by
+ * `deployBeacon` (post-round-1) and driven through the REAL toolkit's
+ * `validateImplementation` over a real compiled corpus contract, produces NO
+ * verdict change whatsoever — confirming by execution, not merely by reading
+ * `processExceptions`'s source, that the engine call `deployBeacon` actually
+ * makes (`getErrors`, never `getStorageUpgradeReport`) is genuinely blind to
+ * both flags.
+ */
+describe('the same pair is genuinely inert for deployBeacon\'s own validation path — accepted, forwarded, no verdict change', () => {
+  it('validateImplementation over a clean standalone contract resolves identically with the flags on or off', async () => {
+    const project = realToolkitProject({ standaloneId: 'stateless' });
+
+    const without = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: {},
+      acceptedOptions: DEPLOY_BEACON_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    const withFlags = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: { unsafeAllowRenames: true, unsafeSkipStorageCheck: true },
+      acceptedOptions: DEPLOY_BEACON_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    // The wiring this test's behaviour rests on: the flags really did reach
+    // `engineOptions` differently, so an identical outcome below is not an
+    // accident of both calls carrying the same value.
+    expect(without.resolved.engineOptions['unsafeAllowRenames']).toBe(false);
+    expect(withFlags.resolved.engineOptions['unsafeAllowRenames']).toBe(true);
+    expect(without.resolved.engineOptions['unsafeSkipStorageCheck']).toBe(false);
+    expect(withFlags.resolved.engineOptions['unsafeSkipStorageCheck']).toBe(true);
+
+    const validatedWithout = await without.toolkit.validateImplementation(
+      project.contractName,
+      without.resolved,
+    );
+    const validatedWithFlags = await withFlags.toolkit.validateImplementation(
+      project.contractName,
+      withFlags.resolved,
+    );
+    // Both calls succeed (neither flag causes — or prevents — a refusal),
+    // and the derived layout/version data the operation goes on to use is
+    // identical either way: the flags reached `getErrors` as extra keys it
+    // never reads, exactly as traced against the installed engine source.
+    expect(validatedWithFlags.name).toBe(validatedWithout.name);
+    expect(validatedWithFlags.layout).toEqual(validatedWithout.layout);
+    expect(validatedWithFlags.encodedArgs).toBe(validatedWithout.encodedArgs);
   });
 });
 
@@ -1002,4 +1166,68 @@ describe('forceImport refuses either redeploy-policy spelling before adoption ru
       ).rejects.toBeInstanceOf(UnknownOptionError);
     },
   );
+});
+
+/*
+ * Fix round 1, item 4 (folded in from review): the pins above and earlier in
+ * this file exercise the beacon operations' accepted-options constants
+ * DIRECTLY (`createOperationToolkit({ acceptedOptions: DEPLOY_BEACON_ACCEPTED_OPTIONS,
+ * ... })`), which proves the LIST refuses the right keys but not that each
+ * exported operation is actually WIRED to its own constant — a cross-wiring
+ * (e.g. `deployBeacon` accidentally passing `UPGRADE_BEACON_ACCEPTED_OPTIONS`)
+ * would leave every one of those pins green. This suite closes that gap: one
+ * call per operation through its PUBLIC entry point (`../src/beacon`, not
+ * `runDeployBeacon`/`runUpgradeBeacon`/`runDeployBeaconProxy`), each with one
+ * option that is STILL genuinely refused after the fix-round-1 revert —
+ * `initializer` for `deployBeacon`, `initialOwner` for `upgradeBeacon`,
+ * `redeployImplementation` for `deployBeaconProxy` — so a cross-wiring that
+ * pointed any of the three at a DIFFERENT beacon operation's list (all three
+ * of which happen to still refuse a nearby option) would need to coincide on
+ * every one of the three choices to stay green; picking three keys that are
+ * refused by exactly one op each is what makes that coincidence implausible
+ * rather than merely unlikely.
+ *
+ * Driven through the real seam (`realSeamChainHandle()`, same fixture as the
+ * `forceImport` suite above) for the identical reason: none of these three
+ * public entries take a `mode` option, so `createOperationToolkit` always
+ * opens a real chain connection and a real record session — both of which
+ * must succeed BEFORE the option resolver's unknown-key check ever runs.
+ */
+describe('the beacon operations are wired to their OWN accepted-options constant — proven through the public entry, not the constant directly', () => {
+  it('deployBeacon (public entry) refuses `initializer` before validating anything', async () => {
+    const shape = migrateShapedHandles();
+    await expect(
+      deployBeacon(
+        { contractName: 'Box', abi: [] } as never,
+        { ...shape.handles, ...realSeamChainHandle(), initializer: 'setUp' } as never,
+      ),
+    ).rejects.toBeInstanceOf(UnknownOptionError);
+  });
+
+  it('upgradeBeacon (public entry) refuses `initialOwner` before validating anything', async () => {
+    const shape = migrateShapedHandles();
+    await expect(
+      upgradeBeacon(
+        'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+        { contractName: 'BoxV2', abi: [] } as never,
+        {
+          ...shape.handles,
+          ...realSeamChainHandle(),
+          initialOwner: 'TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh',
+        } as never,
+      ),
+    ).rejects.toBeInstanceOf(UnknownOptionError);
+  });
+
+  it('deployBeaconProxy (public entry) refuses `redeployImplementation` before validating anything', async () => {
+    const shape = migrateShapedHandles();
+    await expect(
+      deployBeaconProxy(
+        'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+        { contractName: 'Box', abi: [] } as never,
+        [],
+        { ...shape.handles, ...realSeamChainHandle(), redeployImplementation: 'always' } as never,
+      ),
+    ).rejects.toBeInstanceOf(UnknownOptionError);
+  });
 });

@@ -191,31 +191,35 @@ describe('the option surface composes upstream types and never re-declares a mem
     expect(upgradeBeaconRefusesKind).toBeDefined();
   });
 
-  it('DeployBeaconOptions and UpgradeBeaconOptions each refuse the members inert for THEM specifically, not just `kind`', () => {
+  it('DeployBeaconOptions and UpgradeBeaconOptions each refuse the members OUR CODE never reaches for THEM specifically, not just `kind`', () => {
     /*
      * The type surface already excluded these — `StandaloneOptions` composes
-     * no `InitializerOption` and `StandaloneValidationOptions` carries
-     * neither `unsafeAllowRenames` nor `unsafeSkipStorageCheck` (those are
-     * `ValidationOptions`-only, i.e. upgrade-shaped) — so this is a NEW pin
-     * on an ALREADY-true fact, added alongside the runtime split
-     * (`beacon/index.ts:DEPLOY_BEACON_ACCEPTED_OPTIONS`/
-     * `UPGRADE_BEACON_ACCEPTED_OPTIONS`) rather than a type change of its
-     * own, for the same reason the `kind` pins above exist: a caller reading
-     * only the type learns the same refusal the runtime now enforces.
+     * no `InitializerOption` (so no `initializer`) and `UpgradeOptions` was
+     * never given an `initialOwner` member (no upstream-derived type in this
+     * file has one — see the Concerns note in `task-25-report.md`) — so
+     * these two pins are on an ALREADY-true fact, for the same reason the
+     * `kind` pins above exist: a caller reading only the type learns the
+     * same refusal the runtime enforces for `initializer`/`initialOwner`
+     * specifically — the two members OUR OWN code (`beacon/index.ts`) never
+     * reads for these operations, not merely something the engine ignores.
+     *
+     * `unsafeAllowRenames`/`unsafeSkipStorageCheck` are NOT pinned here for
+     * `DeployBeaconOptions`: after the owner's scoping correction,
+     * `deployBeacon` ACCEPTS both at runtime (`DEPLOY_BEACON_ACCEPTED_OPTIONS`)
+     * — the type's own omission of them is a *separate*, pre-existing gap
+     * (`StandaloneValidationOptions` never carried them; only
+     * `ValidationOptions`, upgrade-shaped, does) that mirrors `DeployProxyOptions`'
+     * identical omission, not a runtime-driven refusal. Pinning it here would
+     * misattribute a type/runtime divergence this task deliberately leaves as
+     * upstream-shaped, not one it introduced.
      */
     // @ts-expect-error `initializer` is not a member: `deployBeacon` deploys no proxy, so nothing ever calls `encodeInitializer`.
     const deployBeaconRefusesInitializer: DeployBeaconOptions = { initializer: 'setUp' };
-    // @ts-expect-error `unsafeAllowRenames` is not a member: `deployBeacon` never compares storage, so the engine's storage comparator — the only reader of this option — never runs.
-    const deployBeaconRefusesRenames: DeployBeaconOptions = { unsafeAllowRenames: true };
-    // @ts-expect-error `unsafeSkipStorageCheck` is not a member: same reason as `unsafeAllowRenames` above.
-    const deployBeaconRefusesSkipCheck: DeployBeaconOptions = { unsafeSkipStorageCheck: true };
     // @ts-expect-error `initializer` is not a member: `upgradeBeacon` sends no proxy init call.
     const upgradeBeaconRefusesInitializer: UpgradeBeaconOptions = { initializer: 'setUp' };
     // @ts-expect-error `initialOwner` is not a member: the beacon's owner is set once, at `deployBeacon`; an upgrade never touches it.
     const upgradeBeaconRefusesInitialOwner: UpgradeBeaconOptions = { initialOwner: 'T...' };
     expect(deployBeaconRefusesInitializer).toBeDefined();
-    expect(deployBeaconRefusesRenames).toBeDefined();
-    expect(deployBeaconRefusesSkipCheck).toBeDefined();
     expect(upgradeBeaconRefusesInitializer).toBeDefined();
     expect(upgradeBeaconRefusesInitialOwner).toBeDefined();
   });

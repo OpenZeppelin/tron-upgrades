@@ -87,22 +87,24 @@ describe('the 8 previously-missing per-operation option types, now on the entry'
     expect(upgradeBeaconRefused).toBeDefined();
   });
 
-  it('DeployBeaconOptions and UpgradeBeaconOptions refuse the members inert for them specifically, from `../src`', () => {
-    // Each beacon operation now accepts exactly what it consumes
-    // (`beacon/index.ts`): `deployBeacon` deploys no proxy and never
-    // compares storage, so `initializer` and the storage-check pair are
-    // refused; `upgradeBeacon` sends no proxy init call and never re-sets
-    // the beacon's owner, so `initializer` and `initialOwner` are refused.
+  it('DeployBeaconOptions and UpgradeBeaconOptions refuse the members OUR CODE never reaches for them specifically, from `../src`', () => {
+    // Each beacon operation refuses exactly the members OUR OWN code never
+    // reads for it (`beacon/index.ts`): `deployBeacon` deploys no proxy, so
+    // `initializer` is refused; `upgradeBeacon` sends no proxy init call and
+    // never re-sets the beacon's owner, so `initializer`/`initialOwner` are
+    // refused. `unsafeAllowRenames`/`unsafeSkipStorageCheck` are deliberately
+    // NOT pinned as refused on `DeployBeaconOptions` here — per the owner's
+    // scoping correction, `deployBeacon` ACCEPTS that pair at runtime (the
+    // engine ignores it for a fresh deploy; that is not this operation
+    // refusing it), mirroring `deployProxy`. See `task-25-report.md`'s "Fix
+    // round 1" for the corrected census.
     // @ts-expect-error `initializer` is not a member of `DeployBeaconOptions`.
     const deployBeaconRefusesInitializer: DeployBeaconOptions = { initializer: 'setUp' };
-    // @ts-expect-error `unsafeSkipStorageCheck` is not a member of `DeployBeaconOptions`: nothing in `deployBeacon` ever compares storage.
-    const deployBeaconRefusesSkipCheck: DeployBeaconOptions = { unsafeSkipStorageCheck: true };
     // @ts-expect-error `initializer` is not a member of `UpgradeBeaconOptions`.
     const upgradeBeaconRefusesInitializer: UpgradeBeaconOptions = { initializer: 'setUp' };
     // @ts-expect-error `initialOwner` is not a member of `UpgradeBeaconOptions`: the owner is set once, at `deployBeacon`.
     const upgradeBeaconRefusesInitialOwner: UpgradeBeaconOptions = { initialOwner: 'T...' };
     expect(deployBeaconRefusesInitializer).toBeDefined();
-    expect(deployBeaconRefusesSkipCheck).toBeDefined();
     expect(upgradeBeaconRefusesInitializer).toBeDefined();
     expect(upgradeBeaconRefusesInitialOwner).toBeDefined();
   });

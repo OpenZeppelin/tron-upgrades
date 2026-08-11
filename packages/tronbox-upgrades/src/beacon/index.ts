@@ -38,20 +38,32 @@ import { isAlreadyCurrent } from '../proxy/replay';
  * prior layout. So it accepts the implementation-deploy and validation
  * options, plus `initialOwner` (the beacon's owner is set exactly once,
  * here), but never `initializer` (nothing is initialized: a beacon has no
- * proxy storage of its own) and never the storage-COMPARISON pair
- * `unsafeAllowRenames`/`unsafeSkipStorageCheck` — those reach only
- * `getStorageUpgradeReport` (`assertStorageCompatible`, `toolkit.ts`), which
- * `runDeployBeacon` never calls, having no prior layout to compare against.
- * Verified against the installed engine
- * (`@openzeppelin/upgrades-core@1.46.0`, `dist/validate/overrides.js:processExceptions`
- * vs `dist/storage/index.js:getStorageUpgradeReport`): the two options are
- * read by the storage comparator only, never by `getErrors`.
+ * proxy storage of its own).
+ *
+ * `unsafeAllowRenames`/`unsafeSkipStorageCheck` ARE accepted here, on
+ * a corrected understanding from an earlier pass at this list, which had
+ * refused them: OUR code never reads them for `deployBeacon` — they reach
+ * only `getStorageUpgradeReport` (`assertStorageCompatible`, `toolkit.ts`),
+ * which `runDeployBeacon` never calls — but that is the engine ignoring an
+ * option for THIS operation, not this operation refusing it. `deployProxy`,
+ * `deployImplementation`, `validateImplementation` and `forceImport` all
+ * accept the same pair for the identical reason (none of them compares
+ * storage either) and none refuses it; singling `deployBeacon` out would
+ * diverge from upstream, and from this plugin's own siblings, for no safety
+ * gain. Accepting and forwarding the whole coherent `ValidationOptions` bag
+ * — refusing only what OUR code itself never looks at — is the rule; see
+ * `README.md`'s divergences table for the one row covering this whole group
+ * of engine-inert-here options, and `test/toolkit-seam.test.ts` for the
+ * execution proof that the pair is genuinely inert for a fresh deploy and
+ * genuinely load-bearing for an upgrade's storage comparison.
  */
 export const DEPLOY_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
   ...HANDLE_OPTION_KEYS,
   'constructorArgs',
   'initialOwner',
   'unsafeAllow',
+  'unsafeAllowRenames',
+  'unsafeSkipStorageCheck',
   'unsafeAllowCustomTypes',
   'unsafeAllowLinkedLibraries',
   'redeployImplementation',
@@ -63,11 +75,13 @@ export const DEPLOY_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
 /**
  * `upgradeBeacon` deploys (or reuses) the new implementation, compares its
  * layout against the beacon's CURRENT one, then dispatches `upgradeTo` — so,
- * unlike `deployBeacon`, it DOES compare storage and accepts the
- * `unsafeAllowRenames`/`unsafeSkipStorageCheck` pair that comparison reads.
- * It never accepts `initializer` (an upgrade sends no proxy init call) or
- * `initialOwner` (the beacon's owner is set once, at `deployBeacon`; an
- * upgrade never touches it).
+ * unlike `deployBeacon`, it genuinely CONSUMES the
+ * `unsafeAllowRenames`/`unsafeSkipStorageCheck` pair `assertStorageCompatible`
+ * reads (both operations accept it; only this one's storage comparison
+ * actually looks at it). It never accepts `initializer` (an upgrade sends no
+ * proxy init call) or `initialOwner` (the beacon's owner is set once, at
+ * `deployBeacon`; an upgrade never touches it) — those two ARE genuinely
+ * unreachable by OUR code here, unlike the storage-check pair.
  */
 export const UPGRADE_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
   ...HANDLE_OPTION_KEYS,
