@@ -566,9 +566,9 @@ async function main() {
   }
   say('chain agrees: the ProxyAdmin owner is the requested initialOwner');
 
-  if (report1['m6.refusalCode'] !== 'initializer-data-required') {
+  if (report1['m6.refusalCode'] !== 'empty-initializer-refused') {
     die(
-      `initializer:false expected the initializer-data-required refusal, ` +
+      `initializer:false expected the empty-initializer-refused refusal, ` +
         `saw ${report1['m6.refusalCode']}`,
     );
   }
@@ -629,7 +629,7 @@ async function main() {
   }
   // The refusal is pre-spend against a never-deployed artifact, so it must
   // replay identically.
-  if (report2['m6.refusalCode'] !== 'initializer-data-required') {
+  if (report2['m6.refusalCode'] !== 'empty-initializer-refused') {
     die(
       `replayed initializer:false expected the same refusal, ` +
         `saw ${report2['m6.refusalCode']}`,

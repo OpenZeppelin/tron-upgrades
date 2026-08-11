@@ -152,7 +152,7 @@ module.exports = async function (deployer) {
   } catch (error) {
     refusal = error;
   }
-  if (!refusal || refusal.code !== 'initializer-data-required') {
+  if (!refusal || refusal.code !== 'empty-initializer-refused') {
     throw new Error(
       'e2e: initializer:false was not refused by name; saw: ' +
         (refusal ? `${refusal.code}: ${refusal.message}` : 'a successful deploy'),
