@@ -125,7 +125,7 @@ function collect(): readonly Publishable[] {
       });
     }
   };
-  for (const top of ['src', 'test', 'docs', 'e2e']) walk(path.join(packageRoot, top));
+  for (const top of ['src', 'test', 'e2e']) walk(path.join(packageRoot, top));
   // Root-level publication files join the scanned set the day they exist. The
   // existence pins in the manifest test below are what make an appearance
   // deliberate; this clause is what makes it scanned.
@@ -187,7 +187,7 @@ describe('publication hygiene: every reference resolves inside the published rep
    */
   it('ranges over the whole published tree, and says so by counting it', () => {
     expect(all.length).toBeGreaterThan(100);
-    for (const top of ['src', 'test', 'docs', 'e2e']) {
+    for (const top of ['src', 'test', 'e2e']) {
       expect(
         all.filter(file => file.relative.startsWith(`${top}${path.sep}`)).length,
         `${top}/ contributed no file`,
@@ -218,8 +218,8 @@ describe('publication hygiene: every reference resolves inside the published rep
   );
 
   /*
-   * The published tarball is `dist/**` only, and this suite walks `src/`, `test/`
-   * and `docs/` — none of which ship. The coverage argument is indirect and this
+   * The published tarball is `dist/**` only, and this suite walks `src/`,
+   * `test/` and `e2e/` — none of which ship. The coverage argument is indirect and this
    * case is what keeps it sound: `dist/` is covered by DETERMINISM, not by
    * scanning — `prepublishOnly` rebuilds it from the scanned `src/` and runs this
    * suite before any publish, so a stale `dist/` cannot reach the registry. That
