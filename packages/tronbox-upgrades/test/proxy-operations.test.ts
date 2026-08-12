@@ -57,7 +57,7 @@ const PROXY_ADDR = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 const NEW_IMPL = 'T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb';
 // A different implementation than `NEW_IMPL`, standing in for "what the proxy
 // currently runs" in the upgrade tests that need the two distinguished.
-const OTHER_IMPL = 'TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh';
+const OTHER_IMPL = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
 // A real, distinct base58 address for `initialOwner` — already used in that
 // exact role in `test/surface-request-response-contract.test.ts`.
 const OWNER_BASE58 = 'TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh';

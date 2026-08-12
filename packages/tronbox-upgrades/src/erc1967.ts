@@ -92,9 +92,9 @@ export const beacon = Object.freeze({
     const chain = await chainAccessFrom(options);
     const read = await chain.read.readBeaconImplementation(beaconAddress);
     if (read.kind !== 'implementation') {
-      // Same class, same message shape as `beacon/index.ts:requireBeacon`'s
-      // own use of it for the same fact: "this address does not answer
-      // implementation() — not a beacon."
+      // Same class and same found-clause as `beacon/index.ts:requireBeacon`
+      // for the same fact — but the reader arm, which drops the forceImport
+      // remedy: adopting is an operation's prescription, not a read's.
       throw new NothingToAdoptError(
         beaconAddress,
         'an address that does not answer implementation() — not a beacon',

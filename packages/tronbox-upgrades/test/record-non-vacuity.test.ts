@@ -1066,8 +1066,8 @@ describe('the session gate refuses a corrupt fingerprint before any write, namin
       expect(refusal.file).toBe(SIDECAR_FILE);
 
       // Both exits, in the readable-mismatch refusal's own wording: same chain,
-      // delete the fingerprint alone and re-run; node wiped, delete the record and
-      // the fingerprint together and redeploy.
+      // delete the fingerprint file and re-run; node wiped, delete the record
+      // and the fingerprint and redeploy.
       expect(refusal.message).toContain('delete the fingerprint file and re-run');
       expect(refusal.message).toContain(
         'delete the record file and the fingerprint',
