@@ -219,11 +219,6 @@ the constructor. `deployBeacon` also refuses up front if it cannot derive an
 owner for the beacon (no `initialOwner` given and no sending account
 configured) — pass `initialOwner` or configure a `from` address.
 
-Longer-form documentation ships in the repository's `docs/` directory:
-proxy operations and their refusals, deployment and transaction semantics
-(including the `await` rule above), adopting existing deployments, and what
-the validations do and do not cover.
-
 ## Divergences from the Hardhat/Truffle plugins
 
 This plugin follows the same model as OpenZeppelin's Hardhat and Truffle
