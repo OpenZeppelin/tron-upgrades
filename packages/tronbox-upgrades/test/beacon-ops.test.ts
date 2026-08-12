@@ -25,6 +25,7 @@ import type {
 import { canonicalizeAddress } from '../src/record';
 import { toTronHex } from '../src/record/address';
 import type { ContractAbstraction } from '../src/environment';
+import { pluginOptionDefaults } from '../src/options/defaults';
 
 /*
  * the beacon operations over a recording fake: rejected-before-spend
@@ -196,6 +197,12 @@ function buildFake(spec: Spec = {}) {
     unsafeAllowLinkedLibraries: false,
     unsafeSkipProxyAdminCheck: false,
     initialOwner: spec.initialOwner,
+    // Inert in these fakes (nothing here reaches the engine's own
+    // `DeployOpts`), but resolution always produces both, so the fixture
+    // carries the resolved defaults rather than a shape production never
+    // hands an operation.
+    timeout: pluginOptionDefaults.timeout,
+    pollingInterval: pluginOptionDefaults.pollingInterval,
     call: undefined,
     engineOptions: {},
   };

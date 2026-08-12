@@ -17,7 +17,10 @@ import { runThroughQueue } from '../src/deploy';
  * The queue premise every deploy-seam decision leans on has two arms, and a
  * suite that exercises only the started arm measures the working case. So
  * this file drives the REAL `Deployer` through both arms on both supported
- * minors, and verifies the fixture the unit suite uses (`deploy-seam.test.ts`)
+ * minors — including the bridge itself against a STARTED deployer, which is the
+ * arm every real migration takes (`src/deploy/queue.ts` documents why), not only
+ * the pre-start arm where the host's defect lives — and verifies the fixture the
+ * unit suite uses (`deploy-seam.test.ts`)
  * replicates the installed class — by running the same behavioural
  * assertions against the real one and by pinning the installed source's
  * landmarks, including the arity of `then`, which is the whole defect.
@@ -162,6 +165,63 @@ describe.each(installedVersions)('the queue-arm behavior against %s', installNam
     await deployer.start();
     expect(await observed).toBe(boom);
     expect(laterStepRan).toBe(true);
+  });
+
+  /*
+   * The post-start arm, through the bridge — the arm every real migration
+   * takes. `Migration.prototype.run` calls the migration body and then
+   * `finish(null, migrateFn)` on the next statement, whose first act is
+   * `deployer.start()`; every operation here awaits network work inside
+   * `createOperationToolkit` before reaching `toolkit.queue`, so `chain.started`
+   * is already `true` when the step is registered. The two suites above measure
+   * the bridge against the pre-start chain, which is where the host's defect
+   * lives — but a seam whose shipped guarantees are asserted only on the arm
+   * production never reaches is a seam measured in the wrong place. Same two
+   * guarantees, same real `Deployer`, started.
+   */
+  it('post-start — the production arm: the caller is rejected once, the host stays usable, and nothing escapes unhandled', async () => {
+    const deployer = realDeployer(installName);
+    await deployer.start();
+    expect(deployer.chain.started).toBe(true);
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const boom = new Error('post-start bridged failure');
+      let stepRuns = 0;
+      const bridged = runThroughQueue(deployer, () => {
+        stepRuns += 1;
+        throw boom;
+      });
+
+      // Guarantee one: the failure reaches the caller — settled, not suspended
+      // the way the pre-start arm leaves a bare host await.
+      await expect(bridged).rejects.toBe(boom);
+      expect(stepRuns).toBe(1);
+
+      // Guarantee two: it reached the caller and nothing else. The host side
+      // stayed usable, so a later migration step still runs...
+      let laterStepRan = false;
+      await deployer.then(() => {
+        laterStepRan = true;
+      });
+      expect(laterStepRan).toBe(true);
+
+      // ...and a success settles exactly once, with its value, through the same
+      // started host.
+      await expect(runThroughQueue(deployer, () => 'ok')).resolves.toBe('ok');
+
+      // Give any dangling rejection a macrotask to surface in. A second
+      // settlement attempt would throw `DeploySeamInvariantError` out of the
+      // seam's own catch subscription, which is exactly what would land here.
+      await new Promise(resolve => setTimeout(resolve, 25));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 
   it('pins the installed source: arity-1 then, the fired _error, the unused _reject', () => {

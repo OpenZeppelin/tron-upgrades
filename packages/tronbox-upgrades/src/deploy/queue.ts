@@ -6,14 +6,35 @@
  *
  * `Deployer.prototype.queueOrExec` is two different functions wearing one name.
  * After `start()` it returns a native `Promise` and behaves normally. Before
- * `start()` — the state every migration body runs in — it returns the
- * `DeferredChain` itself, whose `then` is declared with **one parameter**: the
- * `onRejected` an `await` supplies is discarded. The failure is *not* lost — the
- * chain's appended catch fires `_error(e)`, so the runner's `await start()`
- * rejects with the original error — but the **individual caller's await never
- * settles**: not on failure (their `onFulfilled` is never called and they
- * registered nothing else) and, on success, not until `start()` drives the
- * chain. A leaked suspended await, byte-identical across both supported minors.
+ * `start()` it returns the `DeferredChain` itself, whose `then` is declared with
+ * **one parameter**: the `onRejected` an `await` supplies is discarded. The
+ * failure is *not* lost — the chain's appended catch fires `_error(e)`, so the
+ * runner's `await start()` rejects with the original error — but the
+ * **individual caller's await never settles**: not on failure (their
+ * `onFulfilled` is never called and they registered nothing else) and, on
+ * success, not until `start()` drives the chain. A leaked suspended await,
+ * byte-identical across both supported minors.
+ *
+ * ## Which arm production takes — the post-start one, always
+ *
+ * The pre-start arm is real host behavior, but no operation this plugin ships
+ * reaches it. `Migration.prototype.run` calls the migration body and then
+ * `finish(null, migrateFn)` on the very next statement, and `finish`'s first act
+ * is `deployer.start()` (`components/Migrate/index.js`, the same sequence on
+ * both installed minors) — so for an `async` migration body, `start()` runs the
+ * moment the body reaches its first `await`. Every operation here awaits network
+ * work inside `createOperationToolkit` (chain identity, the record session)
+ * before it ever reaches `toolkit.queue`, so `chain.started` is already `true`
+ * when the step is registered and `queueOrExec` returns a bare
+ * `Promise.resolve().then(fn)`.
+ *
+ * Two consequences worth stating outright, because the pre-start arm's shape
+ * invites the opposite assumption. That post-start path **serializes nothing**:
+ * two operations started from one migration body interleave freely, and this
+ * seam is not a mutex. And the pre-start protections below are insurance
+ * against a host or a caller that does register early — not a description of
+ * what production runs. The bridge covers both arms because it is handed a host
+ * and cannot know which one it got.
  *
  * So no host queue value ever escapes this module. Every operation gets
  * a promise this module allocates, settled exactly once from inside the queued
@@ -22,9 +43,15 @@
  * into the host chain, where it would reach the runner a second time *and*
  * leave the chain's final `then(this._done)` link rejected with no handler.
  *
- * The one consequence this cannot repair, declared rather than hidden: a
- * migration that queues an operation **without awaiting it** observes a host
- * chain that stays fulfilled, so the runner does not learn the step failed.
+ * The one consequence this cannot repair, declared rather than hidden and
+ * stated at its real severity: a migration that queues an operation **without
+ * awaiting it** leaves that operation's rejection with no subscriber. The host
+ * chain stays fulfilled, so the runner never learns the step failed — and the
+ * unhandled rejection then terminates `tronbox migrate` under Node's default
+ * `--unhandled-rejections=throw` (Node 15+; the repository declares a floor of
+ * Node 20), at
+ * whatever later moment the promise rejects, possibly while a *different*
+ * migration is running, naming neither the operation nor the migration file.
  * The remedy is to `await` the operation, and the limitation rides the result
  * surface, not only this comment.
  */

@@ -848,7 +848,13 @@ function seedManifestImplementation(versionKey: string, address: string): void {
  */
 function realSeamRetryChainHandle(options: {
   readonly codeByAddress?: Readonly<Record<string, string>>;
-  readonly receiptStatusByTxHash?: Readonly<Record<string, string>>;
+  /**
+   * `null` means *configured, and never mined* — the fixture answers the poll
+   * with no receipt for as long as it is asked, which is what the engine's own
+   * timeout bound is measured against. Distinct from an absent key, which stays
+   * a loud "this test reached a transaction nobody declared".
+   */
+  readonly receiptStatusByTxHash?: Readonly<Record<string, string | null>>;
 }): { tronWrap: unknown } {
   const codeByAddress = options.codeByAddress ?? {};
   const receiptStatusByTxHash = options.receiptStatusByTxHash ?? {};
@@ -901,13 +907,13 @@ function realSeamRetryChainHandle(options: {
           }
           if (envelope.method === 'eth_getTransactionReceipt') {
             const txHash = String(envelope.params?.[0] ?? '');
-            const status = receiptStatusByTxHash[txHash];
-            if (status === undefined) {
+            if (!(txHash in receiptStatusByTxHash)) {
               throw new Error(
                 `real-seam retry fixture has no receipt configured for ${txHash}`,
               );
             }
-            return respond({ status });
+            const status = receiptStatusByTxHash[txHash];
+            return status === null ? respond(null) : respond({ status });
           }
           throw new Error(
             `real-seam retry fixture has no answer for ${envelope.method} — ` +
@@ -1155,6 +1161,90 @@ describe("fetchOrDeployImplementation's no-retry arms — the REAL production se
     expect(caught).not.toBeInstanceOf(ImplementationNotPreviouslyDeployedError);
     expect(deployCalls).toBe(0);
   });
+});
+
+/*
+ * `timeout` and `pollingInterval` reaching the engine — the half of that pair's
+ * story that used to be missing. The seam passed `{}` as the engine's own
+ * `DeployOpts`, which was wrong twice: the resolved values never arrived (the
+ * engine fell back to 60s/5s), and upstream reads the argument as `!!opts`, so
+ * `{}` still rendered `configurableTimeout: true` — advising the caller to
+ * adjust the two options that same call had made inert.
+ *
+ * Asserted through behavior rather than by inspecting the call: a transaction
+ * that is never mined leaves the engine's `waitAndValidateDeployment` polling
+ * until ITS bound expires, and the bound is the value under test. With the
+ * resolved pair threaded, a 40 ms timeout throws in ~40 ms; with `{}` restored
+ * here, the same test sits on upstream's 60-second default and fails on
+ * Vitest's own timeout. So the elapsed-time assertion is the pin — and the
+ * message assertion is the second half, since the advice upstream prints is
+ * now true.
+ */
+describe("fetchOrDeployImplementation's engine DeployOpts — the REAL production seam", () => {
+  it("threads the resolved timeout/pollingInterval into the engine's mined-transaction wait, so a tiny bound expires like one", async () => {
+    const versionKey = 'real-seam-deploy-opts-gate';
+    const newAddress = '0x5555555555555555555555555555555555555555';
+    const neverMinedTxHash = 'dd'.repeat(32);
+
+    const shape = migrateShapedHandles();
+    const context = await createOperationToolkit({
+      handles: {
+        ...shape.handles,
+        ...realSeamRetryChainHandle({
+          // Deployed, and never mined: no code at the address and no receipt
+          // for the transaction, for as long as the engine keeps asking.
+          receiptStatusByTxHash: { [neverMinedTxHash]: null },
+        }),
+      },
+      rawOptions: { timeout: 40, pollingInterval: 10 },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: process.env,
+    });
+    // The resolver's half, first: these are the values the seam must hand on.
+    expect(context.resolved.timeout).toBe(40);
+    expect(context.resolved.pollingInterval).toBe(10);
+
+    const validated = {
+      name: 'RealSeamDeployOptsGateBox',
+      input: {} as never,
+      validations: {},
+      version: { linkedWithoutMetadata: versionKey },
+      layout: {},
+      encodedArgs: '0x',
+    };
+
+    const startedAt = process.hrtime.bigint();
+    let caught: unknown;
+    try {
+      await context.toolkit.fetchOrDeployImplementation(
+        validated as never,
+        context.resolved,
+        async () => ({ address: newAddress, transactionHash: neverMinedTxHash }),
+      );
+    } catch (error) {
+      caught = error;
+    }
+    const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+
+    expect((caught as Error).message).toContain('Timed out waiting for');
+    expect((caught as Error).message).toContain(neverMinedTxHash);
+    // Upstream appends its own details onto `message` (`dist/error.js`), and
+    // this is the advice `{}` used to print over two inert options. It is
+    // honest now, which is the point of threading them.
+    expect((caught as Error).message).toContain(
+      'adjust the polling parameters with the timeout and pollingInterval options',
+    );
+    // The bound that expired was OURS. Generous by 50× against a 40 ms
+    // timeout and still two orders of magnitude under upstream's 60-second
+    // default, so this fails on a lost value and not on a slow machine.
+    expect(elapsedMs).toBeLessThan(2_000);
+    // Measured both ways before this was left standing: threaded, the test
+    // runs in ~110 ms; with `{}` put back in the seam, it sits on upstream's
+    // 60-second default until the runner kills it. The 5 s per-test timeout
+    // below is what turns that regression into a fast failure rather than a
+    // minute of silence — the suite's own default is 60 s, which is exactly
+    // the value under test.
+  }, 5_000);
 });
 
 /*

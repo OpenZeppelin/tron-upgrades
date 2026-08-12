@@ -19,6 +19,7 @@ import { canonicalizeAddress } from '../src/record';
 import { toTronHex } from '../src/record/address';
 import { zeroChainAddress } from '../src/chain';
 import type { ContractAbstraction } from '../src/environment';
+import { pluginOptionDefaults } from '../src/options/defaults';
 
 const RECORD_DIR = mkdtempSync(path.join(os.tmpdir(), 'tron-force-import-'));
 const PREVIOUS_MANIFEST_DIR = process.env['MANIFEST_DEFAULT_DIR'];
@@ -277,6 +278,12 @@ function buildFake(spec: Spec = {}) {
     unsafeAllowLinkedLibraries: false,
     unsafeSkipProxyAdminCheck: false,
     initialOwner: undefined,
+    // Inert in these fakes (nothing here reaches the engine's own
+    // `DeployOpts`), but resolution always produces both, so the fixture
+    // carries the resolved defaults rather than a shape production never
+    // hands an operation.
+    timeout: pluginOptionDefaults.timeout,
+    pollingInterval: pluginOptionDefaults.pollingInterval,
     call: undefined,
     engineOptions: {},
   };

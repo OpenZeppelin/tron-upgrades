@@ -14,6 +14,7 @@ import type {
 import { canonicalizeAddress, toBase58 } from '../src/record';
 import { toTronHex } from '../src/record/address';
 import { zeroChainAddress } from '../src/chain';
+import { pluginOptionDefaults } from '../src/options/defaults';
 
 /*
  * the admin operation — the authority transfer over a recording fake.
@@ -121,6 +122,12 @@ function buildFake(spec: Spec = {}) {
     unsafeAllowLinkedLibraries: false,
     unsafeSkipProxyAdminCheck: false,
     initialOwner: undefined,
+    // Inert in these fakes (nothing here reaches the engine's own
+    // `DeployOpts`), but resolution always produces both, so the fixture
+    // carries the resolved defaults rather than a shape production never
+    // hands an operation.
+    timeout: pluginOptionDefaults.timeout,
+    pollingInterval: pluginOptionDefaults.pollingInterval,
     call: undefined,
     engineOptions: {},
   };

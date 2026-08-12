@@ -19,6 +19,7 @@ import {
   assertNoCheatcodeCollision,
   CheatcodeSlotCollisionError,
 } from '../src/deploy';
+import { pluginOptionDefaults } from '../src/options/defaults';
 
 /*
  * The standalone operations — the CI surface over a recording fake. The
@@ -198,6 +199,12 @@ function buildFake(spec: Spec = {}) {
     unsafeAllowLinkedLibraries: false,
     unsafeSkipProxyAdminCheck: false,
     initialOwner: undefined,
+    // Inert in these fakes (nothing here reaches the engine's own
+    // `DeployOpts`), but resolution always produces both, so the fixture
+    // carries the resolved defaults rather than a shape production never
+    // hands an operation.
+    timeout: pluginOptionDefaults.timeout,
+    pollingInterval: pluginOptionDefaults.pollingInterval,
     call: undefined,
     engineOptions: {},
   };

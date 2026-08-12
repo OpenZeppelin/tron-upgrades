@@ -41,6 +41,12 @@ export class DeployerAbsentError extends DeploymentRefusedError {
  * The transaction executed and failed, with the TVM's own verdict preserved
  * verbatim (scenario 3). Never thrown for an exhausted wait — that is
  * {@link ConfirmationIndeterminateError}, whose remedy differs.
+ *
+ * The message says what this failure did *not* record rather than claiming
+ * nothing was recorded at all: on the proxy and beacon paths the engine deploys
+ * and records the implementation before this transaction is ever sent
+ * (`proxy/deploy-proxy.ts`, inside the queued step), so "nothing was recorded"
+ * was false exactly where the operation spends the most.
  */
 export class TransactionRevertedError extends DeploymentRefusedError {
   readonly code = 'transaction-reverted';
@@ -49,8 +55,11 @@ export class TransactionRevertedError extends DeploymentRefusedError {
       `Transaction ${verdict.transactionHash} executed and failed: the node ` +
         `reports ${verdict.vmResult}` +
         (verdict.vmMessage === null ? '' : ` — "${verdict.vmMessage}"`) +
-        `. Nothing was recorded as deployed. The failure is on-chain and ` +
-        `re-running without a change will fail the same way.`,
+        `. This transaction recorded nothing. An implementation the same ` +
+        `operation deployed before sending it may already be in the upgrades ` +
+        `record — that entry is valid and a later run reuses it rather than ` +
+        `deploying it again. The failure is on-chain and re-running without a ` +
+        `change will fail the same way.`,
     );
     this.name = 'TransactionRevertedError';
   }

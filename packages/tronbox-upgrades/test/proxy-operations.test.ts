@@ -42,6 +42,7 @@ import type { ChainAccess, ChainInstanceIdentity } from '../src/chain';
 import { zeroChainAddress } from '../src/chain';
 import type { AbsolutePath, ContractAbstraction } from '../src/environment';
 import { ResultCapabilityUnavailableError } from '../src/results';
+import { pluginOptionDefaults } from '../src/options/defaults';
 
 /*
  * The proxy operations — the ordering invariants, pinned on a recording fake
@@ -485,6 +486,12 @@ function buildFake(spec: FakeSpec = {}): Fake {
     unsafeAllowLinkedLibraries: false,
     unsafeSkipProxyAdminCheck: false,
     initialOwner: undefined,
+    // Inert in these fakes (nothing here reaches the engine's own
+    // `DeployOpts`), but resolution always produces both, so the fixture
+    // carries the resolved defaults rather than a shape production never
+    // hands an operation.
+    timeout: pluginOptionDefaults.timeout,
+    pollingInterval: pluginOptionDefaults.pollingInterval,
     call: undefined,
     engineOptions: {},
     ...spec.resolved,

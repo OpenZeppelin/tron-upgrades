@@ -71,6 +71,13 @@ export interface ResolvedForProxyOps {
   readonly unsafeAllowLinkedLibraries: boolean;
   readonly unsafeSkipProxyAdminCheck: boolean;
   readonly initialOwner: string | undefined;
+  /**
+   * Milliseconds, resolved (never `undefined`). Handed to the engine as its own
+   * `DeployOpts` on the implementation-deploy path — see
+   * `fetchOrDeployImplementation` below for what they do and do not reach.
+   */
+  readonly timeout: number;
+  readonly pollingInterval: number;
   readonly call:
     | string
     | { readonly fn: string; readonly args?: readonly unknown[] }
@@ -137,6 +144,11 @@ export interface OperationToolkit {
    * upstream's own. `deploy` runs only when the record has no live entry —
    * unless `redeployImplementation: 'always'` is in effect, which forces it
    * regardless of what is already recorded.
+   *
+   * `resolved.timeout` and `resolved.pollingInterval` are handed to that engine
+   * call as its `DeployOpts` — this is the one path on which either option
+   * changes behavior today: the engine's wait for the implementation deploy to
+   * be mined. Neither reaches this plugin's own `confirm` step.
    */
   fetchOrDeployImplementation(
     validated: ValidatedImplementation,
@@ -497,6 +509,8 @@ export async function createOperationToolkit(request: {
       resolvedOptions.validation.unsafeAllowLinkedLibraries,
     unsafeSkipProxyAdminCheck: resolvedOptions.unsafeSkipProxyAdminCheck,
     initialOwner: resolvedOptions.initialOwner,
+    timeout: resolvedOptions.timeout,
+    pollingInterval: resolvedOptions.pollingInterval,
     call: resolvedOptions.call,
     engineOptions: optionsModule.engineValidationOptions(resolvedOptions),
   };
@@ -735,7 +749,20 @@ export async function createOperationToolkit(request: {
               layout: validated.layout,
             } as never;
           },
-          {} as never,
+          // The engine's own `DeployOpts`, threaded rather than stubbed. An
+          // empty object here was wrong twice over: the two resolved values
+          // never reached the engine's post-deploy wait (`waitAndValidateDeployment`
+          // fell back to its 60s/5s defaults), and upstream reads the argument
+          // as `!!opts` — so `{}` still rendered `configurableTimeout: true`,
+          // advising the user to adjust the very two options this call had made
+          // inert. What they govern is the ENGINE's implementation-deploy wait;
+          // this plugin's own `confirm` step still runs against
+          // `HOST_CONFIRMATION_BOUNDS`, which is a separate gap the README's
+          // divergence table states rather than papers over.
+          {
+            timeout: resolvedOptions.timeout,
+            pollingInterval: resolvedOptions.pollingInterval,
+          } as never,
           resolvedOptions.redeployImplementation === 'always',
         );
       let deployment: { address: string };
