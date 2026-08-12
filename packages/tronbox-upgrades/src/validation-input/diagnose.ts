@@ -168,9 +168,9 @@ export function diagnose(cause: Cause): Diagnosis {
           `of that record and never compiles on its own, so without one there ` +
           `is nothing to validate from.`,
         `Run \`tronbox compile --all\` and retry: the \`--all\` flag forces ` +
-          `recompilation of unchanged sources, so the remedy always works — ` +
-          `a build record is written even when TronBox considers the project ` +
-          `up to date.`,
+          `recompilation of unchanged sources, so the remedy works for any ` +
+          `compilable concrete contract — a build record is written even when ` +
+          `TronBox considers the project up to date.`,
       );
 
     case 'build-record-stale':

@@ -1,8 +1,11 @@
 /**
  * `deployProxy` — the ordered pipeline over the operation toolkit.
  *
- * The order IS the contract: validation first,
- * every pre-spend refusal before the queue, exactly one queued step, and the
+ * The order IS the contract: validation first, every refusal this operation
+ * owns before the queue — the reuse-only implementation policy refuses inside
+ * the queued step instead, because only the engine's own record lookup can
+ * decide it, and it still refuses before that step spends — exactly one
+ * queued step, and the
  * result assembled from the write-back and the channel — never from a queue
  * value. `runDeployProxy` is the whole behaviour; `deployProxy` is the
  * production entry that builds the toolkit around it.
