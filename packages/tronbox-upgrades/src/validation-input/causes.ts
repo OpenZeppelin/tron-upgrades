@@ -113,7 +113,9 @@ export type Cause =
    * three mean the same thing to the Foundry model — there is nothing to
    * validate from — and `tronbox compile --all` regenerates the record
    * unconditionally, because the `--all` flag forces recompilation of
-   * unchanged sources, so the remedy always works.
+   * unchanged sources — which is the remedy for any compilable concrete
+   * contract, though not for an abstract contract or interface, since
+   * recompilation cannot manufacture deployed bytecode where none can exist.
    */
   | {
       readonly kind: 'build-record-absent';

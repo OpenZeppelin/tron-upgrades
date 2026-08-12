@@ -104,7 +104,7 @@ export const UPGRADE_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
  * storage comparison. So it accepts `initializer` (the proxy's own init
  * call) plus the confirmation pair, and none of the implementation-deploy or
  * validation options `deployBeacon`/`upgradeBeacon` need: not
- * `constructorArgs` (no contract deploys here), not `initialOwner` (the
+ * `constructorArgs` (no implementation deploys here), not `initialOwner` (the
  * proxy has no owner concept of its own), none of the five `unsafeAllow*`
  * validation options (nothing here is ever validated — the beacon was
  * validated when IT was deployed), and not

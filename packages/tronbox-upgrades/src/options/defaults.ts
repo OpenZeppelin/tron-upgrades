@@ -39,8 +39,7 @@ export const pluginOptionDefaults: {
 export const defaultConstructorArgs: readonly unknown[] = Object.freeze([]);
 
 /**
- * The initializer function name when the caller supplies none and there is at
- * least one argument, from
+ * The initializer function name when the caller supplies none, from
  * `plugin-truffle/src/utils/initializer-data.ts:getInitializerData`.
  */
 export const DEFAULT_INITIALIZER = 'initialize';

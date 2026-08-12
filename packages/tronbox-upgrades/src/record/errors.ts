@@ -178,7 +178,7 @@ const addressRemedies: Readonly<Record<AddressRejectionCause, string>> =
       'least one character is wrong. Copy it again from its source rather than ' +
       'retyping it.',
     'wrong-length':
-      'A TRON address is exactly 20 bytes. Check for a truncated or ' +
+      'A TRON address payload is exactly 20 bytes. Check for a truncated or ' +
       'double-pasted value — a block explorer selection that stops short is the ' +
       'usual cause.',
     'wrong-prefix-byte':

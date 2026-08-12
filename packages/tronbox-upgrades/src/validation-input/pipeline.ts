@@ -67,7 +67,9 @@ import type { SolcStandardInput, SolcStandardOutput } from './solc-input';
  * report; all three compiling arms are deleted, because the remedy the user
  * already has — `tronbox compile --all` — regenerates the record and the
  * artifact together, and the `--all` flag forces recompilation of unchanged
- * sources, so it always works.
+ * sources, so the remedy works for any compilable concrete contract — though
+ * not for an abstract contract or interface, since recompilation cannot
+ * manufacture deployed bytecode where none can exist.
  *
  * **Reduced fidelity on the fresh path is not a degradation to apologise for, and
  * the pipeline does not pretend otherwise.** Reconstructing the layout from the

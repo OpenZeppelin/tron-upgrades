@@ -9,10 +9,11 @@
  *    interface makes the fake one object literal instead of a module-mocking
  *    exercise.
  * 2. **The engine may not load at import time.** The production factory does
- *    the two dynamic imports the closure rule requires (`../options/resolve`
- *    holds the package's one static engine value-import; the engine itself is
- *    the other) — and it does them *after* `configureRecordLocation` has run
- *    inside `openRecord`, which is the whole point of deferring.
+ *    the three dynamic imports the closure rule requires (`../options/resolve`
+ *    and `../validation-input` each hold a static engine value-import; the
+ *    engine itself is the third) — and it does them *after*
+ *    `configureRecordLocation` has run inside `openRecord`, which is the
+ *    whole point of deferring.
  *
  * Everything else the operations touch is statically engine-free and imported
  * through its face: the environment seam, the chain seam, the record face, the
@@ -133,7 +134,9 @@ export interface OperationToolkit {
   /**
    * The implementation deploy on the upgrade path: routed
    * through the engine's `fetchOrDeployGetDeployment` so replay reuse is
-   * upstream's own. `deploy` runs only when the record has no live entry.
+   * upstream's own. `deploy` runs only when the record has no live entry —
+   * unless `redeployImplementation: 'always'` is in effect, which forces it
+   * regardless of what is already recorded.
    */
   fetchOrDeployImplementation(
     validated: ValidatedImplementation,

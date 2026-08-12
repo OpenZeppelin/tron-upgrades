@@ -92,7 +92,10 @@ function isUnsafeAllowKind(value: unknown): value is UnsafeAllowKind {
  * `undefined` when the option is absent. They are pure, so a check step and the
  * build phase call the same function — the check step discards the value, the build
  * phase uses it. That is what keeps the two phases from disagreeing about what
- * counts as valid, and it is why no `as` cast appears anywhere in this module.
+ * counts as valid, and it is why no `as` cast appears anywhere in this module on a
+ * validated *value* — the casts that do appear (`isProxyKind`, `isRedeployMode`,
+ * `isUnsafeAllowKind`) are on the closed-set tables themselves, never on a value
+ * read from the caller.
  */
 
 function readProxyKind(supplied: SuppliedOptions): ProxyKind | undefined {

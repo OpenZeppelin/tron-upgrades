@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The live end-to-end harness: proves the PUBLISHED package against a real
+ * The live end-to-end harness: proves the PACKED tarball against a real
  * TRON node, exactly as a consumer would use it.
  *
  * What it does, in order:
@@ -14,14 +14,17 @@
  *   4. compile — `tronbox compile`. The wasm compiler can hang: bounded
  *      trials with a timeout each; a killed trial is retried, not diagnosed.
  *   5. migrate — six migrations: proxy deploy + upgrade, the standalone
- *      validate/prepare pair, the authority transfer, the beacon trio,
+ *      validate/validateUpgrade/prepare trio plus a reuse-checked
+ *      deployImplementation, the authority transfer, the beacon trio,
  *      adoption from a set-aside record, and the non-default option surface
  *      (kind: 'uups', an inferred-kind upgrade, an inferred-kind DEPLOY of a
  *      UUPS shape, the initialOwner-with-uups refusal, a zero-argument
- *      omitted initializer, call, initialOwner, and the initializer:false
- *      refusal).
- *   6. verify — independent reads against the node itself; the migrations'
- *      own asserts are trusted only after the chain agrees.
+ *      omitted initializer, call, initialOwner, the initializer:false
+ *      refusal, the redeployImplementation:'never' reuse-only refusal, and
+ *      the linked-library refusal/allowance pair).
+ *   6. verify — independent reads against the node itself for a defined
+ *      slice of outcomes, not every migration assertion; the migrations'
+ *      own asserts are trusted only after the chain agrees on those.
  *   7. replay — the SAME migrations again: `deployProxy` always deploys a
  *      fresh proxy on every run (Hardhat parity — a prior recorded address
  *      is never reused), so every proxy address a migration deploys
@@ -37,7 +40,10 @@
  *   E2E_FULL_HOST         node URL             (default http://127.0.0.1:9090)
  *   E2E_PRIVATE_KEY       funded account key   (default: the TRE quickstart key)
  *   E2E_TRONBOX_VERSION   tronbox to install   (default 4.9.0)
- *   E2E_WORKDIR           scaffold here instead of a fresh temp directory
+ *   E2E_WORKDIR           work root here instead of a fresh temp directory
+ *                         (the tarball and the consumer scaffold both live
+ *                         inside it, the scaffold under its `consumer/`
+ *                         subdirectory)
  *   E2E_KEEP=1            keep the scaffold for inspection
  *   E2E_SKIP_IF_NO_TRE=1  exit 0 (loudly) when the node is unreachable
  *
