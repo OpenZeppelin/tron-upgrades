@@ -190,7 +190,8 @@ export class StaleProxyRecordError extends ProxyOperationRefusedError {
           `that address holds no code on the current chain — the node was ` +
           `likely wiped or replaced. Deploying a second proxy beside the stale ` +
           `record is refused. If the chain really was reset, clear the ` +
-          `deployment record and the artifact's network entry, then re-run.`
+          `deployment record and the artifact's network entry — delete the ` +
+          `build directory and run \`tronbox compile --all\` — then re-run.`
         : because === 'unrecorded'
           ? `This migration previously deployed a proxy at ${proxyAddress}, ` +
             `and the address holds code, but the deployment record has no ` +
@@ -199,7 +200,10 @@ export class StaleProxyRecordError extends ProxyOperationRefusedError {
           : `This migration previously deployed a proxy at ${proxyAddress}, ` +
             `but the deployment record knows nothing about that address — an ` +
             `out-of-band deployment, a deleted record, or another tool's ` +
-            `write. Reconcile the record before deploying again.`,
+            `write. Reconcile the record before deploying again. If the ` +
+            `record was deleted on purpose after a chain wipe, clear the ` +
+            `artifact's per-network write-back too — delete the build ` +
+            `directory and run \`tronbox compile --all\` — then re-run.`,
     );
     this.name = 'StaleProxyRecordError';
   }

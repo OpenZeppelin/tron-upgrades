@@ -428,6 +428,14 @@ function renderInstanceChange(
 ): string {
   const records = `${String(context.recordCount)} deployment record(s) in ${context.manifestFile}`;
   const fingerprint = renderFingerprintClause(context.sidecarFile);
+  // The wiped-node deletions, named TOGETHER on purpose: deleting the manifest
+  // alone leaves the surviving fingerprint refusing the next run over zero
+  // records — measured from a consumer project against a restarted TRE — while
+  // the clause above already forbids deleting the fingerprint alone.
+  const wipedDeletions =
+    context.sidecarFile === undefined
+      ? context.manifestFile
+      : `${context.manifestFile} together with its fingerprint file ${context.sidecarFile}`;
 
   if (comparison.signal === 'chain-id') {
     return (
@@ -453,9 +461,15 @@ function renderInstanceChange(
     'of the same chain, so those records do not describe it.\n\n' +
     fingerprint +
     'Nothing has been changed or removed. If this is a disposable local node ' +
-    `that has been restarted, delete ${context.manifestFile} and run again. If ` +
-    'you did not expect a restart, the node may be serving a different chain ' +
-    'than intended — check the endpoint before deleting anything.'
+    `that has been restarted, delete ${wipedDeletions}, clear the old ` +
+    "chain's addresses out of the build artifacts — delete the build " +
+    'directory and run `tronbox compile --all` — and run again. All three ' +
+    'places remember the old chain: the manifest holds the records, the ' +
+    'fingerprint holds the identity they were checked against, and the ' +
+    "artifacts hold TronBox's per-network write-backs, which would refuse " +
+    'the next deploy over a proxy this chain has never seen. If you did not ' +
+    'expect a restart, the node may be serving a different chain than ' +
+    'intended — check the endpoint before deleting anything.'
   );
 }
 
