@@ -11,6 +11,7 @@
  */
 
 import type { ContractAbstraction } from '../environment';
+import type { ForceImportOptions } from '../options/types';
 import { canonicalizeAddress } from '../record';
 import { operationNotes } from '../results/types';
 import { sealUnavailable } from '../results/limitations';
@@ -21,7 +22,7 @@ import {
   HANDLE_OPTION_KEYS,
   readWriteBackHash,
   type OperationContext,
-  type RawOperationOptions,
+  type MigrationHandles,
 } from '../proxy/toolkit';
 import {
   AdoptionKindMismatchError,
@@ -29,7 +30,7 @@ import {
   NothingToAdoptError,
 } from './errors';
 
-export const FORCE_IMPORT_ACCEPTED_OPTIONS: readonly string[] = [
+export const FORCE_IMPORT_ACCEPTED_OPTIONS = [
   ...HANDLE_OPTION_KEYS,
   'kind',
   'constructorArgs',
@@ -38,7 +39,7 @@ export const FORCE_IMPORT_ACCEPTED_OPTIONS: readonly string[] = [
   'unsafeSkipStorageCheck',
   'unsafeAllowCustomTypes',
   'unsafeAllowLinkedLibraries',
-];
+] as const;
 
 export type AdoptedKind = 'transparent' | 'uups' | 'beacon' | 'implementation';
 
@@ -200,7 +201,7 @@ export async function runForceImport(
 export async function forceImport(
   address: string,
   contract: ContractAbstraction,
-  options: RawOperationOptions = {},
+  options: ForceImportOptions & MigrationHandles = {},
 ): Promise<AdoptionOutcome> {
   const context = await createOperationToolkit({
     handles: handlesFrom(options),

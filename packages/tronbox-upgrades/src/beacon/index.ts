@@ -9,6 +9,11 @@
  */
 
 import type { ContractAbstraction } from '../environment';
+import type {
+  DeployBeaconOptions,
+  DeployBeaconProxyOptions,
+  UpgradeBeaconOptions,
+} from '../options/types';
 import { canonicalizeAddress } from '../record';
 import {
   ConfirmationIndeterminateError,
@@ -24,7 +29,7 @@ import {
   HANDLE_OPTION_KEYS,
   encodeInitializer,
   type OperationContext,
-  type RawOperationOptions,
+  type MigrationHandles,
 } from '../proxy/toolkit';
 import { NothingToAdoptError } from '../adopt/errors';
 import {
@@ -58,7 +63,7 @@ import { isAlreadyCurrent } from '../proxy/replay';
  * execution proof that the pair is genuinely inert for a fresh deploy and
  * genuinely load-bearing for an upgrade's storage comparison.
  */
-export const DEPLOY_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
+export const DEPLOY_BEACON_ACCEPTED_OPTIONS = [
   ...HANDLE_OPTION_KEYS,
   'constructorArgs',
   'initialOwner',
@@ -71,7 +76,7 @@ export const DEPLOY_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
   'useDeployedImplementation',
   'timeout',
   'pollingInterval',
-];
+] as const;
 
 /**
  * `upgradeBeacon` deploys (or reuses) the new implementation, compares its
@@ -84,7 +89,7 @@ export const DEPLOY_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
  * `deployBeacon`; an upgrade never touches it) — those two ARE genuinely
  * unreachable by OUR code here, unlike the storage-check pair.
  */
-export const UPGRADE_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
+export const UPGRADE_BEACON_ACCEPTED_OPTIONS = [
   ...HANDLE_OPTION_KEYS,
   'constructorArgs',
   'unsafeAllow',
@@ -96,7 +101,7 @@ export const UPGRADE_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
   'useDeployedImplementation',
   'timeout',
   'pollingInterval',
-];
+] as const;
 
 /**
  * `deployBeaconProxy` deploys only the `BeaconProxy` itself, pointing at an
@@ -111,12 +116,12 @@ export const UPGRADE_BEACON_ACCEPTED_OPTIONS: readonly string[] = [
  * `redeployImplementation`/`useDeployedImplementation` (no implementation
  * fetch-or-deploy decision to make).
  */
-export const DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS: readonly string[] = [
+export const DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS = [
   ...HANDLE_OPTION_KEYS,
   'initializer',
   'timeout',
   'pollingInterval',
-];
+] as const;
 
 function nameOf(contract: ContractAbstraction, operation: string): string {
   const name = (contract as { contractName?: unknown }).contractName;
@@ -219,7 +224,7 @@ export async function runDeployBeacon(
 
 export async function deployBeacon(
   contract: ContractAbstraction,
-  options: RawOperationOptions = {},
+  options: DeployBeaconOptions & MigrationHandles = {},
 ): Promise<DeployedBeacon> {
   const context = await createOperationToolkit({
     handles: handlesFrom(options),
@@ -269,7 +274,7 @@ export async function deployBeaconProxy(
   beaconAddress: string,
   contract: ContractAbstraction,
   args: readonly unknown[] = [],
-  options: RawOperationOptions = {},
+  options: DeployBeaconProxyOptions & MigrationHandles = {},
 ): Promise<DeployedProxy> {
   // Refused before anything else — see `deployProxy`'s own guard for why.
   assertNoOptionsInArgsPosition(
@@ -348,7 +353,7 @@ export async function runUpgradeBeacon(
 export async function upgradeBeacon(
   beaconAddress: string,
   contract: ContractAbstraction,
-  options: RawOperationOptions = {},
+  options: UpgradeBeaconOptions & MigrationHandles = {},
 ): Promise<UpgradedProxy> {
   const context = await createOperationToolkit({
     handles: handlesFrom(options),

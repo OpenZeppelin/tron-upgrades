@@ -907,6 +907,18 @@ describe('applied to the real tree', () => {
     // 1967 reader errors, `ChainImplementationNotFoundError` and
     // `ChainBeaconNotFoundError` — real classes, for the same reason
     // `./record/errors` is: a consumer needs them to write a `catch`).
+    //
+    // Re-pinned again when the published surface was made to match the
+    // runtime: `./options/errors` (the option-refusal family a caller catches
+    // — a leaf that imports NOTHING, which is why the family is reachable
+    // from here while `./options` itself, whose face re-exports the
+    // engine-loading resolver, still is not), `./validation-input/errors`
+    // (same shape: a leaf whose only imports are `import type`),
+    // `./environment` (the environment refusals, through the seam's FACE
+    // because `test/performance-and-reuse.test.ts` forbids anything outside
+    // the seam reaching a seam internal — and the face was already in the
+    // runtime closure through `./erc1967`), and a third `./proxy` specifier,
+    // which is the erased `export type { MigrationHandles }`.
     expect(entry?.moduleSpecifiers.map(edge => edge.specifier).sort()).toEqual([
       './admin',
       './admin/errors',
@@ -915,14 +927,18 @@ describe('applied to the real tree', () => {
       './beacon',
       './chain',
       './deploy',
+      './environment',
       './erc1967',
+      './options/errors',
       './options/types',
       './output/silence',
+      './proxy',
       './proxy',
       './proxy',
       './record/errors',
       './results/types',
       './standalone',
+      './validation-input/errors',
     ]);
     const closure = runtimeStaticClosure(
       specifierIndex(allSources()),

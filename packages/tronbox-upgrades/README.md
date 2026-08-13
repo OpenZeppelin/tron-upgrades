@@ -235,6 +235,33 @@ every invocation: re-running a migration whose `call` targets a one-time
 reinitializer reverts on-chain (`TransactionRevertedError`), not as a quiet
 skip.
 
+**The types say exactly what each operation accepts.** An operation's options
+parameter is its own exported alias intersected with `MigrationHandles` (the
+five migration handles), so `deployProxy`'s third argument is
+`DeployProxyOptions & MigrationHandles` and a key that operation does not
+accept **fails to compile** — where it previously type-checked and then failed
+at runtime, because the parameter was an open bag with a string index
+signature. The runtime refusal (`UnknownOptionError`) stays, for JavaScript
+callers and for anything that reaches an operation untyped. Each alias's
+members are checked against its operation's own accepted-options list in both
+directions (`test/public-option-surface.test.ts`), so a key added to one side
+and not the other is a build failure rather than a published lie.
+
+**The refusals a caller catches are exported as classes**, so a `catch` can
+branch on `instanceof` instead of matching a message: the option family
+(`UpgradesOptionError` plus `UnknownOptionError`, `OptionValueError`,
+`OptionConflictError`, `OptionUnsupportedOnTronError`), the environment family
+(`TronBoxEnvironmentError` plus the absent/incomplete/inconsistent three),
+`ChainInstanceChangedError` and `RecordFingerprintUnreadableError` — the pair
+that distinguishes "a different chain" from "an unusable record file" —
+`ValidationInputRefusedError`, and each operation family's own refusals. Two
+groups are reachable but still not exported as classes — the chain
+transport/RPC errors (`ChainTransportError`, `ChainRpcError`,
+`ChainResultShapeError`) and the result-accessor refusals
+(`TransactionHashUnavailableError` and the two capability errors) — so branch
+on their `code`, which each of them carries and which is a stable surface
+whether or not the class is exported.
+
 **`constructorArgs` cannot end in a plain object or `null`.** TronBox's own
 contract layer treats a trailing non-array object — and `null`, since
 `typeof null` is also `"object"` — as its own energy-parameter slot, never as

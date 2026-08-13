@@ -12,6 +12,7 @@
  */
 
 import type { ContractAbstraction } from '../environment';
+import type { DeployProxyOptions } from '../options/types';
 import { canonicalizeAddress } from '../record';
 import {
   assertNoCheatcodeCollision,
@@ -43,11 +44,11 @@ import {
   readWriteBackHash,
   encodeInitializer,
   type OperationContext,
-  type RawOperationOptions,
+  type MigrationHandles,
 } from './toolkit';
 
 /** The option keys this operation accepts; anything else is a named refusal. */
-export const DEPLOY_PROXY_ACCEPTED_OPTIONS: readonly string[] = [
+export const DEPLOY_PROXY_ACCEPTED_OPTIONS = [
   ...HANDLE_OPTION_KEYS,
   'kind',
   'initializer',
@@ -63,7 +64,7 @@ export const DEPLOY_PROXY_ACCEPTED_OPTIONS: readonly string[] = [
   'useDeployedImplementation',
   'timeout',
   'pollingInterval',
-];
+] as const;
 
 function nameOf(contract: ContractAbstraction): string {
   const name = (contract as { contractName?: unknown }).contractName;
@@ -322,7 +323,7 @@ export async function runDeployProxy(
 export async function deployProxy(
   contract: ContractAbstraction,
   args: readonly unknown[] = [],
-  options: RawOperationOptions = {},
+  options: DeployProxyOptions & MigrationHandles = {},
 ): Promise<DeployedProxy> {
   // Refused before anything else, including the toolkit build: the dropped
   // positional-overloads shape must never reach the record session or the

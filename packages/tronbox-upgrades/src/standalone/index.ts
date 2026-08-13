@@ -11,6 +11,12 @@
  */
 
 import type { ContractAbstraction } from '../environment';
+import type {
+  DeployImplementationOptions,
+  PrepareUpgradeOptions,
+  ValidateImplementationOptions,
+  ValidateUpgradeOptions,
+} from '../options/types';
 import {
   ConfirmationIndeterminateError,
   TransactionRevertedError,
@@ -26,10 +32,10 @@ import {
   HANDLE_OPTION_KEYS,
   readWriteBackHash,
   type OperationContext,
-  type RawOperationOptions,
+  type MigrationHandles,
 } from '../proxy/toolkit';
 
-const VALIDATE_ACCEPTED: readonly string[] = [
+export const VALIDATE_ACCEPTED_OPTIONS = [
   ...HANDLE_OPTION_KEYS,
   'kind',
   'constructorArgs',
@@ -38,9 +44,9 @@ const VALIDATE_ACCEPTED: readonly string[] = [
   'unsafeSkipStorageCheck',
   'unsafeAllowCustomTypes',
   'unsafeAllowLinkedLibraries',
-];
+] as const;
 
-const DEPLOY_IMPL_ACCEPTED: readonly string[] = [
+export const DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS = [
   ...HANDLE_OPTION_KEYS,
   'kind',
   'constructorArgs',
@@ -53,7 +59,7 @@ const DEPLOY_IMPL_ACCEPTED: readonly string[] = [
   'useDeployedImplementation',
   'timeout',
   'pollingInterval',
-];
+] as const;
 
 function nameOf(contract: ContractAbstraction, operation: string): string {
   const name = (contract as { contractName?: unknown }).contractName;
@@ -80,12 +86,12 @@ export async function runValidateImplementation(
 
 export async function validateImplementation(
   contract: ContractAbstraction,
-  options: RawOperationOptions = {},
+  options: ValidateImplementationOptions & MigrationHandles = {},
 ): Promise<ValidationOutcome> {
   const context = await createOperationToolkit({
     handles: handlesFrom(options),
     rawOptions: options,
-    acceptedOptions: VALIDATE_ACCEPTED,
+    acceptedOptions: VALIDATE_ACCEPTED_OPTIONS,
     mode: 'validate-only',
   });
   return runValidateImplementation(context, contract);
@@ -120,12 +126,12 @@ export async function runValidateUpgrade(
 export async function validateUpgrade(
   from: ContractAbstraction,
   to: ContractAbstraction,
-  options: RawOperationOptions = {},
+  options: ValidateUpgradeOptions & MigrationHandles = {},
 ): Promise<ValidationOutcome> {
   const context = await createOperationToolkit({
     handles: handlesFrom(options),
     rawOptions: options,
-    acceptedOptions: VALIDATE_ACCEPTED,
+    acceptedOptions: VALIDATE_ACCEPTED_OPTIONS,
     mode: 'validate-only',
   });
   return runValidateUpgrade(context, from, to);
@@ -191,12 +197,12 @@ export async function runDeployImplementation(
 
 export async function deployImplementation(
   contract: ContractAbstraction,
-  options: RawOperationOptions = {},
+  options: DeployImplementationOptions & MigrationHandles = {},
 ): Promise<ImplementationDeployment> {
   const context = await createOperationToolkit({
     handles: handlesFrom(options),
     rawOptions: options,
-    acceptedOptions: DEPLOY_IMPL_ACCEPTED,
+    acceptedOptions: DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS,
   });
   return runDeployImplementation(context, contract);
 }
@@ -232,12 +238,12 @@ export async function runPrepareUpgrade(
 export async function prepareUpgrade(
   proxyAddress: string,
   contract: ContractAbstraction,
-  options: RawOperationOptions = {},
+  options: PrepareUpgradeOptions & MigrationHandles = {},
 ): Promise<ImplementationDeployment> {
   const context = await createOperationToolkit({
     handles: handlesFrom(options),
     rawOptions: options,
-    acceptedOptions: DEPLOY_IMPL_ACCEPTED,
+    acceptedOptions: DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS,
   });
   return runPrepareUpgrade(context, proxyAddress, contract);
 }
