@@ -278,9 +278,10 @@ chain layer's six (`ChainTransportError`, `ChainRpcError`,
 reaches — and the two raised while an operation builds its result
 (`TransactionHashUnavailableError`, `UnavailableMemberAbsentError`). Most of
 them also carry a stable `code`, which is the way to branch without importing a
-constructor; the two family bases (`UpgradesOptionError`,
-`TronBoxEnvironmentError`) and `ArtifactNameAmbiguousError` do not, so
-`instanceof` is the only handle on those three.
+constructor — `TronBoxEnvironmentError` declares its as `abstract`, so every
+environment refusal has one. Two do not: the `UpgradesOptionError` base (its
+four subclasses each do) and `ArtifactNameAmbiguousError`, where `instanceof`
+is the only handle.
 
 Two groups are deliberately **not** exported, and neither is a refusal of
 yours. The invariant classes fire only on a bug in this plugin or a host

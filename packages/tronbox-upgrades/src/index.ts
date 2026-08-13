@@ -158,8 +158,11 @@ export {
 // type only — deliberately, so a consumer distinguishes by `code` rather than by
 // importing constructors. These three are the sanctioned exceptions, made here
 // rather than there, and this one because catching it is how a caller tells
-// "corrupt" from "the chain instance changed", the only other refusal
-// `openRecord` itself raises.
+// "corrupt" from "the chain instance changed". Those two are not the whole of
+// what `openRecord` raises — its contract documents five, and the other three
+// are exported from here too (`RecordLocationUnusableError`,
+// `AddressNotCanonicalizableError`, `ChainResultShapeError`), so every refusal
+// that call can produce is catchable by class.
 export { RecordFingerprintUnreadableError } from './record/errors';
 
 /**

@@ -42,11 +42,12 @@
  *   `deployProxy` actually hands `DEPLOY_PROXY_ACCEPTED_OPTIONS` to
  *   `createOperationToolkit` — rather than a sibling's list — is invisible to
  *   all three, and they would stay green if it passed the wrong one. That
- *   property is covered elsewhere, and only for the beacon trio:
+ *   property is covered elsewhere only for the beacon trio, and only in part:
  *   `test/toolkit-seam.test.ts`'s "the beacon operations are wired to their
  *   OWN accepted-options constant" suite drives each public entry with a key
- *   only that operation's list refuses. The other eight operations have no
- *   equivalent proof today.
+ *   only that operation's list refuses, which by its own accounting catches
+ *   four of the six possible wrong assignments among those three. The other
+ *   eight operations have no equivalent proof at all.
  * - **A sibling with the identical surface.** `validateImplementation` and
  *   `validateUpgrade` share one list, as do `deployImplementation` and
  *   `prepareUpgrade`; either pair can be wired to the other's alias
