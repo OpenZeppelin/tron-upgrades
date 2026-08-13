@@ -98,8 +98,9 @@ export { silenceWarnings } from './output/silence';
 
 /*
  * The operations. Each is shaped exactly as the rule above requires: resolve
- * the environment → `configureRecordLocation` (inside `openRecord`) → dynamic
- * import of the engine-reaching modules → run. Their static closures are
+ * the environment → `configureRecordLocation` (called by the toolkit factory
+ * itself, so it runs in both modes; `openRecord` calls it again on the
+ * state-changing path) → dynamic import of the engine-reaching modules → run. Their static closures are
  * engine-free, and `test/entry-point-closure.test.ts` recomputes that from
  * disk on every run.
  */
@@ -150,13 +151,15 @@ export {
   StaleTransactionIdentityError,
   CheatcodeSlotCollisionError,
 } from './deploy';
-// The one record-layer error a consumer must be able to catch: `openRecord` throws
-// it directly, on a fingerprint sidecar it cannot use. The rest of the record
+// The first of three record-layer errors a consumer must be able to catch (the
+// other two are exported below, from the same leaf): `openRecord` throws this
+// one directly, on a fingerprint sidecar it cannot use. The rest of the record
 // layer's errors are internal to `./record`, whose own face exports this class as a
 // type only — deliberately, so a consumer distinguishes by `code` rather than by
-// importing constructors. This export is the one exception, made here rather than
-// there, because catching it is how a caller tells "corrupt" from "the chain
-// instance changed", the only other refusal `openRecord` itself raises.
+// importing constructors. These three are the sanctioned exceptions, made here
+// rather than there, and this one because catching it is how a caller tells
+// "corrupt" from "the chain instance changed", the only other refusal
+// `openRecord` itself raises.
 export { RecordFingerprintUnreadableError } from './record/errors';
 
 /**
@@ -249,6 +252,26 @@ export {
  * breach is this plugin's bug, not a state a caller catches and handles.
  */
 export { ValidationInputRefusedError } from './validation-input/errors';
+
+/*
+ * Two refusals raised while an operation BUILDS its result, before it returns —
+ * so they reach a caller exactly like any other operation refusal, and the
+ * first classification of them as "result-accessor errors" was wrong:
+ *
+ * - `TransactionHashUnavailableError` comes from `transactionIdentity`, which
+ *   every operation that reports a transaction calls on its way out; the
+ *   standalone replay path can reach it with a hash the caller's own
+ *   abstraction supplied as `null`.
+ * - `UnavailableMemberAbsentError` comes from `sealUnavailable`, which checks
+ *   the handle synchronously before the sealed proxy exists at all.
+ *
+ * Their sibling `ResultCapabilityUnavailableError` is the one that genuinely
+ * fires from the returned proxy's own `get` trap, on a member this plugin
+ * cannot support — a different surface, reached only by reading a result, and
+ * left unexported pending the decision recorded on the release issue.
+ */
+export { TransactionHashUnavailableError } from './results/types';
+export { UnavailableMemberAbsentError } from './results/limitations';
 
 /*
  * The environment refusals: no TronBox context at all, one missing a handle

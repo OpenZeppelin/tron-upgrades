@@ -36,13 +36,28 @@
  *    cannot see.
  *
  * What none of the three can catch, stated so the file is not read as more
- * than it is: two operations whose accepted lists are identical (today
- * `validateImplementation` and `validateUpgrade`, and `deployImplementation`
- * and `prepareUpgrade`) can be wired to each other's alias undetectably,
- * because the surfaces are the same surface. And the roster count at the
- * bottom pins the lists that exist NOW — it cannot discover a list added
- * later; a new operation has to be added here by hand, and the count is what
- * makes that omission visible rather than silent.
+ * than it is:
+ *
+ * - **The runtime wiring.** Every assertion here is about TYPES. Whether
+ *   `deployProxy` actually hands `DEPLOY_PROXY_ACCEPTED_OPTIONS` to
+ *   `createOperationToolkit` — rather than a sibling's list — is invisible to
+ *   all three, and they would stay green if it passed the wrong one. That
+ *   property is covered elsewhere, and only for the beacon trio:
+ *   `test/toolkit-seam.test.ts`'s "the beacon operations are wired to their
+ *   OWN accepted-options constant" suite drives each public entry with a key
+ *   only that operation's list refuses. The other eight operations have no
+ *   equivalent proof today.
+ * - **A sibling with the identical surface.** `validateImplementation` and
+ *   `validateUpgrade` share one list, as do `deployImplementation` and
+ *   `prepareUpgrade`; either pair can be wired to the other's alias
+ *   undetectably, because the two surfaces are the same surface.
+ * - **What mutual assignability cannot see.** An `any`-widened member is
+ *   assignable in both directions, and modifier-only differences such as
+ *   `readonly` do not break the check.
+ * - **A list that never appears here at all.** The roster and count at the
+ *   bottom pin the nine lists that exist NOW. A tenth added later is not
+ *   discovered by anything in this file — it has to be added by hand, and the
+ *   count only ensures that removing one of today's nine is loud.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -114,9 +129,11 @@ type Accepted<L extends readonly string[]> = L[number];
  * `true` when the two types accept each other in both directions — the check
  * `KeysMatch` cannot make, because two aliases can share every key name and
  * disagree on what a key's value may be (`kind?: ProxyKind` versus
- * `kind?: string`). Not a proof of identity in the compiler's own sense; it is
- * the strongest statement a conditional type can make here, and it fails on
- * every divergence a caller could observe.
+ * `kind?: string`). Not a proof of identity, and not a proof of every
+ * observable difference either: `any` is assignable both ways, and
+ * modifier-only differences such as `readonly` pass. It is the strongest
+ * statement a conditional type makes cheaply here, and it catches the
+ * substitution this file exists to catch.
  */
 type MutuallyAssignable<A, B> = [A] extends [B]
   ? [B] extends [A]

@@ -255,18 +255,22 @@ export interface OperationContext {
  * second declaration of the same five keys, for the reason
  * `erc1967.ts:Erc1967ReadOptions` is one too: the sandbox shape is described in
  * exactly one place, and the public surface names it in the vocabulary of the
- * surface it belongs to. It declares **no member of its own** — an empty
- * `extends` rather than a type alias, purely so the compiler's own diagnostics
- * name the type a consumer can import: an alias is erased in error messages,
- * which printed `RawMigrationHandles` at call sites where nothing by that name
- * is exported.
+ * surface it belongs to.
+ *
+ * An alias and not an empty `extends`, which was tried and reverted: an
+ * exported interface is open to declaration merging, so a consumer could
+ * augment this module and add a REQUIRED member to every operation's option
+ * parameter at once. The cost of the alias is cosmetic and worth naming: an
+ * alias is erased in compiler diagnostics, so a call-site error prints
+ * `RawMigrationHandles`, a name the package root does not export. The same
+ * trade already exists one module over, on `erc1967.ts:Erc1967ReadOptions`.
  *
  * It replaced an open bag (`RawOperationOptions`, five known keys plus
  * `[key: string]: unknown`), whose index signature is why
  * `deployProxy(Box, [42], { totallyMadeUpKey: 1 })` used to type-check while
  * the runtime refused it by name.
  */
-export interface MigrationHandles extends RawMigrationHandles {}
+export type MigrationHandles = RawMigrationHandles;
 
 /**
  * The migration-scope handles, lifted off the options object. TronBox's

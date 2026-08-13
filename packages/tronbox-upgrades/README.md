@@ -275,20 +275,24 @@ that distinguishes "a different chain" from "an unusable record file"
 chain layer's six (`ChainTransportError`, `ChainRpcError`,
 `ChainResultShapeError`, `ChainEndpointRefusedError`, `ChainSlotMalformedError`,
 `ChainAddressUnusableError`) — the ones a node outage or a malformed reply
-reaches. Every one of them also carries a stable `code`, which stays the way to
-branch without importing a constructor.
+reaches — and the two raised while an operation builds its result
+(`TransactionHashUnavailableError`, `UnavailableMemberAbsentError`). Most of
+them also carry a stable `code`, which is the way to branch without importing a
+constructor; the two family bases (`UpgradesOptionError`,
+`TronBoxEnvironmentError`) and `ArtifactNameAmbiguousError` do not, so
+`instanceof` is the only handle on those three.
 
 Two groups are deliberately **not** exported, and neither is a refusal of
-yours: the invariant classes, which fire only on a bug in this plugin or a host
-contradicting its own contract (`DeploySeamInvariantError`,
+yours. The invariant classes fire only on a bug in this plugin or a host
+contradicting its own contract: `DeploySeamInvariantError`,
 `ValidationInputInvariantError`, the two engine-capture errors,
-`DegradedNoteInvalidError`, and the provider's `ChainMethodRefusedError` /
-`ChainBlockTagRefusedError` — nothing a caller asks for reaches those); and the
-result-envelope accessor errors (`TransactionHashUnavailableError`,
-`ResultCapabilityUnavailableError`, `UnavailableMemberAbsentError`), which come
-from reading a member off a result rather than from an operation, and which
-also carry a `code`. Whether that second group joins the exported set is
-tracked on the release-blocking issue rather than decided here.
+`DegradedNoteInvalidError`, `HostInstanceSharedError`, and the provider's
+`ChainMethodRefusedError` / `ChainBlockTagRefusedError` — nothing a caller asks
+for reaches those. And `ResultCapabilityUnavailableError` comes from the
+returned result's own `get` trap, on a member this plugin cannot support, so it
+is reached by reading a result rather than by calling an operation; it carries
+a `code`, and whether it joins the exported set is tracked on the
+release-blocking issue rather than decided here.
 
 **`constructorArgs` cannot end in a plain object or `null`.** TronBox's own
 contract layer treats a trailing non-array object — and `null`, since

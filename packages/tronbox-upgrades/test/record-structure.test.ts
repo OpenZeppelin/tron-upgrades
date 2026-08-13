@@ -937,6 +937,8 @@ describe('applied to the real tree', () => {
       './proxy',
       './record/errors',
       './record/errors',
+      './results/limitations',
+      './results/types',
       './results/types',
       './standalone',
       './validation-input/errors',
