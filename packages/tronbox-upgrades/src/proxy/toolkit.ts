@@ -12,8 +12,10 @@
  *    the three dynamic imports the closure rule requires (`../options/resolve`
  *    and `../validation-input` each hold a static engine value-import; the
  *    engine itself is the third) — and it does them *after*
- *    `configureRecordLocation` has run inside `openRecord`, which is the
- *    whole point of deferring.
+ *    `configureRecordLocation` has run: this factory calls it directly, so it
+ *    runs in both modes, and `openRecord` calls it again for the
+ *    state-changing one. Deferring the loads until after it is the whole
+ *    point.
  *
  * Everything else the operations touch is statically engine-free and imported
  * through its face: the environment seam, the chain seam, the record face, the
@@ -249,18 +251,22 @@ export interface OperationContext {
  * public operation's parameter, which is its own option type intersected with
  * this one.
  *
- * A published alias over `environment/types.ts:RawMigrationHandles` rather
- * than a second declaration of the same five keys, for the reason
- * `erc1967.ts:Erc1967ReadOptions` is one too: the sandbox shape is described
- * in exactly one place, and the public surface names it in the vocabulary of
- * the surface it belongs to.
+ * Declared over `environment/types.ts:RawMigrationHandles` rather than as a
+ * second declaration of the same five keys, for the reason
+ * `erc1967.ts:Erc1967ReadOptions` is one too: the sandbox shape is described in
+ * exactly one place, and the public surface names it in the vocabulary of the
+ * surface it belongs to. It declares **no member of its own** — an empty
+ * `extends` rather than a type alias, purely so the compiler's own diagnostics
+ * name the type a consumer can import: an alias is erased in error messages,
+ * which printed `RawMigrationHandles` at call sites where nothing by that name
+ * is exported.
  *
  * It replaced an open bag (`RawOperationOptions`, five known keys plus
  * `[key: string]: unknown`), whose index signature is why
  * `deployProxy(Box, [42], { totallyMadeUpKey: 1 })` used to type-check while
  * the runtime refused it by name.
  */
-export type MigrationHandles = RawMigrationHandles;
+export interface MigrationHandles extends RawMigrationHandles {}
 
 /**
  * The migration-scope handles, lifted off the options object. TronBox's
@@ -430,9 +436,12 @@ type OperationEnvironment = Pick<
 };
 
 /**
- * The production toolkit. The engine and the option resolver load *inside*
- * this call — after `openRecord` has configured the record location — which is
- * the deferred-import pattern the entry-closure guard enforces.
+ * The production toolkit. The engine and the option resolver load *inside* this
+ * call — after `configureRecordLocation` has run, which happens in BOTH modes
+ * (a validate-only operation opens no record but still configures the location,
+ * because the engine reads it once at module scope and a wrong value would
+ * poison every later call in the process) — which is the deferred-import
+ * pattern the entry-closure guard enforces.
  */
 export async function createOperationToolkit(request: {
   readonly handles: RawMigrationHandles;

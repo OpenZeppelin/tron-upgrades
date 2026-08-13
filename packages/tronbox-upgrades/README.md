@@ -237,30 +237,58 @@ skip.
 
 **The types say exactly what each operation accepts.** An operation's options
 parameter is its own exported alias intersected with `MigrationHandles` (the
-five migration handles), so `deployProxy`'s third argument is
-`DeployProxyOptions & MigrationHandles` and a key that operation does not
-accept **fails to compile** — where it previously type-checked and then failed
-at runtime, because the parameter was an open bag with a string index
-signature. The runtime refusal (`UnknownOptionError`) stays, for JavaScript
-callers and for anything that reaches an operation untyped. Each alias's
-members are checked against its operation's own accepted-options list in both
-directions (`test/public-option-surface.test.ts`), so a key added to one side
-and not the other is a build failure rather than a published lie.
+five migration handles), so `deployProxy`'s final argument is
+`DeployProxyOptions & MigrationHandles`, and a key that operation does not
+accept is a **compile error at the call site** — where it previously
+type-checked and only failed at runtime, because the parameter was an open bag
+with a string index signature.
 
-**The refusals a caller catches are exported as classes**, so a `catch` can
-branch on `instanceof` instead of matching a message: the option family
-(`UpgradesOptionError` plus `UnknownOptionError`, `OptionValueError`,
-`OptionConflictError`, `OptionUnsupportedOnTronError`), the environment family
+That compile error is TypeScript's excess-property check, so it applies to an
+object literal written at the call, which is how a migration normally passes
+options. Hoist the options into a variable first and the extra key becomes
+structurally invisible to the compiler:
+
+```js
+const opts = { ...handles, totallyMadeUpKey: 1 };
+await deployProxy(Box, [42], opts);   // compiles; refused at runtime
+```
+
+Write `satisfies DeployProxyOptions & MigrationHandles` on that variable to get
+the check back. Either way the runtime refusal (`UnknownOptionError`) stands —
+it is what covers JavaScript callers and anything that reaches an operation
+untyped. Each alias's members are checked against its operation's own
+accepted-options list in both directions, and each signature against its own
+alias including member types (`test/public-option-surface.test.ts`), so a key
+added to one side and not the other is a build failure rather than a published
+lie.
+
+**Every refusal an operation throws at you is an exported class**, so a `catch`
+can branch on `instanceof` instead of matching a message: each operation
+family's own refusals, the option family (`UpgradesOptionError` plus
+`UnknownOptionError`, `OptionValueError`, `OptionConflictError`,
+`OptionUnsupportedOnTronError`), the environment family
 (`TronBoxEnvironmentError` plus the absent/incomplete/inconsistent three),
-`ChainInstanceChangedError` and `RecordFingerprintUnreadableError` — the pair
-that distinguishes "a different chain" from "an unusable record file" —
-`ValidationInputRefusedError`, and each operation family's own refusals. Two
-groups are reachable but still not exported as classes — the chain
-transport/RPC errors (`ChainTransportError`, `ChainRpcError`,
-`ChainResultShapeError`) and the result-accessor refusals
-(`TransactionHashUnavailableError` and the two capability errors) — so branch
-on their `code`, which each of them carries and which is a stable surface
-whether or not the class is exported.
+`ValidationInputRefusedError`, `ArtifactNameAmbiguousError`, the record pair
+that distinguishes "a different chain" from "an unusable record file"
+(`ChainInstanceChangedError`, `RecordFingerprintUnreadableError`) plus
+`RecordLocationUnusableError` and `AddressNotCanonicalizableError`, and the
+chain layer's six (`ChainTransportError`, `ChainRpcError`,
+`ChainResultShapeError`, `ChainEndpointRefusedError`, `ChainSlotMalformedError`,
+`ChainAddressUnusableError`) — the ones a node outage or a malformed reply
+reaches. Every one of them also carries a stable `code`, which stays the way to
+branch without importing a constructor.
+
+Two groups are deliberately **not** exported, and neither is a refusal of
+yours: the invariant classes, which fire only on a bug in this plugin or a host
+contradicting its own contract (`DeploySeamInvariantError`,
+`ValidationInputInvariantError`, the two engine-capture errors,
+`DegradedNoteInvalidError`, and the provider's `ChainMethodRefusedError` /
+`ChainBlockTagRefusedError` — nothing a caller asks for reaches those); and the
+result-envelope accessor errors (`TransactionHashUnavailableError`,
+`ResultCapabilityUnavailableError`, `UnavailableMemberAbsentError`), which come
+from reading a member off a result rather than from an operation, and which
+also carry a `code`. Whether that second group joins the exported set is
+tracked on the release-blocking issue rather than decided here.
 
 **`constructorArgs` cannot end in a plain object or `null`.** TronBox's own
 contract layer treats a trailing non-array object — and `null`, since

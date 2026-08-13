@@ -193,8 +193,10 @@ export interface ProxyAdminCheckOption {
 
 /**
  * **A recorded divergence from the parity target**, whose `DeployProxyOptions`
- * is `StandaloneOptions & Initializer`. Three members are added because
- * `DEPLOY_PROXY_ACCEPTED_OPTIONS` accepts them:
+ * is `StandaloneOptions & Initializer`. Four members are added — `initialOwner`,
+ * `unsafeSkipProxyAdminCheck`, `unsafeAllowRenames` and
+ * `unsafeSkipStorageCheck` — because `DEPLOY_PROXY_ACCEPTED_OPTIONS` accepts
+ * every one of them:
  *
  * - `initialOwner` and `unsafeSkipProxyAdminCheck` — this plugin's own
  *   transparent-proxy ownership surface, which the parity target has no
@@ -222,11 +224,12 @@ export type DeployImplementationOptions = UpgradeOptions;
  * {@link DeployBeaconProxyOptions}'s own `kind` omission below:** a beacon
  * has exactly one kind, so `deployBeacon`'s accepted-options list
  * (`beacon/index.ts:DEPLOY_BEACON_ACCEPTED_OPTIONS`) refuses `kind` outright. Built
- * as `Omit<StandaloneOptions, 'kind'>` rather than a fresh composition —
- * `StandaloneOptions` itself keeps `kind` (`DeployProxyOptions` and
- * `DeployImplementationOptions` both need it, and both genuinely accept it
- * at runtime), so the member is dropped locally, on this alias only, rather
- * than widening the omission to every type built from the shared base.
+ * as `Omit<UpgradeOptions, 'kind'>` rather than a fresh composition —
+ * `UpgradeOptions` itself keeps `kind` (`DeployProxyOptions` and
+ * `DeployImplementationOptions` both build on it, and both genuinely accept
+ * the option at runtime), so the member is dropped locally, on this alias
+ * only, rather than widening the omission to every type built from the shared
+ * base.
  *
  * Beyond `kind`, the alias mirrors `DEPLOY_BEACON_ACCEPTED_OPTIONS` member for
  * member. It carries `initialOwner` — a beacon's owner IS set here, unlike a
@@ -312,7 +315,10 @@ export type ValidateUpgradeOptions = ValidationOptions &
 /**
  * The confirmation pair and nothing else, matching
  * `TRANSFER_OWNERSHIP_ACCEPTED_OPTIONS`: the operation sends one ownership
- * transfer and validates nothing, deploys nothing, and reads no build record.
+ * transfer, validates nothing, deploys nothing, and reads no build record — no
+ * artifact, no layout, no compiler input. It does open the DEPLOYMENT record,
+ * as every state-changing operation does; that is the chain-instance check,
+ * not a build-record read.
  *
  * It had no exported alias at all until this type existed, which left one
  * operation of the eleven undescribed on the published surface.

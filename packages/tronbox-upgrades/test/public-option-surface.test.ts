@@ -23,12 +23,26 @@
  * `it` blocks cover the two properties a type cannot state — that no list
  * repeats a key, and that every list carries the five migration handles.
  *
- * Two assertions per operation, deliberately:
+ * Three assertions per operation, deliberately:
  *
  * 1. the exported alias against the list — the published name stays honest
  *    even for an alias no signature happens to use;
  * 2. the entry point's own last parameter against the list — which is what
- *    catches a cross-wiring, an operation typed with a sibling's alias.
+ *    catches a cross-wiring **whose key set differs**, an operation typed with
+ *    a sibling's alias;
+ * 3. the entry point's own last parameter against the alias, by mutual
+ *    assignability — which catches a cross-wiring that agrees on every key
+ *    name but not on a member's TYPE, the case the key-set comparison above
+ *    cannot see.
+ *
+ * What none of the three can catch, stated so the file is not read as more
+ * than it is: two operations whose accepted lists are identical (today
+ * `validateImplementation` and `validateUpgrade`, and `deployImplementation`
+ * and `prepareUpgrade`) can be wired to each other's alias undetectably,
+ * because the surfaces are the same surface. And the roster count at the
+ * bottom pins the lists that exist NOW — it cannot discover a list added
+ * later; a new operation has to be added here by hand, and the count is what
+ * makes that omission visible rather than silent.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -95,6 +109,20 @@ type OptionsParameter<F> = F extends (...args: [...infer _Rest, infer Last]) => 
   : never;
 
 type Accepted<L extends readonly string[]> = L[number];
+
+/**
+ * `true` when the two types accept each other in both directions — the check
+ * `KeysMatch` cannot make, because two aliases can share every key name and
+ * disagree on what a key's value may be (`kind?: ProxyKind` versus
+ * `kind?: string`). Not a proof of identity in the compiler's own sense; it is
+ * the strongest statement a conditional type can make here, and it fails on
+ * every divergence a caller could observe.
+ */
+type MutuallyAssignable<A, B> = [A] extends [B]
+  ? [B] extends [A]
+    ? true
+    : ['the alias accepts values the signature does not']
+  : ['the signature accepts values the alias does not'];
 
 /* deployProxy */
 const _deployProxyAlias: KeysMatch<
@@ -200,6 +228,53 @@ const _prepareUpgradeAlias: KeysMatch<
 const _prepareUpgradeSignature: KeysMatch<
   OptionsParameter<typeof prepareUpgrade>,
   Accepted<typeof DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS>
+> = true;
+
+
+/* Direction three: each signature against its OWN alias, values included. */
+const _deployProxyValues: MutuallyAssignable<
+  OptionsParameter<typeof deployProxy>,
+  DeployProxyOptions & MigrationHandles
+> = true;
+const _upgradeProxyValues: MutuallyAssignable<
+  OptionsParameter<typeof upgradeProxy>,
+  UpgradeProxyOptions & MigrationHandles
+> = true;
+const _deployBeaconValues: MutuallyAssignable<
+  OptionsParameter<typeof deployBeacon>,
+  DeployBeaconOptions & MigrationHandles
+> = true;
+const _upgradeBeaconValues: MutuallyAssignable<
+  OptionsParameter<typeof upgradeBeacon>,
+  UpgradeBeaconOptions & MigrationHandles
+> = true;
+const _deployBeaconProxyValues: MutuallyAssignable<
+  OptionsParameter<typeof deployBeaconProxy>,
+  DeployBeaconProxyOptions & MigrationHandles
+> = true;
+const _forceImportValues: MutuallyAssignable<
+  OptionsParameter<typeof forceImport>,
+  ForceImportOptions & MigrationHandles
+> = true;
+const _transferProxyAdminOwnershipValues: MutuallyAssignable<
+  OptionsParameter<typeof transferProxyAdminOwnership>,
+  TransferProxyAdminOwnershipOptions & MigrationHandles
+> = true;
+const _validateImplementationValues: MutuallyAssignable<
+  OptionsParameter<typeof validateImplementation>,
+  ValidateImplementationOptions & MigrationHandles
+> = true;
+const _validateUpgradeValues: MutuallyAssignable<
+  OptionsParameter<typeof validateUpgrade>,
+  ValidateUpgradeOptions & MigrationHandles
+> = true;
+const _deployImplementationValues: MutuallyAssignable<
+  OptionsParameter<typeof deployImplementation>,
+  DeployImplementationOptions & MigrationHandles
+> = true;
+const _prepareUpgradeValues: MutuallyAssignable<
+  OptionsParameter<typeof prepareUpgrade>,
+  PrepareUpgradeOptions & MigrationHandles
 > = true;
 
 /*

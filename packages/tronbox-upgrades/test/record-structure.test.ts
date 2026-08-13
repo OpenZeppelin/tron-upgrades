@@ -936,6 +936,7 @@ describe('applied to the real tree', () => {
       './proxy',
       './proxy',
       './record/errors',
+      './record/errors',
       './results/types',
       './standalone',
       './validation-input/errors',
@@ -1414,7 +1415,7 @@ describe('the face is `openRecord` plus four named values, and everything else i
     );
   });
 
-  it('the report type is internal in this version: the entry module re-exports nothing from the record layer\'s operations, and exactly one thing from its errors', () => {
+  it("the report type is internal in this version: the entry module re-exports nothing from the record layer's operations, and only error classes from its errors", () => {
     // "Internal in v1" is a statement about the package's public API, not about this
     // directory's own face — the report type is on the internal face, because the
     // preflight returns it. Re-pinned when the entry module gained its type-only
@@ -1430,9 +1431,16 @@ describe('the face is `openRecord` plus four named values, and everything else i
     // directly, so a caller has to be able to catch it, and `./record`'s own face
     // (asserted above) deliberately exports it as a type only — a consumer is meant
     // to distinguish record-layer errors by `code`, not by importing constructors.
-    // This one class is the sanctioned exception, named explicitly below rather
-    // than matched by a prefix, so a second `./record/*` edge — or a route to any
-    // of the five operational values — still fails here by name.
+    // Re-pinned again when the published error surface was completed: two more
+    // classes from the SAME leaf — `RecordLocationUnusableError` (a record
+    // location that cannot be used) and `AddressNotCanonicalizableError` (the
+    // refusal a malformed address reaches on every operation that takes one).
+    // The route rule is unchanged and is what this test actually guards:
+    // `./record/errors` is the only record-layer edge the entry may carry, and
+    // the names it re-exports are error classes only — never one of the face's
+    // five operational values. The exported names are listed explicitly rather
+    // than matched by a prefix, so a fourth one has to be added here on
+    // purpose.
     const SANCTIONED_RECORD_EDGE = './record/errors';
     for (const edge of entry.moduleSpecifiers) {
       if (edge.specifier === SANCTIONED_RECORD_EDGE) {
@@ -1452,8 +1460,13 @@ describe('the face is `openRecord` plus four named values, and everything else i
     expect(
       faceExports(entry)
         .filter(export_ => export_.from === SANCTIONED_RECORD_EDGE)
-        .map(export_ => export_.name),
-    ).toEqual(['RecordFingerprintUnreadableError']);
+        .map(export_ => export_.name)
+        .sort(),
+    ).toEqual([
+      'AddressNotCanonicalizableError',
+      'RecordFingerprintUnreadableError',
+      'RecordLocationUnusableError',
+    ]);
     const exportedNames = new Set(faceExports(entry).map(entry_ => entry_.name));
     for (const recordValue of FACE_VALUES) {
       expect(exportedNames.has(recordValue), `${recordValue} escaped`).toBe(false);

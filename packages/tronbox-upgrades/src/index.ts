@@ -31,8 +31,17 @@
  * The option surface. Each operation's alias describes exactly the keys that
  * operation accepts — no more, checked against its runtime accepted-options
  * list in both directions by `test/public-option-surface.test.ts`. A call
- * passes one of these intersected with {@link MigrationHandles}, which is the
- * shape every operation's third parameter declares.
+ * passes one of these intersected with {@link MigrationHandles}: that
+ * intersection is what every operation's FINAL parameter declares — the
+ * position differs per operation, which is why the type test keys off the last
+ * parameter rather than a fixed index.
+ *
+ * One limit worth stating, because it is TypeScript's and not this package's:
+ * an unaccepted key is a compile error for a fresh object literal at the call
+ * site (excess-property checking). Assign the options to a variable first and
+ * the extra key becomes structurally invisible — the runtime refusal is what
+ * catches it then. `satisfies DeployProxyOptions & MigrationHandles` on that
+ * variable restores the compile-time check.
  */
 export type {
   CallOption,
@@ -160,32 +169,69 @@ export { erc1967, beacon, type Erc1967ReadOptions } from './erc1967';
 // never throws for an empty slot; the other two do). Real classes, for the
 // same reason `RecordFingerprintUnreadableError` is one: a consumer needs
 // them to write a `catch`, not merely a `code` to switch on.
+/*
+ * The chain layer's refusals a caller can receive from any state-changing
+ * operation — a node that cannot be reached or answers wrongly, an endpoint or
+ * an address the layer will not use. All six carry a `code` and all six were
+ * reachable-but-unexported until now.
+ *
+ * Two chain classes stay unexported deliberately, and they are the ones a
+ * caller cannot cause: `ChainMethodRefusedError` and
+ * `ChainBlockTagRefusedError` fire when something asks the provider for an RPC
+ * method or a block tag its per-method policy does not allow, and every such
+ * ask originates in this plugin — so they report a bug here, not a state a
+ * caller handles.
+ */
 export {
+  ChainAddressUnusableError,
   ChainBeaconNotFoundError,
+  ChainEndpointRefusedError,
   ChainImplementationNotFoundError,
-  // Reachable from EVERY operation, not only the readers: opening the
-  // deployment record compares the recorded chain instance against the live
-  // one (`src/record/session.ts`), and this is the refusal when they differ.
-  // Its fingerprint sibling above was already exported, and the two are the
-  // pair a caller distinguishes — "the record file is unusable" from "this is
-  // a different chain than the one the record was written against" — so
-  // exporting one and not the other made the omission look deliberate.
+  // Reachable from every STATE-CHANGING operation, not only the readers:
+  // opening the deployment record compares the recorded chain instance against
+  // the live one (`src/record/session.ts`), and this is the refusal when they
+  // differ. The two validation-only operations never reach it — they open no
+  // record (`proxy/toolkit.ts`, `mode: 'validate-only'`). Its fingerprint
+  // sibling above was already exported, and the two are the pair a caller
+  // distinguishes — "the record file is unusable" from "this is a different
+  // chain than the one the record was written against" — so exporting one and
+  // not the other made the omission look deliberate.
   ChainInstanceChangedError,
+  ChainResultShapeError,
+  ChainRpcError,
+  ChainSlotMalformedError,
+  ChainTransportError,
 } from './chain';
 
 /*
- * The option-refusal family, thrown by the resolver every operation runs
- * before it touches anything: an unaccepted key, a value of the wrong shape,
- * two options that contradict each other, or an option TRON has no equivalent
- * of. `UpgradesOptionError` is the base all four extend and is exported for
+ * The two record-layer refusals a caller can act on beyond the fingerprint one
+ * above: a record location that cannot be used (unreadable, not a directory,
+ * outside the project), and an address the layer cannot canonicalize — which
+ * is the refusal a malformed proxy address reaches on every operation that
+ * takes one.
+ */
+export {
+  AddressNotCanonicalizableError,
+  RecordLocationUnusableError,
+} from './record/errors';
+
+/*
+ * The option-refusal family, thrown by the resolver every operation runs: an
+ * unaccepted key, a value of the wrong shape, two options that contradict each
+ * other, or an option TRON has no equivalent of. Not the first thing an
+ * operation does — the environment resolves, and a state-changing operation
+ * opens its chain access and record session, before the resolver sees the
+ * options at all (`proxy/toolkit.ts`) — so a call with a bad option can still
+ * fail on the environment first. `UpgradesOptionError` is the base all four extend and is exported for
  * the one thing the subclasses cannot express — catching the family in a
  * single `instanceof`.
  *
  * Imported from the leaf, never from `./options`, whose face re-exports
  * `./options/resolve` and would load the engine at import time — the rule
  * this module's header states and `test/entry-point-closure.test.ts` enforces.
- * Every class below also carries a `code`, which stays the documented way to
- * branch without importing a constructor.
+ * Each of the four subclasses also carries a `code`, which stays the
+ * documented way to branch without importing a constructor; the base does not
+ * — it is the family, and `instanceof` is the only thing it answers.
  */
 export {
   OptionConflictError,
@@ -213,6 +259,11 @@ export { ValidationInputRefusedError } from './validation-input/errors';
  * `UpgradesOptionError` is.
  */
 export {
+  // Not an environment-shape refusal like its three siblings: this is the one a
+  // build tree causes, when a contract name resolves to more than one artifact
+  // and the validation input cannot say which the caller meant. It reaches a
+  // caller from every operation that derives a validation input.
+  ArtifactNameAmbiguousError,
   EnvironmentAbsentError,
   EnvironmentIncompleteError,
   EnvironmentInconsistentError,
