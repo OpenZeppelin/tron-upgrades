@@ -389,6 +389,94 @@ export function readWriteBackHash(contract: ContractAbstraction): string | null 
   }
 }
 
+/**
+ * The write-back an abstraction carried before a deploy, in the shape
+ * {@link restoreWriteBack} needs to put it back. `null` for either field means
+ * the abstraction carried none — the ordinary state of a contract that has not
+ * been deployed on this network yet.
+ */
+export interface PriorWriteBack {
+  readonly address: string | null;
+  readonly transactionHash: string | null;
+}
+
+/**
+ * Both write-back fields in one guarded read, for the callers that must be able
+ * to undo what `hostDeploy` assigned. Guarded for the same reason as
+ * {@link readWriteBackHash}: the host's getters route through `this.network`,
+ * which throws for a contract with no per-network entry.
+ */
+export function readWriteBack(contract: ContractAbstraction): PriorWriteBack {
+  let address: string | null = null;
+  try {
+    const value = (contract as { address?: unknown }).address;
+    address = typeof value === 'string' && value !== '' ? value : null;
+  } catch {
+    address = null;
+  }
+  return { address, transactionHash: readWriteBackHash(contract) };
+}
+
+/**
+ * Puts an abstraction's write-back back the way it was before a deploy.
+ *
+ * For the reverted-confirmation branches. `hostDeploy` assigns `address` the
+ * moment the host's `.new()` resolves, because that assignment is what creates
+ * the per-network entry the host later persists into the artifact file — so a
+ * transaction that is *mined and reverted* would otherwise leave the user's own
+ * artifact naming an address with no contract at it, and a later migration's
+ * `.deployed()` resolving to it.
+ *
+ * Only for `reverted`, never for `indeterminate`: a reverted creation
+ * definitively deployed nothing, while an indeterminate one may well have
+ * landed, and erasing a real deployment is the worse failure. The indeterminate
+ * refusal names the address and hash instead, so the deployment can be adopted.
+ *
+ * The undo is the host's own: `resetAddress()` deletes `network.address`, and
+ * `isDeployed()` is exactly `!!network.address`. The per-network entry itself may
+ * survive carrying only `events`/`links` — the shape `link()` creates on its own,
+ * and one `isDeployed()` already reads as not deployed.
+ */
+export function restoreWriteBack(
+  contract: ContractAbstraction,
+  prior: PriorWriteBack,
+): void {
+  const target = contract as {
+    address?: unknown;
+    resetAddress?: () => void;
+    network?: { transactionHash?: unknown };
+  };
+  try {
+    if (prior.address === null) {
+      target.resetAddress?.();
+    } else {
+      // The setter refuses a falsy value, which is why the absent case goes
+      // through `resetAddress` rather than assigning null here.
+      target.address = prior.address;
+    }
+  } catch {
+    // An abstraction with no per-network entry to reset is already in the state
+    // this function exists to restore.
+  }
+  try {
+    if (prior.transactionHash === null) {
+      // Deleted off the entry rather than assigned: the host's setter writes
+      // `network.transactionHash` and its getter throws on `null`, so assigning
+      // null would replace one wrong state with another. `resetAddress` reaches
+      // through `network` the same way for the same reason.
+      const entry = target.network;
+      if (entry !== undefined) {
+        delete entry.transactionHash;
+      }
+    } else {
+      (contract as { transactionHash?: unknown }).transactionHash =
+        prior.transactionHash;
+    }
+  } catch {
+    // As above: no entry means nothing was written back.
+  }
+}
+
 /** The abstraction's public deployed-address surface, guarded. */
 export function readPriorDeployedAddress(
   contract: ContractAbstraction,

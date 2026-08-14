@@ -30,7 +30,9 @@ import {
   createOperationToolkit,
   handlesFrom,
   HANDLE_OPTION_KEYS,
+  readWriteBack,
   readWriteBackHash,
+  restoreWriteBack,
   type OperationContext,
   type MigrationHandles,
 } from '../proxy/toolkit';
@@ -151,6 +153,9 @@ async function deployImplementationThroughQueue(
 
   const outcome = await toolkit.queue(deployer, async () => {
     let writeBack: { address: string; transactionHash: string } | null = null;
+    // Captured before the deploy callback can run, so a reverted confirmation
+    // has the pre-deploy write-back to put back.
+    const priorWriteBack = readWriteBack(contract);
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
@@ -165,6 +170,9 @@ async function deployImplementationThroughQueue(
       const fresh: { address: string; transactionHash: string } = writeBack;
       const verdict = await toolkit.confirm(fresh.transactionHash);
       if (verdict.kind === 'reverted') {
+        // Nothing was deployed. The user's own artifact must not keep naming
+        // this address — the host persists that entry after the migration.
+        restoreWriteBack(contract, priorWriteBack);
         throw new TransactionRevertedError(verdict);
       }
       if (verdict.kind === 'indeterminate') {

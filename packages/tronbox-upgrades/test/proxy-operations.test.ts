@@ -184,6 +184,12 @@ interface Fake {
    */
   readonly proxyConstructorArgs?: readonly unknown[] | undefined;
   /**
+   * The proxy abstraction `proxyArtifact` handed the seam, carrying the
+   * per-network entry a write-back lands in. `undefined` until a proxy
+   * abstraction is requested at all.
+   */
+  readonly proxyArtifactInstance?: WriteBackBearing | undefined;
+  /**
    * The dispatched upgrade call's data, captured from `sendUpgradeCall`'s
    * request. `undefined` until an upgrade actually dispatches a call.
    */
@@ -225,6 +231,68 @@ function fakeAbstraction(spec: FakeSpec): ContractAbstraction {
   } as unknown as ContractAbstraction;
 }
 
+/** The per-network entry a write-back lands in, exposed for assertions. */
+interface WriteBackBearing {
+  readonly contractName: string;
+  readonly network: { address?: unknown; transactionHash?: unknown };
+  readonly resetAddress: () => void;
+}
+
+/**
+ * A stand-in for the host's write-back surface, mirroring exactly the members
+ * `restoreWriteBack` touches: `address` and `transactionHash` are accessors
+ * routed through a per-network entry, and `resetAddress` deletes the address off
+ * that entry — verbatim what TronBox's own `Contract` does
+ * (`resetAddress: function () { delete this.network.address }`), and the reason
+ * its `isDeployed()` is exactly `!!network.address`.
+ *
+ * Non-configurable accessors on purpose: the host defines them with
+ * `Object.defineProperty(..., {configurable: false})`, so `delete abstraction.address`
+ * does NOT work there and `resetAddress` is the only undo. A stand-in with plain
+ * data properties would let a wrong implementation pass here and fail live.
+ *
+ * The installed host's own behaviour is pinned separately in
+ * `deploy-real-host.test.ts`; this mirror exists so the unit suite can observe
+ * whether an operation undid the write-back at all.
+ */
+function writeBackBearingArtifact(contractName: string): WriteBackBearing {
+  const network: { address?: unknown; transactionHash?: unknown } = {};
+  const artifact = {
+    contractName,
+    network,
+    resetAddress: () => {
+      delete network.address;
+    },
+  };
+  Object.defineProperty(artifact, 'address', {
+    configurable: false,
+    enumerable: false,
+    get: () => {
+      if (network.address === undefined) {
+        // The host's getter throws for an abstraction with no address, which is
+        // what `readWriteBack`'s guard exists to absorb.
+        throw new Error(`Cannot find deployed address: ${contractName}`);
+      }
+      return network.address;
+    },
+    set: (value: unknown) => {
+      if (value === undefined || value === null || value === '') {
+        throw new Error(`Cannot set deployed address; malformed value: ${String(value)}`);
+      }
+      network.address = value;
+    },
+  });
+  Object.defineProperty(artifact, 'transactionHash', {
+    configurable: false,
+    enumerable: false,
+    get: () => network.transactionHash,
+    set: (value: unknown) => {
+      network.transactionHash = value;
+    },
+  });
+  return artifact;
+}
+
 function buildFake(spec: FakeSpec = {}): Fake {
   const log: string[] = [];
   const notes: string[] = [];
@@ -233,6 +301,7 @@ function buildFake(spec: FakeSpec = {}): Fake {
   // getters on the returned `Fake` so callers see the latest value without
   // this function reassigning a field the `Fake` interface declares readonly.
   let proxyConstructorArgs: readonly unknown[] | undefined;
+  let proxyArtifactInstance: WriteBackBearing | undefined;
   let upgradeCallData: string | undefined;
   let contractAtCall: { readonly abstraction: unknown; readonly address: string } | undefined;
 
@@ -395,7 +464,8 @@ function buildFake(spec: FakeSpec = {}): Fake {
 
     proxyArtifact: name => {
       log.push(`proxyArtifact:${name}`);
-      return { contractName: name } as never;
+      proxyArtifactInstance = writeBackBearingArtifact(name);
+      return proxyArtifactInstance as never;
     },
     looksLikeProxyAdmin: async () => {
       log.push('looksLikeProxyAdmin');
@@ -442,6 +512,18 @@ function buildFake(spec: FakeSpec = {}): Fake {
       ) {
         proxyConstructorArgs = args;
       }
+      // The write-back the production seam performs on the abstraction it was
+      // handed. Mirrored here because the revert path's whole subject is
+      // whether this assignment survives a mined revert; a fake that skipped
+      // it would leave nothing for `restoreWriteBack` to be tested against.
+      // The host's own semantics are pinned separately, against the installed
+      // TronBox, in `deploy-real-host.test.ts`.
+      const target = abstraction as {
+        address?: unknown;
+        transactionHash?: unknown;
+      };
+      target.address = writeBack.address;
+      target.transactionHash = writeBack.transactionHash;
       return writeBack;
     },
 
@@ -548,6 +630,10 @@ function buildFake(spec: FakeSpec = {}): Fake {
     },
     get contractAtCall() {
       return contractAtCall;
+    },
+    /** The proxy abstraction the seam deployed through, for write-back checks. */
+    get proxyArtifactInstance() {
+      return proxyArtifactInstance;
     },
   };
 }
@@ -1008,6 +1094,48 @@ describe('deployProxy — a reverted or indeterminate confirmation is never reco
       runDeployProxy(fake.context, fakeAbstraction({}), [42]),
     ).rejects.toBeInstanceOf(ConfirmationIndeterminateError);
     expect(fake.log).not.toContain('recordProxy');
+  });
+
+  it('a reverted confirmation also UNDOES the write-back on the proxy abstraction', async () => {
+    // The write-back is what creates the per-network entry the host persists
+    // into the artifact file after the migration. A mined revert deployed
+    // nothing, so leaving it would make a later migration's `.deployed()`
+    // resolve to an address with no contract at it.
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(TransactionRevertedError);
+
+    const artifact = fake.proxyArtifactInstance;
+    expect(artifact, 'the proxy artifact was built').toBeDefined();
+    expect(artifact?.network.address).toBeUndefined();
+    expect(artifact?.network.transactionHash).toBeUndefined();
+  });
+
+  it('an INDETERMINATE confirmation leaves the write-back in place, deliberately', async () => {
+    // The opposite call, for the opposite reason: an indeterminate transaction
+    // may well have landed, and erasing a real deployment is the worse failure.
+    // The address and hash stay reachable so the deployment can be adopted.
+    const fake = buildFake({ confirmOutcome: 'indeterminate' });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(ConfirmationIndeterminateError);
+
+    const artifact = fake.proxyArtifactInstance;
+    expect(artifact?.network.address).toBe(
+      toTronHex(canonicalizeAddress(PROXY_ADDR)),
+    );
+    expect(artifact?.network.transactionHash).toBe(TX_HASH);
+  });
+
+  it('a confirmed deploy keeps the write-back — the undo is not unconditional', async () => {
+    const fake = buildFake();
+    await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
+    const artifact = fake.proxyArtifactInstance;
+    expect(artifact?.network.address).toBe(
+      toTronHex(canonicalizeAddress(PROXY_ADDR)),
+    );
+    expect(artifact?.network.transactionHash).toBe(TX_HASH);
   });
 });
 

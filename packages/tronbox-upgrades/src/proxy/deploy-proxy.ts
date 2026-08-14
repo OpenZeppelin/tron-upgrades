@@ -41,7 +41,8 @@ import {
   handlesFrom,
   HANDLE_OPTION_KEYS,
   readPriorDeployedAddress,
-  readWriteBackHash,
+  readWriteBack,
+  restoreWriteBack,
   encodeInitializer,
   type OperationContext,
   type MigrationHandles,
@@ -245,16 +246,23 @@ export async function runDeployProxy(
       () => toolkit.hostDeploy(contract, [...resolved.constructorArgs]),
     );
 
-    const priorProxyHash = readWriteBackHash(proxyAbstraction);
+    // Both write-back fields, not just the hash: the hash is what
+    // `assertFreshTransaction` compares, and the pair is what a reverted
+    // confirmation has to put back.
+    const priorWriteBack = readWriteBack(proxyAbstraction);
     const constructorArgs =
       kind === 'transparent'
         ? [implementationAddress, initialOwner, initData]
         : [implementationAddress, initData];
     const writeBack = await toolkit.hostDeploy(proxyAbstraction, constructorArgs);
-    assertFreshTransaction(priorProxyHash, writeBack);
+    assertFreshTransaction(priorWriteBack.transactionHash, writeBack);
 
     const verdict = await toolkit.confirm(writeBack.transactionHash);
     if (verdict.kind === 'reverted') {
+      // Mined and reverted: nothing was deployed, so the write-back
+      // `hostDeploy` assigned must not survive into the artifact the host
+      // persists after the migration.
+      restoreWriteBack(proxyAbstraction, priorWriteBack);
       throw new TransactionRevertedError(verdict);
     }
     if (verdict.kind === 'indeterminate') {

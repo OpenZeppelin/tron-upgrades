@@ -285,6 +285,20 @@ where the message is the surface that matters. `ResultCapabilityUnavailableError
 (raised from a returned result's own accessor, on a member this plugin cannot
 support) stays unexported under the same rule and carries its `code`.
 
+**A reverted deploy leaves your artifact untouched; an indeterminate one does
+not.** Deploying through TronBox writes the new address and transaction hash
+back onto the contract artifact — that per-network entry is what `.deployed()`
+resolves in a later migration, and TronBox persists it to the artifact file when
+the migration ends. When a deploy transaction is mined and **reverts**, nothing
+was deployed, so `TransactionRevertedError` is raised *and* the write-back is
+undone: the artifact is left naming whatever it named before, and a contract that
+was not deployed before is not deployed after. When the confirmation is
+**indeterminate** — the node never returned a usable receipt —
+`ConfirmationIndeterminateError` deliberately leaves the write-back in place,
+because the transaction may well have landed and erasing a real deployment is
+the worse failure. Treat that case as "check the chain": the refusal names the
+transaction, and `forceImport(address)` adopts the deployment if it did land.
+
 **`constructorArgs` cannot end in a plain object or `null`.** TronBox's own
 contract layer treats a trailing non-array object — and `null`, since
 `typeof null` is also `"object"` — as its own energy-parameter slot, never as

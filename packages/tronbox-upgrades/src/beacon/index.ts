@@ -28,8 +28,11 @@ import {
   handlesFrom,
   HANDLE_OPTION_KEYS,
   encodeInitializer,
+  readWriteBack,
+  restoreWriteBack,
   type OperationContext,
   type MigrationHandles,
+  type PriorWriteBack,
 } from '../proxy/toolkit';
 import { NothingToAdoptError } from '../adopt/errors';
 import {
@@ -152,9 +155,22 @@ async function requireBeacon(
 async function confirmOrRefuse(
   context: OperationContext,
   transactionHash: string,
+  /**
+   * Present only where the transaction being confirmed is a DEPLOY. A mined
+   * revert deployed nothing, so the write-back `hostDeploy` assigned has to be
+   * undone before it reaches the artifact the host persists. The facade-call
+   * site passes nothing, having deployed nothing to undo.
+   */
+  deploy?: {
+    readonly abstraction: ContractAbstraction;
+    readonly prior: PriorWriteBack;
+  },
 ): Promise<void> {
   const verdict = await context.toolkit.confirm(transactionHash);
   if (verdict.kind === 'reverted') {
+    if (deploy !== undefined) {
+      restoreWriteBack(deploy.abstraction, deploy.prior);
+    }
     throw new TransactionRevertedError(verdict);
   }
   if (verdict.kind === 'indeterminate') {
@@ -197,11 +213,15 @@ export async function runDeployBeacon(
       resolved,
       () => toolkit.hostDeploy(contract, [...resolved.constructorArgs]),
     );
+    const priorBeaconWriteBack = readWriteBack(beaconAbstraction);
     const deployed = await toolkit.hostDeploy(beaconAbstraction, [
       implementationAddress,
       owner,
     ]);
-    await confirmOrRefuse(context, deployed.transactionHash);
+    await confirmOrRefuse(context, deployed.transactionHash, {
+      abstraction: beaconAbstraction,
+      prior: priorBeaconWriteBack,
+    });
     return { deployed, implementationAddress };
   });
 
@@ -253,8 +273,12 @@ export async function runDeployBeaconProxy(
   const proxyAbstraction = toolkit.proxyArtifact('BeaconProxy');
 
   const writeBack = await toolkit.queue(deployer, async () => {
+    const priorProxyWriteBack = readWriteBack(proxyAbstraction);
     const deployed = await toolkit.hostDeploy(proxyAbstraction, [beacon, initData]);
-    await confirmOrRefuse(context, deployed.transactionHash);
+    await confirmOrRefuse(context, deployed.transactionHash, {
+      abstraction: proxyAbstraction,
+      prior: priorProxyWriteBack,
+    });
     // Recorded under the beacon kind, never transparent/uups.
     await toolkit.recordProxy(canonicalizeAddress(deployed.address), 'beacon');
     return deployed;
