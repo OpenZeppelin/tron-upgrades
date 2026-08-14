@@ -156,7 +156,8 @@ export async function runUpgradeProxy(
   });
 
   // 8 — ONE queued step: deploy the implementation, send the dispatched call,
-  //     confirm, and re-read the slot.
+  //     confirm, re-read the slot, and record the proxy when nothing recorded
+  //     it yet.
   const outcome = await toolkit.queue(deployer, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
@@ -192,14 +193,18 @@ export async function runUpgradeProxy(
       );
     }
 
+    // Record only when no record existed — and as the last statement INSIDE
+    // the step, which is where `deployProxy` does it. A write placed after the
+    // step closes sits outside whatever serialization the queue provides, so a
+    // second operation started from the same migration body can interleave
+    // between the verified upgrade and the record that remembers it.
+    const existing = await toolkit.session.getProxyRecord(proxyAddress);
+    if (existing === undefined) {
+      await toolkit.recordProxy(proxyAddress, kind);
+    }
+
     return { writeBack, implementationAddress };
   });
-
-  // 9 — record only when no record existed.
-  const existing = await toolkit.session.getProxyRecord(proxyAddress);
-  if (existing === undefined) {
-    await toolkit.recordProxy(proxyAddress, kind);
-  }
 
   if (toolkit.network.configuredId.syntax === 'wildcard') {
     toolkit.channel.note(

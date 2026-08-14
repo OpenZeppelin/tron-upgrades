@@ -362,9 +362,21 @@ function buildFake(spec: FakeSpec = {}): Fake {
       return {} as never;
     },
 
+    // Two markers, not one. `queue` alone only says the step was entered, so an
+    // assertion built on it cannot tell a statement inside the step from one
+    // after it — which is exactly the distinction the record write turns on.
+    // `queue:settled` is pushed when the step's promise settles, either way, so
+    // the refusal paths can be pinned with the same pair.
     queue: (host, step) => {
       log.push('queue');
-      return Promise.resolve(step());
+      const settle = <T>(value: T): T => {
+        log.push('queue:settled');
+        return value;
+      };
+      return Promise.resolve(step()).then(settle, error => {
+        settle(undefined);
+        throw error;
+      });
     },
 
     priorDeployedAddress: () => spec.priorAddress ?? null,
@@ -570,8 +582,14 @@ describe('deployProxy — the order is the contract', () => {
     expect(fake.log.filter(entry => entry === 'queue')).toHaveLength(1);
 
     const queueAt = fake.log.indexOf('queue');
+    const settledAt = fake.log.indexOf('queue:settled');
+    expect(settledAt).toBeGreaterThan(queueAt);
     for (const inside of ['fetchOrDeployImplementation', 'confirm', 'recordProxy']) {
+      // Bounded on BOTH sides. After `queue` alone would also hold for a
+      // statement that runs once the step has closed, which is the defect this
+      // pins against — the record write must be inside.
       expect(fake.log.indexOf(inside), inside).toBeGreaterThan(queueAt);
+      expect(fake.log.indexOf(inside), inside).toBeLessThan(settledAt);
     }
     // The proxy deploy is the SECOND hostDeploy — the implementation's rides
     // fetchOrDeployImplementation.
@@ -1158,6 +1176,41 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     await expect(
       runUpgradeProxy(bad.context, PROXY_ADDR, newImpl()),
     ).rejects.toBeInstanceOf(UpgradeVerificationFailedError);
+  });
+
+  it('the record write happens INSIDE the queued step, as deployProxy does it', async () => {
+    const fake = buildFake();
+    await runUpgradeProxy(fake.context, PROXY_ADDR, newImpl());
+
+    const queueAt = fake.log.indexOf('queue');
+    const settledAt = fake.log.indexOf('queue:settled');
+    const recordAt = fake.log.indexOf('recordProxy');
+    expect(queueAt).toBeGreaterThanOrEqual(0);
+    expect(settledAt).toBeGreaterThan(queueAt);
+    expect(recordAt).toBeGreaterThan(queueAt);
+    // The assertion that carries this test: the write landed before the step
+    // closed. It used to land after, which put it outside whatever
+    // serialization the queue provides — so a second operation from the same
+    // migration body could interleave between the verified upgrade and the
+    // record of it.
+    expect(recordAt).toBeLessThan(settledAt);
+
+    // And the slot verification still precedes the write: a record is never
+    // written for an upgrade that failed to verify.
+    expect(fake.log.lastIndexOf('readImplementationAddress')).toBeLessThan(
+      recordAt,
+    );
+  });
+
+  it('a failed slot verification closes the step with no record written', async () => {
+    const fake = buildFake({
+      observedAfterUpgrade: toTronHex(canonicalizeAddress(IMPL_OWNER)),
+    });
+    await expect(
+      runUpgradeProxy(fake.context, PROXY_ADDR, newImpl()),
+    ).rejects.toBeInstanceOf(UpgradeVerificationFailedError);
+    expect(fake.log).toContain('queue:settled');
+    expect(fake.log).not.toContain('recordProxy');
   });
 
   it('verification compares identity, not spelling — a base58 observation of the same address passes', async () => {
