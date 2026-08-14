@@ -897,21 +897,33 @@ export async function createOperationToolkit(request: {
           } as never,
           resolvedOptions.redeployImplementation === 'always',
         );
-      let deployment: { address: string };
-      try {
-        deployment = (await fetch()) as { address: string };
-      } catch (error) {
-        // Upstream removes an invalid cached deployment and then throws on
-        // non-EVM dev networks; one retry preserves onchange/always semantics.
-        if (
-          (error as { removed?: boolean })?.removed !== true ||
-          resolvedOptions.redeployImplementation === 'never'
-        ) {
-          throw error;
+      // The engine takes the record's lock for this call and HOLDS it across the
+      // implementation deploy — three retries, roughly seven seconds of backoff —
+      // so the loser of a race between two runs surfaces right here, and used to
+      // surface as a raw `ELOCKED`: catchable by no class, and in an unawaited
+      // migration step an unhandled rejection that ends `tronbox migrate` naming
+      // neither the operation nor the record. Lock-only wrapping, never the wide
+      // arm: everything else this call can raise belongs to validation or to the
+      // deploy, and has to reach the caller as itself. The retry below still sees
+      // the engine's own error first — a `RecordLockedError` carries no `removed`
+      // flag, so the two cannot be confused.
+      return requireSession().throughLock(async () => {
+        let deployment: { address: string };
+        try {
+          deployment = (await fetch()) as { address: string };
+        } catch (error) {
+          // Upstream removes an invalid cached deployment and then throws on
+          // non-EVM dev networks; one retry preserves onchange/always semantics.
+          if (
+            (error as { removed?: boolean })?.removed !== true ||
+            resolvedOptions.redeployImplementation === 'never'
+          ) {
+            throw error;
+          }
+          deployment = (await fetch()) as { address: string };
         }
-        deployment = (await fetch()) as { address: string };
-      }
-      return deployment.address;
+        return deployment.address;
+      });
     },
 
     hostDeploy:

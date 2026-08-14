@@ -53,4 +53,7 @@ export type {
   RecordFingerprintUnreadableError,
   RecordLocationCause,
   RecordLocationUnusableError,
+  RecordLockedError,
+  RecordUnreadableCause,
+  RecordUnreadableError,
 } from './errors';

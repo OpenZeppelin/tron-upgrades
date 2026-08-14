@@ -65,12 +65,16 @@ import {
 } from '../src/record';
 import {
   RecordFingerprintUnreadableError,
+  RecordLockedError,
+  RecordUnreadableError,
   recordRemedyTables,
   type FingerprintRefusalDiagnosis,
   type FingerprintUnreadableCause,
 } from '../src/record/errors';
 import {
   RecordFingerprintUnreadableError as RootRecordFingerprintUnreadableError,
+  RecordLockedError as RootRecordLockedError,
+  RecordUnreadableError as RootRecordUnreadableError,
 } from '../src';
 import {
   FINGERPRINT_SCHEMA,
@@ -1504,4 +1508,158 @@ describe('the fingerprint tables split diagnosis from disposition, and every dis
     );
     expect(messages.size).toBe(diagnoses.length);
   });
+});
+
+/**
+ * **The property this section pins: the record file gets the same quality of
+ * refusal its sidecar already had.** A corrupt *fingerprint* has been refused by
+ * name, with the file and a remedy, since this sub-feature landed. A corrupt
+ * *record* — the file that actually remembers every proxy — surfaced the engine's
+ * bare `SyntaxError`: a byte offset, no file name, no way out. The less
+ * consequential of the two files had the better refusal, which is backwards.
+ *
+ * The classification is by call site, never by matching an engine message. The
+ * engine's `read` can fail in exactly four ways — the lock, reading the file,
+ * `JSON.parse`, and the manifest-version validation — and an absent file is not
+ * one of them, since `read` answers a default manifest for `ENOENT`. So at that
+ * call site every non-lock failure IS "this record cannot be read", and the two
+ * arms need no knowledge of the wording. `'not-json'` is a `SyntaxError`
+ * type check; everything else is `'contents-refused'`, carrying the engine's own
+ * message as the detail because it is more specific than anything this layer
+ * could write.
+ */
+describe('the session gate names an unreadable record, and the lock that is held against it', () => {
+  it('refuses a non-JSON record, naming the file, the cause and both exits', async () => {
+    await fs.mkdir(RECORD_DIR, { recursive: true });
+    const bytes = '{ this is not json\n';
+    await fs.writeFile(MANIFEST_FILE, bytes, 'utf8');
+    try {
+      const failure = await openRecord(
+        depsFor(identityFor(mainnetFirstBlockHash)),
+      ).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(failure).toBeInstanceOf(RecordUnreadableError);
+      // The class a consumer catches is the one the root exports, not a
+      // same-named duplicate reached down a different path.
+      expect((failure as Error).constructor).toBe(RootRecordUnreadableError);
+
+      const refusal = failure as RecordUnreadableError;
+      expect(refusal.because).toBe('not-json');
+      expect(refusal.file).toBe(MANIFEST_FILE);
+      expect(refusal.code).toBe('TRON_RECORD_UNREADABLE');
+      // The engine's own message is carried rather than discarded — it is what
+      // says WHERE the JSON went wrong.
+      expect(refusal.detail).not.toBe('');
+      expect(refusal.message).toContain(MANIFEST_FILE);
+      // The costly exit is spelled out, not implied.
+      expect(refusal.message).toContain('forceImport(address)');
+      expect(refusal.message).toContain('version control');
+
+      // Nothing was written: the record is exactly the bytes this test wrote,
+      // and no fingerprint was created beside it.
+      expect(await fs.readFile(MANIFEST_FILE, 'utf8')).toBe(bytes);
+      await expect(fs.readFile(SIDECAR_FILE, 'utf8')).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    } finally {
+      await clearRecordFixtures();
+    }
+  });
+
+  /**
+   * The three shapes the engine refuses by contents, measured against the
+   * installed version rather than assumed: a version above the one it knows, a
+   * version below 3.0 (which it reads as an OpenZeppelin CLI record), and no
+   * version at all. All three are one cause here — `'contents-refused'` — and the
+   * engine's own sentence is what distinguishes them for the user, which is why
+   * it is carried through instead of replaced.
+   */
+  it.each([
+    { label: 'a version newer than the engine knows', version: '9.9', says: '9.9' },
+    {
+      label: 'a version the engine reads as an OpenZeppelin CLI record',
+      version: '2.2',
+      says: 'OpenZeppelin CLI',
+    },
+    { label: 'no version at all', version: undefined, says: 'version is missing' },
+  ])(
+    "refuses $label, carrying the engine's own reason",
+    async ({ version, says }) => {
+      await fs.mkdir(RECORD_DIR, { recursive: true });
+      // Valid JSON every time — this arm is reached with no `SyntaxError`
+      // anywhere in it, which is what makes the two arms non-vacuous.
+      const bytes = JSON.stringify(
+        version === undefined ? { proxies: [] } : { manifestVersion: version },
+        null,
+        2,
+      );
+      await fs.writeFile(MANIFEST_FILE, bytes, 'utf8');
+      try {
+        const failure = await openRecord(
+          depsFor(identityFor(mainnetFirstBlockHash)),
+        ).then(
+          () => undefined,
+          (cause: unknown) => cause,
+        );
+        expect(failure).toBeInstanceOf(RecordUnreadableError);
+        const refusal = failure as RecordUnreadableError;
+        expect(refusal.because).toBe('contents-refused');
+        expect(refusal.file).toBe(MANIFEST_FILE);
+        expect(refusal.detail).toContain(says);
+        expect(refusal.message).toContain(MANIFEST_FILE);
+        expect(refusal.message).toContain('forceImport(address)');
+        expect(await fs.readFile(MANIFEST_FILE, 'utf8')).toBe(bytes);
+      } finally {
+        await clearRecordFixtures();
+      }
+    },
+  );
+
+  it('the two causes do not share a remedy — the table is the reason causes exist', () => {
+    const remedies = Object.values(recordRemedyTables.unreadable);
+    expect(new Set(remedies).size).toBe(remedies.length);
+    for (const remedy of remedies) {
+      expect(remedy).toContain('forceImport(address)');
+    }
+  });
+
+  it('names the lock another run holds, rather than letting a raw ELOCKED escape', async () => {
+    await fs.mkdir(RECORD_DIR, { recursive: true });
+    // The lock is taken through the engine's OWN manifest handle, so the lockfile
+    // is whatever the engine names it — this test never reconstructs that path.
+    const { openRecordManifest } = await import('../src/record/manifest');
+    const holder = await openRecordManifest(MAINNET_CHAIN_ID);
+
+    let releaseHolder: (() => void) | undefined;
+    const held = new Promise<void>(resolve => {
+      releaseHolder = resolve;
+    });
+    const holding = holder.lockedRun(async () => {
+      await held;
+    });
+
+    try {
+      const failure = await openRecord(
+        depsFor(identityFor(mainnetFirstBlockHash)),
+      ).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(failure).toBeInstanceOf(RecordLockedError);
+      expect((failure as Error).constructor).toBe(RootRecordLockedError);
+      const refusal = failure as RecordLockedError;
+      expect(refusal.code).toBe('TRON_RECORD_LOCKED');
+      expect(refusal.file).toBe(MANIFEST_FILE);
+      // Not misfiled as an unreadable record: the file is fine, the lock is not.
+      expect(failure).not.toBeInstanceOf(RecordUnreadableError);
+      expect(refusal.message).toContain('locked by another process');
+      expect(refusal.message).toContain('Nothing was written by this run');
+    } finally {
+      releaseHolder?.();
+      await holding;
+      await clearRecordFixtures();
+    }
+  }, 20_000);
 });

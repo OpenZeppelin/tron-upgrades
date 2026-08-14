@@ -268,10 +268,13 @@ family's own refusals (a bad option value, a missing owner, an unsupported
 kind, and their siblings), the option family (`UpgradesOptionError` plus
 `UnknownOptionError`, `OptionValueError`, `OptionConflictError`), the
 environment family's base (`TronBoxEnvironmentError`),
-`ValidationInputRefusedError`, and the pair a caller distinguishes to recover
-a deployment record — "this is a different chain" versus "the record's
+`ValidationInputRefusedError`, and the record-recovery refusals a caller
+branches on to act — "this is a different chain" versus "the record's
 fingerprint file is unusable" (`ChainInstanceChangedError`,
-`RecordFingerprintUnreadableError`).
+`RecordFingerprintUnreadableError`), plus `RecordUnreadableError` (the record
+file itself cannot be read — not JSON, or contents the engine refuses) and
+`RecordLockedError` (another run holds the record's lock; the engine has
+already retried, so it is a real race).
 
 Many of the remaining errors — a node outage, a malformed reply, an
 environment missing one handle, an error raised while a result is built —

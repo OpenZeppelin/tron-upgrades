@@ -294,4 +294,21 @@ export interface RecordSession {
    * implementations told there are none deletes the file.
    */
   recordCount(): Promise<number>;
+  /**
+   * Runs an engine call that takes **this record's** lock, so contention arrives
+   * as `RecordLockedError` instead of a raw `ELOCKED`.
+   *
+   * On the session rather than on the record layer's face, and that placement is
+   * the argument: the lock belongs to this record, the session is already the one
+   * handle every operation reaches the record through, and the face's guarantee
+   * that it exports exactly five values is worth more than the convenience of a
+   * sixth. Nothing here can skip the preflight order — it classifies an error and
+   * changes no control flow — which is the risk that guarantee exists to bound.
+   *
+   * Lock contention only. Every other failure of `action` passes through as
+   * itself, because `action` is the caller's own work: the engine's
+   * implementation deploy, whose validation and deploy failures are not this
+   * session's to rename.
+   */
+  throughLock<T>(action: () => Promise<T>): Promise<T>;
 }
