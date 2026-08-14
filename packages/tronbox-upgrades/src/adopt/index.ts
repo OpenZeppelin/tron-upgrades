@@ -134,16 +134,20 @@ export async function runForceImport(
     );
   }
 
-  // Replay and conflicts, against the existing record.
+  // Replay and conflicts, against the existing record. The *refusal* belongs
+  // here, ahead of every write: it is a read, and a kind that contradicts the
+  // record must stop the operation before it changes anything. The write this
+  // read decides on happens after the implementation is stored — see the end of
+  // this function for why the order is that way round.
   const proxyKinds: ReadonlyArray<AdoptedKind> = ['transparent', 'uups', 'beacon'];
-  if (proxyKinds.includes(found) && found !== 'beacon') {
+  const recordsProxy = proxyKinds.includes(found) && found !== 'beacon';
+  let proxyRecordAbsent = false;
+  if (recordsProxy) {
     const existing = await toolkit.session.getProxyRecord(address);
     if (existing !== undefined && existing.kind !== found) {
       throw new AdoptionKindMismatchError(address, found, existing.kind as AdoptedKind);
     }
-    if (existing === undefined) {
-      await toolkit.recordProxy(address, found as 'transparent' | 'uups');
-    }
+    proxyRecordAbsent = existing === undefined;
   }
 
   const versionKey = (validated.version as { linkedWithoutMetadata?: unknown })
@@ -188,6 +192,17 @@ export async function runForceImport(
     { ...resolved, redeployImplementation: 'always' },
     simulatedDeploy,
   );
+
+  // The proxy record, last — after the implementation and its layout are
+  // stored, not before. The old order left a refusal between the two writes
+  // reporting "proxy recorded, no layout stored", which is precisely the state
+  // `storedLayoutFor` refuses on, and its advice is to run the `forceImport`
+  // the user had just run. This order's in-between state is the harmless one:
+  // the layout is stored and no proxy is recorded, so a re-run replays the
+  // implementation write and then writes the record.
+  if (recordsProxy && proxyRecordAbsent) {
+    await toolkit.recordProxy(address, found as 'transparent' | 'uups');
+  }
 
   return Object.freeze({
     kind: found,
