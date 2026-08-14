@@ -22,6 +22,7 @@ import {
   NotTransparentProxyError,
   OptionsInArgsPositionError,
   ProxyAdminAsOwnerError,
+  ProxyRecordWriteFailedError,
   StaleProxyRecordError,
   TransparentInitialOwnerRequiredError,
   UpgradeVerificationFailedError,
@@ -32,6 +33,7 @@ import {
   assertNoCheatcodeCollision,
   CheatcodeSlotCollisionError,
   ConfirmationIndeterminateError,
+  SenderMismatchError,
   DeployerAbsentError,
   TransactionRevertedError,
 } from '../src/deploy';
@@ -169,6 +171,18 @@ interface FakeSpec {
    * override exists to exercise.
    */
   readonly resolved?: Partial<ResolvedForProxyOps>;
+  /**
+   * A signer the node reports for the deploy transaction. The effective-sender
+   * comparison then disagrees with it, reaching `SenderMismatchError` — a refusal
+   * that fires AFTER the proxy is deployed and confirmed.
+   */
+  readonly reportedSigner?: string;
+  /**
+   * Makes the proxy record write fail. Stands in for the record layer's own
+   * reasons — a lock another run holds, a file that cannot be read — because what
+   * this exercises is the state afterwards, not which reason fired.
+   */
+  readonly recordWriteFails?: boolean;
 }
 
 interface Fake {
@@ -230,6 +244,12 @@ function fakeAbstraction(spec: FakeSpec): ContractAbstraction {
     at: async (target: string) => ({ address: target }),
   } as unknown as ContractAbstraction;
 }
+
+/**
+ * Distinctive on purpose: the record-write assertions must not pass because some
+ * other failure happened to fire.
+ */
+const RECORD_WRITE_REFUSED = 'the record write was refused';
 
 /** The per-network entry a write-back lands in, exposed for assertions. */
 interface WriteBackBearing {
@@ -459,7 +479,7 @@ function buildFake(spec: FakeSpec = {}): Fake {
     },
     signerOf: async () => {
       log.push('signerOf');
-      return null;
+      return spec.reportedSigner ?? null;
     },
 
     proxyArtifact: name => {
@@ -592,6 +612,9 @@ function buildFake(spec: FakeSpec = {}): Fake {
 
     recordProxy: async (address, kind) => {
       log.push('recordProxy');
+      if (spec.recordWriteFails === true) {
+        throw new Error(RECORD_WRITE_REFUSED);
+      }
       if (spec.realSession) {
         await spec.realSession.addProxyRecord({ address, kind });
       }
@@ -1128,6 +1151,30 @@ describe('deployProxy — a reverted or indeterminate confirmation is never reco
     expect(artifact?.network.transactionHash).toBe(TX_HASH);
   });
 
+  it('the indeterminate refusal NAMES the address and the adoption path', async () => {
+    // The rule this pins: a refusal that fires after the spend must name the
+    // on-chain fact and the recovery. The recovery takes the address as its
+    // argument, so a refusal that withholds it hides the one thing needed.
+    const fake = buildFake({ confirmOutcome: 'indeterminate' });
+    const failure = await runDeployProxy(
+      fake.context,
+      fakeAbstraction({}),
+      [42],
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(ConfirmationIndeterminateError);
+    const refusal = failure as ConfirmationIndeterminateError;
+    // The canonical form, as every sibling refusal prints it — see the
+    // post-spend describe below for why that rather than the result surface's.
+    const expected = String(canonicalizeAddress(PROXY_ADDR));
+    expect(refusal.spent?.address).toBe(expected);
+    expect(refusal.spent?.transactionHash).toBe(TX_HASH);
+    expect(refusal.message).toContain(expected);
+    expect(refusal.message).toContain(`forceImport('${expected}')`);
+  });
+
   it('a confirmed deploy keeps the write-back — the undo is not unconditional', async () => {
     const fake = buildFake();
     await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
@@ -1136,6 +1183,87 @@ describe('deployProxy — a reverted or indeterminate confirmation is never reco
       toTronHex(canonicalizeAddress(PROXY_ADDR)),
     );
     expect(artifact?.network.transactionHash).toBe(TX_HASH);
+  });
+});
+
+describe('deployProxy — every refusal after the spend names the proxy and the recovery', () => {
+  /**
+   * The rule: a refusal that can fire after an irreversible on-chain success must
+   * name the on-chain fact and the recovery. Both refusals below fire with a live,
+   * confirmed proxy behind them, and the recovery — `forceImport` — takes the
+   * address as its argument, so withholding it means the message that stops the run
+   * also hides the one value needed to finish it.
+   */
+  // The canonical `0x` form, which is what every sibling refusal in the package
+  // prints (`UpgradeVerificationFailedError`, `NotTransparentProxyError`) — not the
+  // `41` form the result surface reports. `forceImport` accepts any of the three
+  // encodings, so this is a consistency choice, and the one that avoids a third
+  // convention in user-facing messages.
+  const deployedProxy = () => String(canonicalizeAddress(PROXY_ADDR));
+
+  it('the sender mismatch names the proxy it was already paid for', async () => {
+    // The comparison reads the signer OF a confirmed transaction, so it cannot
+    // run before the spend — which is what made naming nothing so costly here.
+    const fake = buildFake({ reportedSigner: OWNER_BASE58 });
+    const failure = await runDeployProxy(
+      fake.context,
+      fakeAbstraction({}),
+      [42],
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(SenderMismatchError);
+    const refusal = failure as SenderMismatchError;
+    // Still says what it always said — the mismatch is the diagnosis.
+    expect(refusal.preflighted).not.toBe(refusal.signed);
+    // And now says what it withheld.
+    expect(refusal.spent?.address).toBe(deployedProxy());
+    expect(refusal.spent?.transactionHash).toBe(TX_HASH);
+    expect(refusal.message).toContain(`forceImport('${deployedProxy()}')`);
+    expect(refusal.message).toContain('Nothing here removes it');
+    // It fired before the record write, so the proxy is genuinely unrecorded.
+    expect(fake.log).not.toContain('recordProxy');
+  });
+
+  it('a failed record write names the live proxy, and keeps the cause catchable', async () => {
+    const fake = buildFake({ recordWriteFails: true });
+    const failure = await runDeployProxy(
+      fake.context,
+      fakeAbstraction({}),
+      [42],
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(ProxyRecordWriteFailedError);
+    const refusal = failure as ProxyRecordWriteFailedError;
+    expect(refusal.proxyAddress).toBe(deployedProxy());
+    expect(refusal.transactionHash).toBe(TX_HASH);
+    // The underlying error is kept rather than folded into prose, so a caller can
+    // still branch on it — RecordLockedError versus RecordUnreadableError.
+    expect((refusal.cause as Error).message).toBe(RECORD_WRITE_REFUSED);
+    expect(refusal.message).toContain(RECORD_WRITE_REFUSED);
+    expect(refusal.message).toContain(`forceImport('${deployedProxy()}')`);
+    expect(refusal.message).toContain('The proxy is live');
+    // The consequence, said rather than left for the user to discover.
+    expect(refusal.message).toContain('deploys a second proxy beside this one');
+  });
+
+  it('the reverted refusal names NO on-chain fact, because there is none', async () => {
+    // The rule's boundary, asserted so "always name it" cannot be applied where it
+    // would be false: a mined revert deployed nothing.
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    const failure = await runDeployProxy(
+      fake.context,
+      fakeAbstraction({}),
+      [42],
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(TransactionRevertedError);
+    expect((failure as Error).message).not.toContain('forceImport(');
   });
 });
 

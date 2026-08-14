@@ -135,6 +135,12 @@ export {
   ProxyArtifactCollisionError,
   ProxyArtifactMissingError,
   ProxyOperationRefusedError,
+  // The proxy is live and confirmed and the record write failed. Exported
+  // because it is the one refusal where the on-chain fact and the recovery are
+  // the whole content: its `cause` carries the underlying record-layer error, so
+  // a caller can branch on `RecordLockedError` versus `RecordUnreadableError`
+  // while still learning which proxy is unrecorded.
+  ProxyRecordWriteFailedError,
   StaleProxyRecordError,
   TransparentInitialOwnerRequiredError,
   UnknownProxyGenerationError,

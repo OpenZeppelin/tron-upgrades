@@ -176,7 +176,12 @@ async function deployImplementationThroughQueue(
         throw new TransactionRevertedError(verdict);
       }
       if (verdict.kind === 'indeterminate') {
-        throw new ConfirmationIndeterminateError(verdict);
+        // The implementation may be live at `fresh.address`; the refusal names it
+        // so the user can check rather than redeploy blind.
+        throw new ConfirmationIndeterminateError(verdict, {
+          address: fresh.address,
+          transactionHash: fresh.transactionHash,
+        });
       }
       return { implementationAddress, transactionHash: fresh.transactionHash };
     }

@@ -25,6 +25,7 @@ import { planUpgradeDispatch } from './dispatch';
 import {
   BeaconProxyRefusedError,
   NotTransparentProxyError,
+  recordingLiveProxy,
   UpgradeVerificationFailedError,
 } from './errors';
 import { isAlreadyCurrent } from './replay';
@@ -200,7 +201,15 @@ export async function runUpgradeProxy(
     // between the verified upgrade and the record that remembers it.
     const existing = await toolkit.session.getProxyRecord(proxyAddress);
     if (existing === undefined) {
-      await toolkit.recordProxy(proxyAddress, kind);
+      // Named with the on-chain fact for the same reason as `deployProxy`'s:
+      // the upgrade is confirmed and slot-verified by now, so a record-write
+      // failure here leaves a proxy running the new implementation that this
+      // plugin does not remember. The identity is the PROXY's — the write-back
+      // hash is the upgrade transaction's, which is what a user checks.
+      await recordingLiveProxy(
+        { address: proxyAddress, transactionHash: writeBack.transactionHash },
+        () => toolkit.recordProxy(proxyAddress, kind),
+      );
     }
 
     return { writeBack, implementationAddress };

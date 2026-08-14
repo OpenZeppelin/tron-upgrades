@@ -19,6 +19,41 @@ export abstract class DeploymentRefusedError extends Error {
 }
 
 /**
+ * What already exists on-chain when a refusal fires *after* the spend.
+ *
+ * The rule this type serves: **every refusal that can fire after an irreversible
+ * on-chain success must name the on-chain fact and the recovery.** A refusal that
+ * withholds the address is the worst possible one — the recovery tool takes the
+ * address as its argument, so the message that stops the run is also the message
+ * that hides what the user needs to fix it.
+ *
+ * Optional at every constructor that takes it, and that is not laxity: the same
+ * classes fire *before* any spend on other paths, where there is no address to
+ * name and inventing one would be worse than omitting it. Absent means "nothing
+ * was spent", which is a claim, not a gap.
+ */
+export interface SpentDeployment {
+  /** The address the host reported for the deploy. Canonical form. */
+  readonly address: string;
+  /** The deploy's transaction hash. */
+  readonly transactionHash: string;
+}
+
+/**
+ * The recovery sentence, written once. `forceImport` is the tool in every case
+ * because it is the only one that takes an existing address and teaches the
+ * record about it.
+ */
+function adoptClause(spent: SpentDeployment): string {
+  return (
+    `The contract is at ${spent.address} (transaction ` +
+    `${spent.transactionHash}). Nothing here removes it. Once the cause above ` +
+    `is resolved, record it with forceImport('${spent.address}') rather than ` +
+    `deploying a second one.`
+  );
+}
+
+/**
  * A state-changing operation was invoked in a context that provides no
  * deployer, and the refusal names exactly what is missing. Validation
  * in the same context does not refuse — it degrades, because it can. Deployment
@@ -73,9 +108,23 @@ export class TransactionRevertedError extends DeploymentRefusedError {
  */
 export class ConfirmationIndeterminateError extends DeploymentRefusedError {
   readonly code = 'confirmation-indeterminate';
-  constructor(readonly verdict: ConfirmationIndeterminate) {
+  constructor(
+    readonly verdict: ConfirmationIndeterminate,
+    /**
+     * Present where the indeterminate transaction was a DEPLOY, and phrased
+     * conditionally below because that is the honest shape: indeterminate means
+     * this plugin does not know whether it landed. The address is known either
+     * way — the host reports it when `.new()` resolves — and naming it is what
+     * turns "check the transaction" into something the user can act on.
+     *
+     * This is also why the write-back is deliberately *not* undone for an
+     * indeterminate verdict, unlike a mined revert: the deployment may be real,
+     * and erasing a real one is the worse failure.
+     */
+    readonly spent?: SpentDeployment,
+  ) {
     super(
-      verdict.because === 'wait-exhausted'
+      (verdict.because === 'wait-exhausted'
         ? `Transaction ${verdict.transactionHash} was sent, and no receipt ` +
           `appeared within ${verdict.waitedMs === null ? 'the polling bound' : `${verdict.waitedMs} ms`}. ` +
           `It may still confirm. Check the transaction before retrying — ` +
@@ -83,7 +132,13 @@ export class ConfirmationIndeterminateError extends DeploymentRefusedError {
         : `Transaction ${verdict.transactionHash} has a receipt that carries ` +
           `no execution verdict, so success cannot be affirmed. This plugin ` +
           `refuses to report success it cannot verify. Inspect the ` +
-          `transaction directly before proceeding.`,
+          `transaction directly before proceeding.`) +
+        (spent === undefined
+          ? ''
+          : `\n\nIf it did land, the contract is at ${spent.address}: adopt it ` +
+            `with forceImport('${spent.address}') rather than deploying again. ` +
+            `The artifact's entry for it is left in place on purpose, for the ` +
+            `same reason — it may name a real deployment.`),
     );
     this.name = 'ConfirmationIndeterminateError';
   }
@@ -99,12 +154,21 @@ export class SenderMismatchError extends DeploymentRefusedError {
   constructor(
     readonly preflighted: string,
     readonly signed: string,
+    /**
+     * Present on `deployProxy`'s path, where this check runs *after* the proxy
+     * is deployed and confirmed. Withholding it was the sharpest form of the
+     * post-spend problem: the refusal told the user their accounts disagree
+     * while hiding the address of the proxy they had just paid for, which is the
+     * one argument the recovery needs.
+     */
+    readonly spent?: SpentDeployment,
   ) {
     super(
       `The upgrade-authority check ran against ${preflighted}, but the ` +
         `transaction was signed by ${signed}. The check's answer is about a ` +
         `different account than the one that acted, so the operation stops ` +
-        `here. Configure one sending account (\`from\`) so the two agree.`,
+        `here. Configure one sending account (\`from\`) so the two agree.` +
+        (spent === undefined ? '' : `\n\n${adoptClause(spent)}`),
     );
     this.name = 'SenderMismatchError';
   }

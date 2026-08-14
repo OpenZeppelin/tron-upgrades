@@ -288,6 +288,21 @@ where the message is the surface that matters. `ResultCapabilityUnavailableError
 (raised from a returned result's own accessor, on a member this plugin cannot
 support) stays unexported under the same rule and carries its `code`.
 
+**No refusal after a confirmed on-chain write withholds the address.** Once a
+transaction has landed, the plugin can still refuse — the effective sender may
+disagree with the account the authority check ran against, or writing the
+deployment record may fail — and a refusal at that point has to be actionable,
+because the contract exists and you are paying for it either way. Every such
+refusal names the address and the transaction, and points at
+`forceImport(address)`, which is the tool that teaches the record about a
+contract that already exists. `SenderMismatchError`,
+`ConfirmationIndeterminateError` and `ProxyRecordWriteFailedError` all carry the
+pair; the last keeps the underlying record-layer error as its `cause`, so you can
+still branch on `RecordLockedError` versus `RecordUnreadableError` while knowing
+which proxy is unrecorded. The one refusal that names no address is
+`TransactionRevertedError`, and that is the point: a mined revert deployed
+nothing.
+
 **A reverted deploy leaves your artifact untouched; an indeterminate one does
 not.** Deploying through TronBox writes the new address and transaction hash
 back onto the contract artifact — that per-network entry is what `.deployed()`

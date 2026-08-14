@@ -18,6 +18,7 @@ import { canonicalizeAddress } from '../record';
 import {
   ConfirmationIndeterminateError,
   TransactionRevertedError,
+  type SpentDeployment,
 } from '../deploy';
 import { transactionIdentity, operationNotes } from '../results/types';
 import { sealUnavailable } from '../results/limitations';
@@ -37,6 +38,7 @@ import {
 import { NothingToAdoptError } from '../adopt/errors';
 import {
   BeaconInitialOwnerRequiredError,
+  recordingLiveProxy,
   UpgradeVerificationFailedError,
 } from '../proxy/errors';
 import { isAlreadyCurrent } from '../proxy/replay';
@@ -164,6 +166,8 @@ async function confirmOrRefuse(
   deploy?: {
     readonly abstraction: ContractAbstraction;
     readonly prior: PriorWriteBack;
+    /** What exists on-chain if the transaction landed, for the refusals to name. */
+    readonly live: SpentDeployment;
   },
 ): Promise<void> {
   const verdict = await context.toolkit.confirm(transactionHash);
@@ -174,7 +178,9 @@ async function confirmOrRefuse(
     throw new TransactionRevertedError(verdict);
   }
   if (verdict.kind === 'indeterminate') {
-    throw new ConfirmationIndeterminateError(verdict);
+    // Named where a deploy is what was indeterminate: the address is known even
+    // though the outcome is not, and it is what makes the advice actionable.
+    throw new ConfirmationIndeterminateError(verdict, deploy?.live);
   }
 }
 
@@ -221,6 +227,10 @@ export async function runDeployBeacon(
     await confirmOrRefuse(context, deployed.transactionHash, {
       abstraction: beaconAbstraction,
       prior: priorBeaconWriteBack,
+      live: {
+        address: canonicalizeAddress(deployed.address),
+        transactionHash: deployed.transactionHash,
+      },
     });
     return { deployed, implementationAddress };
   });
@@ -278,9 +288,20 @@ export async function runDeployBeaconProxy(
     await confirmOrRefuse(context, deployed.transactionHash, {
       abstraction: proxyAbstraction,
       prior: priorProxyWriteBack,
+      live: {
+        address: canonicalizeAddress(deployed.address),
+        transactionHash: deployed.transactionHash,
+      },
     });
-    // Recorded under the beacon kind, never transparent/uups.
-    await toolkit.recordProxy(canonicalizeAddress(deployed.address), 'beacon');
+    // Recorded under the beacon kind, never transparent/uups. The proxy is
+    // deployed and confirmed by now, so a failed write is named with it.
+    const live = {
+      address: canonicalizeAddress(deployed.address),
+      transactionHash: deployed.transactionHash,
+    };
+    await recordingLiveProxy(live, () =>
+      toolkit.recordProxy(live.address, 'beacon'),
+    );
     return deployed;
   });
 

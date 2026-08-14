@@ -378,3 +378,66 @@ export class OptionsInArgsPositionError extends ProxyOperationRefusedError {
     this.name = 'OptionsInArgsPositionError';
   }
 }
+
+/**
+ * The proxy is live and confirmed on-chain, and writing it into the deployment
+ * record failed.
+ *
+ * The worst-shaped failure in the whole operation, which is why it gets its own
+ * class rather than letting the underlying error through. What the user used to
+ * see was the underlying cause alone — most often a lock file, since the record's
+ * lock is the likeliest thing to fail here — with no hint that a proxy had just
+ * been deployed at their expense and that nothing remembers it. Unrecorded is not
+ * a harmless state: the next `upgradeProxy` on that address has no stored layout
+ * to validate against, and `deployProxy` re-run deploys a second proxy beside it.
+ *
+ * The underlying cause is kept as `cause` rather than folded into the text, so a
+ * caller can still branch on it — `RecordLockedError` for contention,
+ * `RecordUnreadableError` for a record that cannot be read at all.
+ */
+export class ProxyRecordWriteFailedError extends ProxyOperationRefusedError {
+  readonly code = 'proxy-record-write-failed';
+  constructor(
+    readonly proxyAddress: string,
+    readonly transactionHash: string,
+    override readonly cause: unknown,
+  ) {
+    super(
+      `A proxy was deployed and confirmed at ${proxyAddress} (transaction ` +
+        `${transactionHash}), and writing it into the deployment record failed. ` +
+        `The proxy is live; nothing about this refusal removes it. What is ` +
+        `missing is only this plugin's record of it — which upgrades validate ` +
+        `against, so leaving it unrecorded means the next upgradeProxy on this ` +
+        `address has no stored layout to check, and a re-run of deployProxy ` +
+        `deploys a second proxy beside this one.\n\nResolve the cause below, ` +
+        `then record the existing proxy with forceImport('${proxyAddress}'). Do ` +
+        `not re-run the migration first.\n\nCause: ` +
+        `${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+    this.name = 'ProxyRecordWriteFailedError';
+  }
+}
+
+/**
+ * Runs a record write that follows a confirmed on-chain deployment, so a failure
+ * arrives as {@link ProxyRecordWriteFailedError} with the live proxy named.
+ *
+ * A helper rather than three copies of the same `try`/`catch`: `deployProxy`,
+ * `upgradeProxy` and `deployBeaconProxy` all write a proxy record as the last
+ * statement inside their queued step, all three after an irreversible success,
+ * and a rule enforced in one place cannot be applied inconsistently in three.
+ */
+export async function recordingLiveProxy<T>(
+  live: { readonly address: string; readonly transactionHash: string },
+  write: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await write();
+  } catch (cause) {
+    throw new ProxyRecordWriteFailedError(
+      live.address,
+      live.transactionHash,
+      cause,
+    );
+  }
+}

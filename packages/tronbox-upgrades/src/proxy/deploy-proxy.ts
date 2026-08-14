@@ -31,6 +31,7 @@ import {
   EmptyInitializerRefusedError,
   InitialOwnerUnsupportedKindError,
   ProxyAdminAsOwnerError,
+  recordingLiveProxy,
   StaleProxyRecordError,
   TransparentInitialOwnerRequiredError,
 } from './errors';
@@ -257,16 +258,25 @@ export async function runDeployProxy(
     const writeBack = await toolkit.hostDeploy(proxyAbstraction, constructorArgs);
     assertFreshTransaction(priorWriteBack.transactionHash, writeBack);
 
+    // The proxy exists on-chain from here on, whatever the verdict says. Every
+    // refusal below this line names it, because every one of them fires after
+    // the spend and the recovery takes the address as its argument.
+    const live = {
+      address: canonicalizeAddress(writeBack.address),
+      transactionHash: writeBack.transactionHash,
+    };
+
     const verdict = await toolkit.confirm(writeBack.transactionHash);
     if (verdict.kind === 'reverted') {
-      // Mined and reverted: nothing was deployed, so the write-back
-      // `hostDeploy` assigned must not survive into the artifact the host
-      // persists after the migration.
+      // The one exception, and it is not an exception to the rule: a mined
+      // revert deployed nothing, so there is no on-chain fact to name — and the
+      // write-back `hostDeploy` assigned must not survive into the artifact the
+      // host persists after the migration.
       restoreWriteBack(proxyAbstraction, priorWriteBack);
       throw new TransactionRevertedError(verdict);
     }
     if (verdict.kind === 'indeterminate') {
-      throw new ConfirmationIndeterminateError(verdict);
+      throw new ConfirmationIndeterminateError(verdict, live);
     }
 
     // The sender-identity comparison — and when the node omits the sender,
@@ -274,7 +284,7 @@ export async function runDeployProxy(
     // silently.
     const signer = await toolkit.signerOf(writeBack.transactionHash);
     if (signer !== null) {
-      assertSignerMatches(sender, signer);
+      assertSignerMatches(sender, signer, live);
     } else {
       toolkit.channel.warn(
         'sender comparison skipped',
@@ -285,7 +295,9 @@ export async function runDeployProxy(
       );
     }
 
-    await toolkit.recordProxy(canonicalizeAddress(writeBack.address), kind);
+    await recordingLiveProxy(live, () =>
+      toolkit.recordProxy(live.address, kind),
+    );
     return writeBack;
   });
 

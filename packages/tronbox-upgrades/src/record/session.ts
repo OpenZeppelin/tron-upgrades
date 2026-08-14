@@ -291,6 +291,11 @@ async function diagnoseFingerprintRefusal(
   read: CodePresence,
 ): Promise<FingerprintRefusalDiagnosis> {
   try {
+    // Deliberately NOT through `throughRecordRead`: that wide arm converts a
+    // failed read into `RecordUnreadableError`, and raising here would mask
+    // the fingerprint refusal this diagnosis decorates with a different
+    // error about a different file. The catch below is this call's whole
+    // contract — any failure is the `indeterminate` diagnosis, never a throw.
     const proxies = (await manifest.read()).proxies ?? [];
     if (proxies.length === 0) {
       return 'no-proxies';
