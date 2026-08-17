@@ -6,22 +6,35 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
+    "contracts",
     "dist",
     "LICENSE",
     "README.md"
   ],
   "scripts": {
     "build": "tsc",
-    "test": "echo \"no tests yet\" && exit 0"
+    "prepublishOnly": "npm run build && npm test",
+    "test": "npm run test:types && vitest run",
+    "test:e2e": "node e2e/run.mjs",
+    "test:types": "tsc -p tsconfig.test.json",
+    "test:watch": "vitest",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@openzeppelin/upgrades-core": "^1.46.0"
   },
   "peerDependencies": {
-    "tronbox": ">=4.0.0"
+    "ethers": "^6.13.0",
+    "tronbox": ">=4.0.0",
+    "tronweb": ">=6.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0"
+    "ethers": "^6.17.0",
+    "tronbox-4.8.0": "npm:tronbox@4.8.0",
+    "tronbox-4.9.0": "npm:tronbox@4.9.0",
+    "tronweb": "^6.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.10"
   },
   "publishConfig": {
     "access": "public"

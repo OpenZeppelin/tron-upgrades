@@ -1,0 +1,255 @@
+{
+  "_comment": [
+    "The ten upgrade pairs, extracted so they have ONE home.",
+    "",
+    "Provenance: measured with two live compile probes — the ast-only-versus-slot-level",
+    "probe (all ten) and the gate-observability probe (the two safe ones, SAFE-gap and",
+    "SAFE-pad, which appear in both probes verbatim). Both probes carry them as",
+    "inline object literals with no exports, so the two safe pairs had already been",
+    "copied once before this file existed; this file is what stops a third copy.",
+    "",
+    "It is JSON rather than TypeScript on purpose: the fixture generator that",
+    "compiles these against the real TVM wasm is a plain script and cannot import a",
+    ".ts module, so a TypeScript home would have reintroduced the duplication it is",
+    "here to remove. test/helpers/ladder-fixtures.ts types it; the generator reads it raw.",
+    "",
+    "`astOnly` and `slotLevel` are the verdicts measured under TVM solc 0.8.26 and",
+    "@openzeppelin/upgrades-core 1.46.0. They are NOT transcription to be trusted:",
+    "test/fixtures/generate-ladder-corpus.js recompiles every pair against the real",
+    "TVM wasm, and its own header records why the result is reproducible rather than",
+    "a fresh roll each time. `slotLevel.kinds` is recorded only where the",
+    "measurement captured it in full."
+  ],
+  "compiler": {
+    "longVersion": "0.8.26+commit.733b4d28.Emscripten.clang",
+    "version": "0.8.26",
+    "engineVersion": "1.46.0"
+  },
+  "pragma": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n",
+  "contract": "T",
+  "sourceKey": "S.sol",
+  "pairs": [
+    {
+      "id": "append",
+      "name": "APPEND at end (canonical SAFE upgrade)",
+      "safe": true,
+      "before": "contract T { uint256 a; address b; }",
+      "after": "contract T { uint256 a; address b; uint256 c; }",
+      "astOnly": { "accepts": true, "kinds": [] },
+      "slotLevel": { "accepts": true, "kinds": [] },
+      "note": "Structurally exempt: the append case needs no slot to decide, so it validates identically with no compiler involved."
+    },
+    {
+      "id": "insert-mid",
+      "name": "INSERT mid-layout (UNSAFE)",
+      "safe": false,
+      "before": "contract T { uint256 a; address b; }",
+      "after": "contract T { uint256 a; uint256 inserted; address b; }",
+      "astOnly": { "accepts": false, "kinds": ["insert"] },
+      "slotLevel": { "accepts": false }
+    },
+    {
+      "id": "reorder",
+      "name": "REORDER two vars (UNSAFE)",
+      "safe": false,
+      "before": "contract T { uint256 a; address b; }",
+      "after": "contract T { address b; uint256 a; }",
+      "astOnly": { "accepts": false, "kinds": ["delete", "insert"] },
+      "slotLevel": { "accepts": false },
+      "note": "The refusal AST-only reaches unaided, and the reference half of the two-fixture basis discrimination: compiling cannot change this answer."
+    },
+    {
+      "id": "width-change",
+      "name": "WIDTH CHANGE uint128 -> uint256 (UNSAFE)",
+      "safe": false,
+      "before": "contract T { uint128 a; uint128 b; }",
+      "after": "contract T { uint256 a; uint128 b; }",
+      "astOnly": { "accepts": false, "kinds": ["typechange"] },
+      "slotLevel": { "accepts": false }
+    },
+    {
+      "id": "delete-mid",
+      "name": "DELETE from middle (UNSAFE)",
+      "safe": false,
+      "before": "contract T { uint256 a; uint256 b; uint256 c; }",
+      "after": "contract T { uint256 a; uint256 c; }",
+      "astOnly": { "accepts": false, "kinds": ["delete"] },
+      "slotLevel": { "accepts": false }
+    },
+    {
+      "id": "inheritance-swap",
+      "name": "INHERITANCE order swap (UNSAFE)",
+      "safe": false,
+      "before": "contract A { uint256 x; }\ncontract B { uint256 y; }\ncontract T is A, B {}",
+      "after": "contract A { uint256 x; }\ncontract B { uint256 y; }\ncontract T is B, A {}",
+      "astOnly": { "accepts": false, "kinds": ["delete", "insert"] },
+      "slotLevel": { "accepts": false }
+    },
+    {
+      "id": "struct-insert",
+      "name": "STRUCT member inserted mid-struct (UNSAFE)",
+      "safe": false,
+      "before": "contract T { struct S { uint256 p; uint256 q; } S s; }",
+      "after": "contract T { struct S { uint256 p; uint256 mid; uint256 q; } S s; }",
+      "astOnly": { "accepts": false, "kinds": ["typechange"] },
+      "slotLevel": { "accepts": false }
+    },
+    {
+      "id": "namespace-rename",
+      "name": "ERC-7201 namespace id rename (UNSAFE — relocates the namespace)",
+      "safe": false,
+      "before": "contract T {\n    /// @custom:storage-location erc7201:one\n    struct S {\n        uint256 a;\n    }\n\n    function _s() private pure returns (S storage $) {\n        assembly {\n            $.slot := 0x9179306fb0aae42378ac79c42cef6a04bad3dd77d53e3d3fb32198774fc41500\n        }\n    }\n}",
+      "after": "contract T {\n    /// @custom:storage-location erc7201:two\n    struct S {\n        uint256 a;\n    }\n\n    function _s() private pure returns (S storage $) {\n        assembly {\n            $.slot := 0x5849a5a45430e959f91fd60809202c639163442acf6e60050dfe78877cde3f00\n        }\n    }\n}",
+      "astOnly": { "accepts": false, "kinds": ["delete-namespace"] },
+      "slotLevel": { "accepts": false }
+    },
+    {
+      "id": "gap-consumption",
+      "name": "__gap CONSUMPTION 48->47 + new var (the OZ idiom - SAFE)",
+      "safe": true,
+      "before": "contract T { uint256 a; uint256[48] __gap; }",
+      "after": "contract T { uint256 a; uint256 added; uint256[47] __gap; }",
+      "astOnly": { "accepts": false, "kinds": ["insert", "typechange"] },
+      "slotLevel": { "accepts": true, "kinds": [] },
+      "note": "One of the two shapes that genuinely needs positions. Refused without them and accepted with them, so escalation flips the verdict on this pair and on nothing that is actually unsafe."
+    },
+    {
+      "id": "intra-slot-padding",
+      "name": "INTRA-SLOT repack into padding: bool added beside address (SAFE only w/ slots)",
+      "safe": true,
+      "before": "contract T { address a; uint256 tail; }",
+      "after": "contract T { address a; bool flag; uint256 tail; }",
+      "astOnly": { "accepts": false, "kinds": ["insert"] },
+      "slotLevel": { "accepts": true, "kinds": [] },
+      "note": "The second shape that needs positions. Same escalation path as the gap pair, different trigger."
+    }
+  ],
+  "standalone": {
+    "_comment": [
+      "Sources that are not upgrade *pairs* — there is no before and after, only a",
+      "declaration to read. They live here rather than as TypeScript constants for",
+      "the same reason the pairs do: the generator that compiles them cannot import",
+      "a .ts module, and two homes is how a fixture drifts from what was measured."
+    ],
+    "namespaced": {
+      "contract": "Box",
+      "sourceKey": "Box.sol",
+      "note": "Storage entirely inside a namespace. Its flat `storage` list is empty in both modes, which is the state upstream's own slot-absence branch cannot see.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract Box {\n    /// @custom:storage-location erc7201:box.main\n    struct MainStorage {\n        uint256 value;\n        address owner;\n    }\n\n    function _main() private pure returns (MainStorage storage $) {\n        assembly {\n            $.slot := 0x9b779b17422d0df92223018b32b4d1fa46e071723d6817e2486d003becc55f00\n        }\n    }\n\n    function value() external view returns (uint256) {\n        return _main().value;\n    }\n}\n"
+    },
+    "flat": {
+      "contract": "Box",
+      "sourceKey": "Box.sol",
+      "note": "The same shape with no annotation — the discriminating half, so the namespace scan is shown to answer differently on two inputs that differ only in the annotation.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract Box {\n    struct MainStorage {\n        uint256 value;\n        address owner;\n    }\n\n    MainStorage private main;\n\n    function value() external view returns (uint256) {\n        return main.value;\n    }\n}\n"
+    },
+    "inherited-namespace": {
+      "contract": "Derived",
+      "sourceKey": "Box.sol",
+      "note": "The annotation on a base rather than on the target, so the linearized-bases walk is what finds it.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract Base {\n    /// @custom:storage-location erc7201:base.main\n    struct BaseStorage {\n        uint256 value;\n    }\n}\n\ncontract Derived is Base {\n    uint256 own;\n\n    function get() external view returns (uint256) {\n        return own;\n    }\n}\n"
+    },
+    "inherited-flat": {
+      "contract": "Derived",
+      "sourceKey": "Box.sol",
+      "note": "One own variable and one inherited, so the declared-state-variable count is 2 rather than 1 — the linearized walk again, on the other instrument.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract Base {\n    uint256 inheritedValue;\n}\n\ncontract Derived is Base {\n    uint256 own;\n\n    function get() external view returns (uint256) {\n        return own + inheritedValue;\n    }\n}\n"
+    },
+    "constants-and-immutables": {
+      "contract": "Holder",
+      "sourceKey": "Box.sol",
+      "note": "One storage variable beside a constant and an immutable, neither of which occupies a slot — so the count is 1.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract Holder {\n    uint256 public constant FIXED = 7;\n    uint256 public immutable atDeploy;\n    uint256 stored;\n\n    constructor(uint256 given) {\n        atDeploy = given;\n    }\n\n    function get() external view returns (uint256) {\n        return stored + atDeploy;\n    }\n}\n"
+    },
+    "stateless": {
+      "contract": "Stateless",
+      "sourceKey": "Box.sol",
+      "note": "Declares nothing, so an empty layout is legitimate and cause 9 must not fire — the boundary that keeps the vacuity check from being paranoid.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract Stateless {\n    function answer() external pure returns (uint256) {\n        return 42;\n    }\n}\n"
+    },
+    "abstract-target": {
+      "contract": "Abstracted",
+      "sourceKey": "Box.sol",
+      "note": "No deployed bytecode at all: the record's `.object` is empty and the artifact's is `'0x'`, which compare equal and would report 'verified' having compared nothing.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nabstract contract Abstracted {\n    uint256 stored;\n\n    function mustImplement() external virtual returns (uint256);\n}\n"
+    },
+    "reinitializer-note": {
+      "contract": "ReinitDerived",
+      "sourceKey": "Box.sol",
+      "note": "A base contract's own function carries a modifier literally named 'reinitializer', with no '@custom:oz-upgrades-validate-as-initializer' annotation. Validating the derived contract walks the base's possible initializers and upstream's own dist/validate/run/initializer.js:getPossibleInitializers logs a Note there, unconditionally on the modifier's name and independent of the derived contract's own errors (there are none: the base's initializers map ends up empty, so the missing-initializer-call check this note's caller gates never runs). This is the corpus's one real (not synthesized) engine Note.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract ReinitBase {\n    modifier reinitializer(uint8 version) {\n        _;\n    }\n\n    function bump(uint8 version) public reinitializer(version) {}\n}\n\ncontract ReinitDerived is ReinitBase {\n    uint256 stored;\n\n    function get() external view returns (uint256) {\n        return stored;\n    }\n}\n"
+    },
+    "linked-library": {
+      "contract": "LinkedLibraryUser",
+      "sourceKey": "Box.sol",
+      "note": "A public library function (LinkedMath.double) is deployed separately and reached by DELEGATECALL, so LinkedLibraryUser's own bytecode carries an unresolved link reference for it. Declares no storage and needs no initializer, so the engine's ONLY error for this contract is the linking one — the fixture this plugin's unsafeAllow-flips-a-real-verdict test drives, through the real validateImplementation, rather than merely the resolver's own wiring.",
+      "source": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nlibrary LinkedMath {\n    function double(uint256 x) public pure returns (uint256) {\n        return x * 2;\n    }\n}\n\ncontract LinkedLibraryUser {\n    function run(uint256 x) external pure returns (uint256) {\n        return LinkedMath.double(x);\n    }\n}\n"
+    }
+  },
+  "measuredArithmetic": {
+    "_comment": [
+      "The per-fixture arithmetic measured against real layouts under TVM solc",
+      "0.8.26, captured from a live run of the gate-observability probe.",
+      "Recorded here because it is what makes the two safe pairs the RIGHT fixtures",
+      "rather than merely gap-shaped and padding-shaped ones, and because it was",
+      "measured once and then existed only inside a probe."
+    ],
+    "gap-consumption": {
+      "field": "__gap",
+      "original": { "slot": 1, "offset": 0, "bytes": 1536, "end": 1568 },
+      "updated": { "slot": 2, "offset": 0, "bytes": 1504, "end": 1568 },
+      "isGapOriginal": true,
+      "endMatchesGap": true
+    },
+    "intra-slot-padding": {
+      "insertedField": "flag",
+      "original": [
+        { "label": "a", "slot": 0, "offset": 0, "bytes": 20, "end": 20 },
+        { "label": "tail", "slot": 1, "offset": 0, "bytes": 32, "end": 64 }
+      ],
+      "updated": [
+        { "label": "a", "slot": 0, "offset": 0, "bytes": 20, "end": 20 },
+        { "label": "flag", "slot": 0, "offset": 20, "bytes": 1, "end": 21 },
+        { "label": "tail", "slot": 1, "offset": 0, "bytes": 32, "end": 64 }
+      ],
+      "insertedOccupiesBytes": [20, 21],
+      "overlapsOriginals": []
+    }
+  },
+  "vacuousPass": {
+    "_comment": [
+      "The hazard every one of these fixtures is a guard against, measured in the",
+      "same probe: an EMPTY original layout classifies every variable in the new",
+      "contract as a safe append, so 'compatible' is satisfiable by a pipeline that",
+      "produced nothing. Any fixture that asserts a pass has to also assert a refusal",
+      "on the same shape, or it is measuring nothing."
+    ],
+    "emptyOriginalAgainstRealUpdated": "no errors",
+    "realOriginalAgainstEmptyUpdated": ["delete", "delete", "delete", "delete"],
+    "assertStorageUpgradeSafeThrows": false
+  },
+  "outputSelection": {
+    "_comment": [
+      "TronBox's own contract-level allow-list, ten entries, with storageLayout",
+      "absent — which is why a build record can never supply positions and why the",
+      "fresh path is AST-only. Recorded verbatim from what the installed TronBox",
+      "emitted when this corpus was generated: under the Foundry model the plugin",
+      "never builds a solc input of its own (solc-input.ts is type-only now), so",
+      "this is a record of the HOST's observed behavior, not a mirror of any",
+      "production constant."
+    ],
+    "hostContractOutputs": [
+      "abi",
+      "evm.bytecode.object",
+      "evm.bytecode.sourceMap",
+      "evm.bytecode.linkReferences",
+      "evm.deployedBytecode.object",
+      "evm.deployedBytecode.sourceMap",
+      "evm.deployedBytecode.linkReferences",
+      "evm.deployedBytecode.immutableReferences",
+      "evm.methodIdentifiers",
+      "metadata"
+    ],
+    "pluginAddition": "storageLayout"
+  }
+}
