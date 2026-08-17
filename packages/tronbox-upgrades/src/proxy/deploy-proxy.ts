@@ -44,6 +44,7 @@ import {
   readPriorDeployedAddress,
   readWriteBack,
   restoreWriteBack,
+  restoringWriteBackOnFailure,
   encodeInitializer,
   type OperationContext,
   type MigrationHandles,
@@ -239,8 +240,13 @@ export async function runDeployProxy(
   }
 
   // 9 — ONE queued step: implementation, proxy, confirmation, verification
-  //     (the settlement contract belongs to the queue seam).
-  const outcome = await toolkit.queue(deployer, async () => {
+  //     (the settlement contract belongs to the queue seam). The step deploys
+  //     the implementation through the USER's contract, so any failing exit —
+  //     not only a revert — must put the user's write-back BACK, or the
+  //     artifact leaves the migration naming the implementation (review
+  //     comment on #18). Step 9b below is the success half of the same rule.
+  const outcome = await toolkit.queue(deployer, () =>
+    restoringWriteBackOnFailure(contract, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
@@ -299,7 +305,8 @@ export async function runDeployProxy(
       toolkit.recordProxy(live.address, kind),
     );
     return writeBack;
-  });
+    }),
+  );
 
   // 9b — the recognition key, completed. The replay module documents the key
   //     as the artifact's per-network write-back, but the queue's OWN

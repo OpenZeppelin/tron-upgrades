@@ -427,10 +427,17 @@ export function readWriteBack(contract: ContractAbstraction): PriorWriteBack {
  * artifact naming an address with no contract at it, and a later migration's
  * `.deployed()` resolving to it.
  *
- * Only for `reverted`, never for `indeterminate`: a reverted creation
- * definitively deployed nothing, while an indeterminate one may well have
- * landed, and erasing a real deployment is the worse failure. The indeterminate
- * refusal names the address and hash instead, so the deployment can be adopted.
+ * Two distinct callers, two distinct rules. For the abstraction whose OWN
+ * transaction is being judged, this runs only on `reverted`, never on
+ * `indeterminate`: a reverted creation definitively deployed nothing, while an
+ * indeterminate one may well have landed, and erasing a real deployment is the
+ * worse failure — the indeterminate refusal names the address and hash instead,
+ * so the deployment can be adopted. The USER contract's write-back inside a
+ * compound step is different (`restoringWriteBackOnFailure` below): by the time
+ * any later exit fails, the implementation either never deployed or is already
+ * remembered by the deployment record under its version hash, so a rerun
+ * refetches it without the artifact's help — restoring is safe on every
+ * failure, indeterminate included.
  *
  * The undo is the host's own: `resetAddress()` deletes `network.address`, and
  * `isDeployed()` is exactly `!!network.address`. The per-network entry itself may
@@ -474,6 +481,37 @@ export function restoreWriteBack(
     }
   } catch {
     // As above: no entry means nothing was written back.
+  }
+}
+
+/**
+ * Runs a compound queued step with the user contract's write-back captured at
+ * entry and restored on every failing exit — reverted, indeterminate, sender
+ * mismatch, failed slot verification, a record write that could not land, all
+ * of them (review comment on #18).
+ *
+ * The step's implementation deploys through the user's OWN contract, so
+ * `hostDeploy`'s assignment lands on the user's artifact; without this undo, a
+ * step that failed after that deploy leaves the artifact naming the
+ * implementation, and a later `.deployed()` answers the implementation where a
+ * proxy or beacon was meant. Restoring is safe even when the implementation
+ * itself deployed and confirmed: the deployment record remembers it by version
+ * hash (a timeout does not remove that entry — only the engine's
+ * `InvalidDeployment` does), so a rerun refetches it without the artifact's
+ * help. The abstraction whose own transaction ended indeterminate is NOT
+ * restored here — that is the proxy/beacon abstraction, and its handling stays
+ * with its confirmation branch.
+ */
+export async function restoringWriteBackOnFailure<T>(
+  contract: ContractAbstraction,
+  step: () => Promise<T>,
+): Promise<T> {
+  const prior = readWriteBack(contract);
+  try {
+    return await step();
+  } catch (error) {
+    restoreWriteBack(contract, prior);
+    throw error;
   }
 }
 

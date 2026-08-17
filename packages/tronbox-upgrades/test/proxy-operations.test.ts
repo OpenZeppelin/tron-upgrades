@@ -251,67 +251,12 @@ function fakeAbstraction(spec: FakeSpec): ContractAbstraction {
  */
 const RECORD_WRITE_REFUSED = 'the record write was refused';
 
-/** The per-network entry a write-back lands in, exposed for assertions. */
-interface WriteBackBearing {
-  readonly contractName: string;
-  readonly network: { address?: unknown; transactionHash?: unknown };
-  readonly resetAddress: () => void;
-}
-
-/**
- * A stand-in for the host's write-back surface, mirroring exactly the members
- * `restoreWriteBack` touches: `address` and `transactionHash` are accessors
- * routed through a per-network entry, and `resetAddress` deletes the address off
- * that entry — verbatim what TronBox's own `Contract` does
- * (`resetAddress: function () { delete this.network.address }`), and the reason
- * its `isDeployed()` is exactly `!!network.address`.
- *
- * Non-configurable accessors on purpose: the host defines them with
- * `Object.defineProperty(..., {configurable: false})`, so `delete abstraction.address`
- * does NOT work there and `resetAddress` is the only undo. A stand-in with plain
- * data properties would let a wrong implementation pass here and fail live.
- *
- * The installed host's own behaviour is pinned separately in
- * `deploy-real-host.test.ts`; this mirror exists so the unit suite can observe
- * whether an operation undid the write-back at all.
- */
-function writeBackBearingArtifact(contractName: string): WriteBackBearing {
-  const network: { address?: unknown; transactionHash?: unknown } = {};
-  const artifact = {
-    contractName,
-    network,
-    resetAddress: () => {
-      delete network.address;
-    },
-  };
-  Object.defineProperty(artifact, 'address', {
-    configurable: false,
-    enumerable: false,
-    get: () => {
-      if (network.address === undefined) {
-        // The host's getter throws for an abstraction with no address, which is
-        // what `readWriteBack`'s guard exists to absorb.
-        throw new Error(`Cannot find deployed address: ${contractName}`);
-      }
-      return network.address;
-    },
-    set: (value: unknown) => {
-      if (value === undefined || value === null || value === '') {
-        throw new Error(`Cannot set deployed address; malformed value: ${String(value)}`);
-      }
-      network.address = value;
-    },
-  });
-  Object.defineProperty(artifact, 'transactionHash', {
-    configurable: false,
-    enumerable: false,
-    get: () => network.transactionHash,
-    set: (value: unknown) => {
-      network.transactionHash = value;
-    },
-  });
-  return artifact;
-}
+// The write-back-bearing stand-in lives in a shared helper now: the beacon and
+// standalone suites pin the same `restoreWriteBack` wiring against it.
+import {
+  writeBackBearingArtifact,
+  type WriteBackBearing,
+} from './helpers/write-back-bearing';
 
 function buildFake(spec: FakeSpec = {}): Fake {
   const log: string[] = [];
@@ -1183,6 +1128,133 @@ describe('deployProxy — a reverted or indeterminate confirmation is never reco
       toTronHex(canonicalizeAddress(PROXY_ADDR)),
     );
     expect(artifact?.network.transactionHash).toBe(TX_HASH);
+  });
+});
+
+describe("the USER contract's write-back is restored on every failing exit (review comment on #18)", () => {
+  /**
+   * The implementation deploys through the user's OWN contract, so
+   * `hostDeploy`'s write-back lands on the user's artifact — the file the host
+   * persists after the migration. The proxy artifact's undo (previous
+   * describe) covers the plugin's artifact; these pin the user's, and on EVERY
+   * failing exit rather than only the revert: by the time any later exit
+   * fires, the implementation either never deployed or is already remembered
+   * by the deployment record under its version hash, so a rerun refetches it
+   * without the artifact's help. The success paths are the boundary, pinned
+   * last.
+   */
+  const PRIOR = {
+    address: toTronHex(canonicalizeAddress(IMPL_OWNER)),
+    transactionHash: 'bb'.repeat(32),
+  };
+
+  /**
+   * A user contract whose write-back surface is the host's own shape —
+   * accessors over a per-network entry plus `resetAddress` — because a plain
+   * data-property fake would let `restoreWriteBack` silently do nothing and
+   * this suite pass vacuously.
+   */
+  function bearingUserContract(prior?: typeof PRIOR): WriteBackBearing {
+    const artifact = writeBackBearingArtifact('Box') as WriteBackBearing &
+      Record<string, unknown>;
+    artifact['abi'] = RESULT_ABI;
+    artifact['bytecode'] = '0x60806040';
+    artifact['isDeployed'] = () => artifact.network.address !== undefined;
+    artifact['at'] = async (target: string) => ({ address: target });
+    if (prior !== undefined) {
+      (artifact as { address?: unknown }).address = prior.address;
+      (artifact as { transactionHash?: unknown }).transactionHash =
+        prior.transactionHash;
+    }
+    return artifact;
+  }
+  const asAbstraction = (bearing: WriteBackBearing) =>
+    bearing as unknown as ContractAbstraction;
+
+  it('a sender mismatch restores the user artifact to its prior deployment', async () => {
+    const fake = buildFake({ reportedSigner: OWNER_BASE58 });
+    const contract = bearingUserContract(PRIOR);
+    await expect(
+      runDeployProxy(fake.context, asAbstraction(contract), [42]),
+    ).rejects.toBeInstanceOf(SenderMismatchError);
+    // Non-vacuous: the implementation deploy DID overwrite the entry first
+    // (the fake's hostDeploy assigns a pair distinct from PRIOR), so equality
+    // with PRIOR below proves the restore ran, not that nothing happened.
+    expect(fake.log).toContain('hostDeploy:Box');
+    expect(contract.network.address).toBe(PRIOR.address);
+    expect(contract.network.transactionHash).toBe(PRIOR.transactionHash);
+  });
+
+  it('a reverted confirmation resets a previously-undeployed user artifact entirely', async () => {
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    const contract = bearingUserContract();
+    await expect(
+      runDeployProxy(fake.context, asAbstraction(contract), [42]),
+    ).rejects.toBeInstanceOf(TransactionRevertedError);
+    expect(fake.log).toContain('hostDeploy:Box');
+    expect(contract.network.address).toBeUndefined();
+    expect(contract.network.transactionHash).toBeUndefined();
+  });
+
+  it('an INDETERMINATE confirmation restores the user artifact while the proxy keeps its pair', async () => {
+    // The two rules side by side: the abstraction whose own transaction ended
+    // indeterminate keeps its write-back (that deployment may be live and
+    // adoptable), while the user's entry — whose implementation the record
+    // already remembers by version hash — goes back to what it said before.
+    const fake = buildFake({ confirmOutcome: 'indeterminate' });
+    const contract = bearingUserContract(PRIOR);
+    await expect(
+      runDeployProxy(fake.context, asAbstraction(contract), [42]),
+    ).rejects.toBeInstanceOf(ConfirmationIndeterminateError);
+    expect(contract.network.address).toBe(PRIOR.address);
+    expect(contract.network.transactionHash).toBe(PRIOR.transactionHash);
+    const proxyArtifact = fake.proxyArtifactInstance;
+    expect(proxyArtifact?.network.address).toBe(
+      toTronHex(canonicalizeAddress(PROXY_ADDR)),
+    );
+    expect(proxyArtifact?.network.transactionHash).toBe(TX_HASH);
+  });
+
+  it('a failed slot verification on upgradeProxy restores the user artifact', async () => {
+    // The exit the review comment names outright: the upgrade call confirmed,
+    // the slot re-read disagreed, and the fresh implementation the step
+    // deployed along the way must not stay on the user's entry.
+    const fake = buildFake({
+      observedAfterUpgrade: toTronHex(canonicalizeAddress(IMPL_OWNER)),
+    });
+    const contract = bearingUserContract(PRIOR);
+    await expect(
+      runUpgradeProxy(fake.context, PROXY_ADDR, asAbstraction(contract)),
+    ).rejects.toBeInstanceOf(UpgradeVerificationFailedError);
+    expect(fake.log).toContain('hostDeploy:Box');
+    expect(contract.network.address).toBe(PRIOR.address);
+    expect(contract.network.transactionHash).toBe(PRIOR.transactionHash);
+  });
+
+  it('a successful deployProxy is the boundary: the entry then names the PROXY', async () => {
+    // Step 9b, not the restore: the recognition key replay reads is the
+    // artifact's per-network write-back, and after a successful deploy it must
+    // name the proxy — neither the implementation nor the prior deployment.
+    const fake = buildFake();
+    const contract = bearingUserContract(PRIOR);
+    await runDeployProxy(fake.context, asAbstraction(contract), [42]);
+    expect(contract.network.address).toBe(
+      toTronHex(canonicalizeAddress(PROXY_ADDR)),
+    );
+    expect(contract.network.transactionHash).toBe(TX_HASH);
+  });
+
+  it('a successful upgradeProxy keeps the fresh write-back — the restore is failure-only', async () => {
+    // The fake's hostDeploy assigns one constant pair whatever the
+    // abstraction; here it stands in for the implementation deploy's own
+    // write-back, which a successful upgrade deliberately leaves in place.
+    const fake = buildFake();
+    const contract = bearingUserContract(PRIOR);
+    await runUpgradeProxy(fake.context, PROXY_ADDR, asAbstraction(contract));
+    expect(contract.network.address).toBe(
+      toTronHex(canonicalizeAddress(PROXY_ADDR)),
+    );
+    expect(contract.network.transactionHash).toBe(TX_HASH);
   });
 });
 

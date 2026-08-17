@@ -16,12 +16,17 @@ import {
 import {
   assertNoCheatcodeCollision,
   CheatcodeSlotCollisionError,
+  TransactionRevertedError,
 } from '../src/deploy';
 import type {
   OperationContext,
   OperationToolkit,
   ResolvedForProxyOps,
 } from '../src/proxy/toolkit';
+import {
+  writeBackBearingArtifact,
+  type WriteBackBearing,
+} from './helpers/write-back-bearing';
 import { canonicalizeAddress } from '../src/record';
 import { toTronHex } from '../src/record/address';
 import type { ContractAbstraction } from '../src/environment';
@@ -50,6 +55,12 @@ interface Spec {
   readonly initialOwner?: string;
   /** Overrides `resolved.initializer` (default: unset). */
   readonly initializer?: string | false;
+  /**
+   * The verdict the fake's `confirm` resolves with. Defaults to
+   * `'confirmed-successful'`; `'reverted'` drives the write-back-undo tests
+   * through the same shape `confirmTransaction` produces.
+   */
+  readonly confirmOutcome?: 'confirmed-successful' | 'reverted';
 }
 
 const ABI = [
@@ -70,9 +81,27 @@ function abstraction(name: string): ContractAbstraction {
   } as unknown as ContractAbstraction;
 }
 
+/**
+ * A user contract on the host's own write-back surface — the revert tests
+ * assert restoration against it, and a plain data-property fake would let
+ * `restoreWriteBack` silently do nothing.
+ */
+function bearingContract(name: string): WriteBackBearing {
+  const artifact = writeBackBearingArtifact(name) as WriteBackBearing &
+    Record<string, unknown>;
+  artifact['abi'] = ABI;
+  artifact['bytecode'] = '0x60806040';
+  return artifact;
+}
+const asAbstraction = (bearing: WriteBackBearing) =>
+  bearing as unknown as ContractAbstraction;
+
 function buildFake(spec: Spec = {}) {
   const log: string[] = [];
   let beaconReads = 0;
+  // Set by `proxyArtifact` below; the revert tests read the instance back to
+  // assert whether the operation undid the write-back.
+  let proxyArtifactInstance: WriteBackBearing | undefined;
 
   const toolkit = {
     network: {} as never,
@@ -132,7 +161,10 @@ function buildFake(spec: Spec = {}) {
     signerOf: async () => null,
     proxyArtifact: (name: string) => {
       log.push(`proxyArtifact:${name}`);
-      return { contractName: name } as never;
+      // Write-back-bearing so the revert tests can observe the undo — the
+      // host's own accessor shape, not plain data properties.
+      proxyArtifactInstance = writeBackBearingArtifact(name);
+      return proxyArtifactInstance as never;
     },
     looksLikeProxyAdmin: async () => false,
     hashWithoutMetadata: (b: string) => b,
@@ -163,13 +195,30 @@ function buildFake(spec: Spec = {}) {
       // choke point itself rather than a fake's approximation of it.
       assertNoCheatcodeCollision(args);
       log.push(`hostDeploy:${String(target.contractName)}`);
-      return {
+      const writeBack = {
         address: toTronHex(canonicalizeAddress(BEACON)),
         transactionHash: 'aa'.repeat(32),
       };
+      // The write-back the production seam performs on the abstraction it was
+      // handed — the revert tests' whole subject is whether this assignment
+      // survives a mined revert, so a fake that skipped it would leave nothing
+      // for `restoreWriteBack` to be tested against.
+      const bearer = target as { address?: unknown; transactionHash?: unknown };
+      bearer.address = writeBack.address;
+      bearer.transactionHash = writeBack.transactionHash;
+      return writeBack;
     },
     confirm: async (transactionHash: string) => {
       log.push('confirm');
+      if (spec.confirmOutcome === 'reverted') {
+        return {
+          kind: 'reverted' as const,
+          transactionHash,
+          vmResult: 'REVERT',
+          vmMessage: 'REVERT opcode executed',
+          receipt: {},
+        };
+      }
       return { kind: 'confirmed-successful' as const, transactionHash, receipt: {} };
     },
     processProxyKind: async () => 'transparent' as const,
@@ -207,7 +256,13 @@ function buildFake(spec: Spec = {}) {
     engineOptions: {},
   };
 
-  return { context: { toolkit, resolved } as OperationContext, log };
+  return {
+    context: { toolkit, resolved } as OperationContext,
+    log,
+    get proxyArtifactInstance() {
+      return proxyArtifactInstance;
+    },
+  };
 }
 
 describe('deployBeacon', () => {
@@ -254,6 +309,25 @@ describe('deployBeacon', () => {
     // deploy callback throws before returning.
     expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
     expect(fake.log).not.toContain('confirm');
+  });
+
+  it('a mined revert restores BOTH write-backs: the beacon artifact and the user contract (review comment on #18)', async () => {
+    // Two undos with two owners: `confirmOrRefuse`'s deploy parameter puts the
+    // BEACON artifact back, and the step-level restore puts the USER contract
+    // back — the implementation deployed through it along the way.
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    const contract = bearingContract('Box');
+    await expect(
+      runDeployBeacon(fake.context, asAbstraction(contract)),
+    ).rejects.toBeInstanceOf(TransactionRevertedError);
+    // Non-vacuous: both deploys DID assign their write-backs before the
+    // verdict came back reverted.
+    expect(fake.log).toContain('hostDeploy:Box');
+    expect(fake.log).toContain('hostDeploy:UpgradeableBeacon');
+    expect(fake.proxyArtifactInstance?.network.address).toBeUndefined();
+    expect(fake.proxyArtifactInstance?.network.transactionHash).toBeUndefined();
+    expect(contract.network.address).toBeUndefined();
+    expect(contract.network.transactionHash).toBeUndefined();
   });
 });
 
@@ -338,6 +412,20 @@ describe('upgradeBeacon', () => {
     expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([]);
     expect(fake.log).not.toContain('confirm');
     expect(fake.log.some(e => e.startsWith('callThroughFacade'))).toBe(false);
+  });
+
+  it("a reverted upgradeTo restores the user contract's write-back (review comment on #18)", async () => {
+    // The upgrade call itself deployed nothing — there is no facade write-back
+    // to undo — but the implementation deployed through the USER's contract on
+    // the way, and a failing step must not leave the artifact naming it.
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    const contract = bearingContract('BoxV2');
+    await expect(
+      runUpgradeBeacon(fake.context, BEACON, asAbstraction(contract)),
+    ).rejects.toBeInstanceOf(TransactionRevertedError);
+    expect(fake.log).toContain('hostDeploy:BoxV2');
+    expect(contract.network.address).toBeUndefined();
+    expect(contract.network.transactionHash).toBeUndefined();
   });
 });
 

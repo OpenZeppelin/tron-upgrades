@@ -33,6 +33,7 @@ import {
   createOperationToolkit,
   handlesFrom,
   HANDLE_OPTION_KEYS,
+  restoringWriteBackOnFailure,
   type OperationContext,
   type MigrationHandles,
 } from './toolkit';
@@ -158,8 +159,13 @@ export async function runUpgradeProxy(
 
   // 8 — ONE queued step: deploy the implementation, send the dispatched call,
   //     confirm, re-read the slot, and record the proxy when nothing recorded
-  //     it yet.
-  const outcome = await toolkit.queue(deployer, async () => {
+  //     it yet. The implementation deploys through the USER's contract, so any
+  //     failing exit — a reverted or indeterminate upgrade call, a failed slot
+  //     verification — restores the user's write-back (review comment on #18);
+  //     a successful upgrade keeps it, since the implementation the artifact
+  //     then names is the one now live behind the proxy.
+  const outcome = await toolkit.queue(deployer, () =>
+    restoringWriteBackOnFailure(contract, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
@@ -213,7 +219,8 @@ export async function runUpgradeProxy(
     }
 
     return { writeBack, implementationAddress };
-  });
+    }),
+  );
 
   if (toolkit.network.configuredId.syntax === 'wildcard') {
     toolkit.channel.note(

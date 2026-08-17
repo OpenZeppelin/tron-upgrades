@@ -18,7 +18,12 @@ import type { ContractAbstraction } from '../src/environment';
 import {
   assertNoCheatcodeCollision,
   CheatcodeSlotCollisionError,
+  TransactionRevertedError,
 } from '../src/deploy';
+import {
+  writeBackBearingArtifact,
+  type WriteBackBearing,
+} from './helpers/write-back-bearing';
 import { pluginOptionDefaults } from '../src/options/defaults';
 
 /*
@@ -40,6 +45,12 @@ interface Spec {
   readonly storedLayoutRefusal?: string;
   /** The implementation's constructor args — the cheatcode-guard tests override this. */
   readonly constructorArgs?: readonly unknown[];
+  /**
+   * The verdict the fake's `confirm` resolves with. Defaults to
+   * `'confirmed-successful'`; `'reverted'` drives the write-back-undo test
+   * through the same shape `confirmTransaction` produces.
+   */
+  readonly confirmOutcome?: 'confirmed-successful' | 'reverted';
 }
 
 function abstraction(name: string): ContractAbstraction {
@@ -154,11 +165,31 @@ function buildFake(spec: Spec = {}) {
       log.push(
         `hostDeploy:${String((target as { contractName?: unknown }).contractName)}`,
       );
-      return { address: toTronHex(canonicalizeAddress(IMPL)), transactionHash: TX };
+      const writeBack = {
+        address: toTronHex(canonicalizeAddress(IMPL)),
+        transactionHash: TX,
+      };
+      // The write-back the production seam performs on the abstraction it was
+      // handed — the revert test's whole subject is whether this assignment
+      // survives a mined revert, so a fake that skipped it would leave nothing
+      // for `restoreWriteBack` to be tested against.
+      const bearer = target as { address?: unknown; transactionHash?: unknown };
+      bearer.address = writeBack.address;
+      bearer.transactionHash = writeBack.transactionHash;
+      return writeBack;
     },
 
     async confirm(transactionHash) {
       log.push('confirm');
+      if (spec.confirmOutcome === 'reverted') {
+        return {
+          kind: 'reverted',
+          transactionHash,
+          vmResult: 'REVERT',
+          vmMessage: 'REVERT opcode executed',
+          receipt: {},
+        };
+      }
       return { kind: 'confirmed-successful', transactionHash, receipt: {} };
     },
 
@@ -289,6 +320,37 @@ describe('deployImplementation and prepareUpgrade', () => {
     expect(fake.log.some(entry => entry.startsWith('hostDeploy'))).toBe(false);
     expect(fake.log).not.toContain('confirm');
     expect(result.transaction.hash).toBe('dd'.repeat(32));
+  });
+
+  it("deployImplementation: a mined revert restores the user artifact's write-back (review comment on #18)", async () => {
+    // Pins the reverted branch's `restoreWriteBack` wiring on the standalone
+    // path, against the host's own accessor shape — a plain data-property fake
+    // would let the restore silently do nothing.
+    const prior = {
+      address: toTronHex(canonicalizeAddress(PROXY)),
+      transactionHash: 'dd'.repeat(32),
+    };
+    const contract = writeBackBearingArtifact('Box') as WriteBackBearing &
+      Record<string, unknown>;
+    contract['abi'] = [];
+    contract['bytecode'] = '0x60806040';
+    (contract as { address?: unknown }).address = prior.address;
+    (contract as { transactionHash?: unknown }).transactionHash =
+      prior.transactionHash;
+
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    await expect(
+      runDeployImplementation(
+        fake.context,
+        contract as unknown as ContractAbstraction,
+      ),
+    ).rejects.toBeInstanceOf(TransactionRevertedError);
+    // Non-vacuous: the deploy DID overwrite the entry (the fake's hostDeploy
+    // assigns a pair distinct from `prior`), so equality below proves the
+    // restore ran.
+    expect(fake.log).toContain('hostDeploy:Box');
+    expect(contract.network.address).toBe(prior.address);
+    expect(contract.network.transactionHash).toBe(prior.transactionHash);
   });
 
   it('prepareUpgrade never touches the proxy — the send log holds exactly the implementation deploy', async () => {

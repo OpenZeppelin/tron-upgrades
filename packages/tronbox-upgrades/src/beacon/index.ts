@@ -31,6 +31,7 @@ import {
   encodeInitializer,
   readWriteBack,
   restoreWriteBack,
+  restoringWriteBackOnFailure,
   type OperationContext,
   type MigrationHandles,
   type PriorWriteBack,
@@ -213,7 +214,11 @@ export async function runDeployBeacon(
   }
   const beaconAbstraction = toolkit.proxyArtifact('UpgradeableBeacon');
 
-  const outcome = await toolkit.queue(deployer, async () => {
+  // The implementation deploys through the USER's contract, so every failing
+  // exit restores the user's write-back (review comment on #18). The beacon
+  // abstraction's own undo stays with `confirmOrRefuse` below.
+  const outcome = await toolkit.queue(deployer, () =>
+    restoringWriteBackOnFailure(contract, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
@@ -233,7 +238,8 @@ export async function runDeployBeacon(
       },
     });
     return { deployed, implementationAddress };
-  });
+    }),
+  );
 
   // The declared result promises every field it names: `contract` is the
   // beacon's own handle (implementation()/upgradeTo/owner ABI), and
@@ -357,7 +363,12 @@ export async function runUpgradeBeacon(
 
   const deployer = toolkit.requireDeployer();
 
-  const outcome = await toolkit.queue(deployer, async () => {
+  // Same rule as `runDeployBeacon`: the implementation deploys through the
+  // USER's contract, so a failing exit — reverted or indeterminate upgradeTo,
+  // failed beacon verification — restores the user's write-back (review
+  // comment on #18); a successful upgrade keeps it.
+  const outcome = await toolkit.queue(deployer, () =>
+    restoringWriteBackOnFailure(contract, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
@@ -381,7 +392,8 @@ export async function runUpgradeBeacon(
       );
     }
     return { writeBack, implementationAddress };
-  });
+    }),
+  );
 
   return Object.freeze({
     contract: sealUnavailable(await toolkit.contractAt(contract, beacon)),
