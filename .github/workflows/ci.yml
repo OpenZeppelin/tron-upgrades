@@ -36,6 +36,54 @@ jobs:
           restore-keys: |
             tron-solc-${{ runner.os }}-
 
+      # Cold-cache seeding, through api.github.com rather than
+      # raw.githubusercontent.com: the manifest lives in the
+      # tronprotocol/solc-bin repo, so the authenticated contents API serves
+      # the same bytes from a host that is not the rate-limited raw CDN
+      # (measured: four rerun attempts in a row got HTTP 429 from raw while
+      # the API answered normally). Best-effort on purpose — if this step
+      # cannot fetch either, the plugin's own fetch-then-stale-cache logic
+      # runs exactly as before.
+      - name: Seed the tron-solc manifest when the cache is cold
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f="$HOME/.cache/hardhat-nodejs/compilers-v2/wasm/tron-solc/list.json"
+          if [ ! -s "$f" ]; then
+            mkdir -p "$(dirname "$f")"
+            if gh api repos/tronprotocol/solc-bin/contents/wasm/list.json \
+                 -H "Accept: application/vnd.github.raw" > "$f.tmp"; then
+              mv "$f.tmp" "$f"
+              echo "seeded tron-solc manifest via the GitHub API"
+            else
+              rm -f "$f.tmp"
+              echo "manifest seed skipped; the plugin will fetch as usual"
+            fi
+          else
+            echo "manifest cache already warm"
+          fi
+          # The compiler wasm comes from the same rate-limited raw CDN, so a
+          # seeded manifest alone still leaves a cold runner one 429 away
+          # from red. 0.8.26 is the one version this repo pins (the package
+          # and example hardhat configs). Integrity is not this step's job:
+          # the plugin verifies the file's sha256 against the manifest before
+          # using it.
+          if [ -s "$f" ]; then
+            long=$(jq -r '[.builds[] | select(.version == "0.8.26")][0].longVersion // empty' "$f")
+            rel=$(jq -r '[.builds[] | select(.version == "0.8.26")][0].path // empty' "$f")
+            w="$(dirname "$f")/soljson-v${long}.js"
+            if [ -n "$long" ] && [ -n "$rel" ] && [ ! -s "$w" ]; then
+              if gh api "repos/tronprotocol/solc-bin/contents/wasm/${rel}" \
+                   -H "Accept: application/vnd.github.raw" > "$w.tmp"; then
+                mv "$w.tmp" "$w"
+                echo "seeded tron-solc ${long} via the GitHub API"
+              else
+                rm -f "$w.tmp"
+                echo "compiler seed skipped; the plugin will fetch as usual"
+              fi
+            fi
+          fi
+
       - run: npm ci
 
       - run: npm run build --workspaces --if-present
@@ -78,6 +126,54 @@ jobs:
           key: tron-solc-${{ runner.os }}-example-${{ github.run_id }}
           restore-keys: |
             tron-solc-${{ runner.os }}-
+
+      # Cold-cache seeding, through api.github.com rather than
+      # raw.githubusercontent.com: the manifest lives in the
+      # tronprotocol/solc-bin repo, so the authenticated contents API serves
+      # the same bytes from a host that is not the rate-limited raw CDN
+      # (measured: four rerun attempts in a row got HTTP 429 from raw while
+      # the API answered normally). Best-effort on purpose — if this step
+      # cannot fetch either, the plugin's own fetch-then-stale-cache logic
+      # runs exactly as before.
+      - name: Seed the tron-solc manifest when the cache is cold
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f="$HOME/.cache/hardhat-nodejs/compilers-v2/wasm/tron-solc/list.json"
+          if [ ! -s "$f" ]; then
+            mkdir -p "$(dirname "$f")"
+            if gh api repos/tronprotocol/solc-bin/contents/wasm/list.json \
+                 -H "Accept: application/vnd.github.raw" > "$f.tmp"; then
+              mv "$f.tmp" "$f"
+              echo "seeded tron-solc manifest via the GitHub API"
+            else
+              rm -f "$f.tmp"
+              echo "manifest seed skipped; the plugin will fetch as usual"
+            fi
+          else
+            echo "manifest cache already warm"
+          fi
+          # The compiler wasm comes from the same rate-limited raw CDN, so a
+          # seeded manifest alone still leaves a cold runner one 429 away
+          # from red. 0.8.26 is the one version this repo pins (the package
+          # and example hardhat configs). Integrity is not this step's job:
+          # the plugin verifies the file's sha256 against the manifest before
+          # using it.
+          if [ -s "$f" ]; then
+            long=$(jq -r '[.builds[] | select(.version == "0.8.26")][0].longVersion // empty' "$f")
+            rel=$(jq -r '[.builds[] | select(.version == "0.8.26")][0].path // empty' "$f")
+            w="$(dirname "$f")/soljson-v${long}.js"
+            if [ -n "$long" ] && [ -n "$rel" ] && [ ! -s "$w" ]; then
+              if gh api "repos/tronprotocol/solc-bin/contents/wasm/${rel}" \
+                   -H "Accept: application/vnd.github.raw" > "$w.tmp"; then
+                mv "$w.tmp" "$w"
+                echo "seeded tron-solc ${long} via the GitHub API"
+              else
+                rm -f "$w.tmp"
+                echo "compiler seed skipped; the plugin will fetch as usual"
+              fi
+            fi
+          fi
 
       - run: npm ci
 
