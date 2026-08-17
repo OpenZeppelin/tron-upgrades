@@ -158,10 +158,14 @@ export async function runForceImport(
   // This route inherits three engine corner semantics. An invalid stored entry
   // (missing code or an unfindable transaction) is removed, then the wrapper's
   // retry replaces it wholesale with this adoption. An address already primary
-  // under a different version is refused by the engine's address-clash check,
-  // which is stricter than the former direct write. Finally, merge mode starts
-  // validation of the stored deployment without awaiting it, so a narrowly stale
-  // entry can surface that validation failure as a delayed rejection.
+  // under a different version key is MERGED by the engine's own address-union
+  // (`mergeAddresses`) rather than refused — both entries answer the same
+  // address and layout, which is what makes a re-import with corrected
+  // `constructorArgs` an ordinary path instead of a clash (the check that used
+  // to refuse it runs only with merge off; see the call below). Finally, merge
+  // mode starts validation of the stored deployment without awaiting it, so a
+  // narrowly stale entry can surface that validation failure as a delayed
+  // rejection.
   const simulatedDeploy = async () => ({
     address: implementation,
     // An externally deployed contract may have no host write-back hash. The

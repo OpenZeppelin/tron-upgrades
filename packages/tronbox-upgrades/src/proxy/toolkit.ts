@@ -714,7 +714,7 @@ export async function createOperationToolkit(request: {
             // The `'never'` gate, at the single choke point every consumer of
             // this method shares (`deployProxy`, `upgradeProxy`, the beacon
             // and standalone operations, and — inertly — `forceImport`'s
-            // adoption probe, which always overrides this field before
+            // adoption call, which always overrides this field before
             // calling in). This callback is `engine.fetchOrDeployGetDeployment`'s
             // OWN `deploy` argument, invoked only after ITS cache lookup
             // already found nothing valid to reuse — so a genuinely
