@@ -1464,6 +1464,35 @@ describe('the fingerprint tables split diagnosis from disposition, and every dis
     expect(messages.size).toBe(causes.length);
   });
 
+  it('the schema cause ranks upgrading ahead of the lossy exits, in every disposition', () => {
+    // The diagnosis states that a rewrite at this version discards the newer
+    // record; a disposition that then orders exactly that rewrite would be a
+    // contradiction. The bridge resolves it into a ranking: upgrade first,
+    // the exits below only as an accepted trade — and it must precede the
+    // disposition text, whatever the diagnosis came back as.
+    const diagnoses = Object.keys(dispositions) as FingerprintRefusalDiagnosis[];
+    for (const diagnosis of diagnoses) {
+      const message = new RecordFingerprintUnreadableError(
+        SIDECAR_FILE,
+        'unrecognised-schema',
+        diagnosis,
+      ).message;
+      const upgradeAt = message.indexOf('Upgrading this plugin is the exit that loses nothing');
+      const dispositionAt = message.indexOf(dispositions[diagnosis]);
+      expect(upgradeAt, `bridge present for ${diagnosis}`).toBeGreaterThanOrEqual(0);
+      expect(dispositionAt).toBeGreaterThan(upgradeAt);
+      expect(message).toContain('only if discarding what the newer version recorded');
+    }
+    // And ONLY the schema cause carries it: for every other cause the exits
+    // are not lossy, so ranking them against an upgrade would be noise.
+    for (const because of causes.filter(cause => cause !== 'unrecognised-schema')) {
+      const message = new RecordFingerprintUnreadableError(SIDECAR_FILE, because).message;
+      expect(message, `bridge leaked into ${because}`).not.toContain(
+        'Upgrading this plugin',
+      );
+    }
+  });
+
   it('renders a distinct message per diagnosis for one fixed cause, so the disposition genuinely reaches the user', () => {
     const diagnoses = Object.keys(dispositions) as FingerprintRefusalDiagnosis[];
     const messages = new Set(

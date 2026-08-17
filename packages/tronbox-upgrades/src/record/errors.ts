@@ -379,7 +379,21 @@ export class RecordFingerprintUnreadableError extends Error {
     super(
       `The chain fingerprint in ${file} cannot be used ` +
         `(${because}).\n\n${fingerprintRemedies[because]} Nothing has been ` +
-        `changed or removed.\n\n${fingerprintDispositions[diagnosis]}`,
+        `changed or removed.\n\n` +
+        // The schema cause is the one where the generic exits are LOSSY: they
+        // rewrite the fingerprint at this version, discarding whatever the
+        // newer version recorded. Without this bridge the message would state
+        // that fact in its diagnosis and then order the lossy exit two
+        // sentences later — a contradiction, not a message. The bridge ranks
+        // the exits instead: upgrading first, the rewrites below only as an
+        // accepted trade.
+        (because === 'unrecognised-schema'
+          ? 'Upgrading this plugin is the exit that loses nothing. The exits ' +
+            'below rewrite the fingerprint at this version, so take them ' +
+            'only if discarding what the newer version recorded is ' +
+            'acceptable. '
+          : '') +
+        fingerprintDispositions[diagnosis],
     );
     this.name = 'RecordFingerprintUnreadableError';
   }
