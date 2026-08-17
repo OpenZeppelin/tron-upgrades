@@ -232,7 +232,7 @@ describe('the proxy refusal family: distinct codes, distinct messages, one base'
     new ProxyArtifactCollisionError('ProxyAdmin', ['a.sol', 'b.sol']),
     new BeaconProxyRefusedError('TProxy', 'TBeacon'),
     new NotTransparentProxyError('TProxy'),
-    new UpgradeVerificationFailedError('TProxy', 'TNew', 'TOld'),
+    new UpgradeVerificationFailedError('TProxy', 'TNew', 'TOld', 'ab'.repeat(32)),
     new EmptyInitializerRefusedError('uups', 'initializer-false'),
     new ProxyAdminAsOwnerError('TAdmin'),
     new OptionsInArgsPositionError('deployProxy', 'object', true),

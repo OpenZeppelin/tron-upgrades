@@ -389,6 +389,7 @@ export async function runUpgradeBeacon(
         beacon,
         implementationAddress,
         observed,
+        writeBack.transactionHash,
       );
     }
     return { writeBack, implementationAddress };

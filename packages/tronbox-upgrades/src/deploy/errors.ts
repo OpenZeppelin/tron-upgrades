@@ -12,6 +12,23 @@
  */
 
 import type { ConfirmationIndeterminate, ConfirmedReverted } from './types';
+import { canonicalizeAddress, toBase58 } from '../record';
+
+/**
+ * The message form of an address: base58, the encoding a user pastes into
+ * TronScan and back into a migration — every plugin entry point accepts it
+ * (review decision on #18). Structured fields keep the canonical `0x` form;
+ * only the printed text converts. Falls back to the input verbatim when it
+ * does not parse, because a refusal's constructor must never itself throw
+ * while naming what it refuses.
+ */
+export function printedAddress(address: string): string {
+  try {
+    return toBase58(canonicalizeAddress(address));
+  } catch {
+    return address;
+  }
+}
 
 /** The base every deployment refusal extends, so one `catch` can scope the family. */
 export abstract class DeploymentRefusedError extends Error {
@@ -46,10 +63,10 @@ export interface SpentDeployment {
  */
 function adoptClause(spent: SpentDeployment): string {
   return (
-    `The contract is at ${spent.address} (transaction ` +
+    `The contract is at ${printedAddress(spent.address)} (transaction ` +
     `${spent.transactionHash}). Nothing here removes it. Once the cause above ` +
-    `is resolved, record it with forceImport('${spent.address}') rather than ` +
-    `deploying a second one.`
+    `is resolved, record it with forceImport('${printedAddress(spent.address)}') ` +
+    `rather than deploying a second one.`
   );
 }
 
@@ -135,10 +152,10 @@ export class ConfirmationIndeterminateError extends DeploymentRefusedError {
           `transaction directly before proceeding.`) +
         (spent === undefined
           ? ''
-          : `\n\nIf it did land, the contract is at ${spent.address}: adopt it ` +
-            `with forceImport('${spent.address}') rather than deploying again. ` +
-            `The artifact's entry for it is left in place on purpose, for the ` +
-            `same reason — it may name a real deployment.`),
+          : `\n\nIf it did land, the contract is at ${printedAddress(spent.address)}: ` +
+            `adopt it with forceImport('${printedAddress(spent.address)}') rather ` +
+            `than deploying again. The artifact's entry for it is left in place ` +
+            `on purpose, for the same reason — it may name a real deployment.`),
     );
     this.name = 'ConfirmationIndeterminateError';
   }
@@ -146,8 +163,8 @@ export class ConfirmationIndeterminateError extends DeploymentRefusedError {
 
 /**
  * The identity the authority preflight inspected is not the identity that
- * signed. Both are named in canonical form, because the mismatch is
- * the diagnosis and the pair is the evidence.
+ * signed. Both are carried in canonical form and printed in base58, because
+ * the mismatch is the diagnosis and the pair is the evidence.
  */
 export class SenderMismatchError extends DeploymentRefusedError {
   readonly code = 'sender-mismatch';
@@ -164,8 +181,9 @@ export class SenderMismatchError extends DeploymentRefusedError {
     readonly spent?: SpentDeployment,
   ) {
     super(
-      `The upgrade-authority check ran against ${preflighted}, but the ` +
-        `transaction was signed by ${signed}. The check's answer is about a ` +
+      `The upgrade-authority check ran against ${printedAddress(preflighted)}, ` +
+        `but the transaction was signed by ${printedAddress(signed)}. The ` +
+        `check's answer is about a ` +
         `different account than the one that acted, so the operation stops ` +
         `here. Configure one sending account (\`from\`) so the two agree.` +
         (spent === undefined ? '' : `\n\n${adoptClause(spent)}`),

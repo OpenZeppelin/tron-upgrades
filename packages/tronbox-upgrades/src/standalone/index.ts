@@ -21,6 +21,7 @@ import {
   ConfirmationIndeterminateError,
   TransactionRevertedError,
 } from '../deploy';
+import { canonicalizeAddress } from '../record';
 import { transactionIdentity, operationNotes } from '../results/types';
 import type {
   ImplementationDeployment,
@@ -177,9 +178,12 @@ async function deployImplementationThroughQueue(
       }
       if (verdict.kind === 'indeterminate') {
         // The implementation may be live at `fresh.address`; the refusal names it
-        // so the user can check rather than redeploy blind.
+        // so the user can check rather than redeploy blind. Canonicalized like
+        // every other `spent` construction — the host returns its own spelling,
+        // and the structured field's contract is the canonical form (review
+        // comment on #18).
         throw new ConfirmationIndeterminateError(verdict, {
-          address: fresh.address,
+          address: canonicalizeAddress(fresh.address),
           transactionHash: fresh.transactionHash,
         });
       }

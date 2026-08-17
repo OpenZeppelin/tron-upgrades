@@ -5,6 +5,10 @@
  * disagree.
  */
 
+// The one import this module takes: the shared message-form rule — addresses
+// print in base58, structured fields stay canonical (review decision on #18).
+import { printedAddress } from '../deploy/errors';
+
 /** The base every proxy-lifecycle refusal extends. */
 export abstract class ProxyOperationRefusedError extends Error {
   abstract readonly code: string;
@@ -107,21 +111,32 @@ export class NotTransparentProxyError extends ProxyOperationRefusedError {
 }
 
 /**
- * The upgrade transaction confirmed and the implementation slot does not hold
- * the new address — success was NOT assumed from the receipt.
+ * The upgrade transaction confirmed and the target does not report the new
+ * implementation — success was NOT assumed from the receipt.
+ *
+ * `target` rather than `proxyAddress`, because `upgradeBeacon` throws this for
+ * a beacon: the verified fact is the same either way — "what you upgraded does
+ * not now answer the implementation this operation deployed". Named WITH the
+ * transaction hash: this refusal fires after a CONFIRMED transaction, in the
+ * case where the hash matters most — a confirmed upgrade call that did not
+ * produce the expected result smells like a no-op or broken upgradeTo, and the
+ * user's first move is looking that transaction up (review comment on #18).
  */
 export class UpgradeVerificationFailedError extends ProxyOperationRefusedError {
   readonly code = 'upgrade-verification-failed';
   constructor(
-    readonly proxyAddress: string,
+    readonly target: string,
     readonly expected: string,
     readonly observed: string,
+    readonly transactionHash: string,
   ) {
     super(
-      `The upgrade transaction for ${proxyAddress} confirmed, but the ` +
-        `implementation slot holds ${observed} where ${expected} was expected. ` +
-        `The proxy's live implementation is NOT the one this operation deployed ` +
-        `— investigate before running anything else against this proxy.`,
+      `The upgrade transaction ${transactionHash} for ` +
+        `${printedAddress(target)} confirmed, but the target now reports ` +
+        `implementation ${printedAddress(observed)} where ` +
+        `${printedAddress(expected)} was expected. The live implementation is ` +
+        `NOT the one this operation deployed — investigate that transaction ` +
+        `before running anything else against this target.`,
     );
     this.name = 'UpgradeVerificationFailedError';
   }
@@ -403,15 +418,16 @@ export class ProxyRecordWriteFailedError extends ProxyOperationRefusedError {
     override readonly cause: unknown,
   ) {
     super(
-      `A proxy was deployed and confirmed at ${proxyAddress} (transaction ` +
-        `${transactionHash}), and writing it into the deployment record failed. ` +
-        `The proxy is live; nothing about this refusal removes it. What is ` +
-        `missing is only this plugin's record of it — which upgrades validate ` +
-        `against, so leaving it unrecorded means the next upgradeProxy on this ` +
-        `address has no stored layout to check, and a re-run of deployProxy ` +
-        `deploys a second proxy beside this one.\n\nResolve the cause below, ` +
-        `then record the existing proxy with forceImport('${proxyAddress}'). Do ` +
-        `not re-run the migration first.\n\nCause: ` +
+      `A proxy was deployed and confirmed at ${printedAddress(proxyAddress)} ` +
+        `(transaction ${transactionHash}), and writing it into the deployment ` +
+        `record failed. The proxy is live; nothing about this refusal removes ` +
+        `it. What is missing is only this plugin's record of it — which ` +
+        `upgrades validate against, so leaving it unrecorded means the next ` +
+        `upgradeProxy on this address has no stored layout to check, and a ` +
+        `re-run of deployProxy deploys a second proxy beside this one.\n\n` +
+        `Resolve the cause below, then record the existing proxy with ` +
+        `forceImport('${printedAddress(proxyAddress)}'). Do not re-run the ` +
+        `migration first.\n\nCause: ` +
         `${cause instanceof Error ? cause.message : String(cause)}`,
     );
     this.name = 'ProxyRecordWriteFailedError';

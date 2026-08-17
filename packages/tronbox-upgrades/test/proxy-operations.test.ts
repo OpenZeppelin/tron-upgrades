@@ -1111,13 +1111,13 @@ describe('deployProxy — a reverted or indeterminate confirmation is never reco
     );
     expect(failure).toBeInstanceOf(ConfirmationIndeterminateError);
     const refusal = failure as ConfirmationIndeterminateError;
-    // The canonical form, as every sibling refusal prints it — see the
-    // post-spend describe below for why that rather than the result surface's.
+    // The structured field carries the canonical form; the MESSAGE prints
+    // base58 — see the post-spend describe below for the two-form rule.
     const expected = String(canonicalizeAddress(PROXY_ADDR));
     expect(refusal.spent?.address).toBe(expected);
     expect(refusal.spent?.transactionHash).toBe(TX_HASH);
-    expect(refusal.message).toContain(expected);
-    expect(refusal.message).toContain(`forceImport('${expected}')`);
+    expect(refusal.message).toContain(PROXY_ADDR);
+    expect(refusal.message).toContain(`forceImport('${PROXY_ADDR}')`);
   });
 
   it('a confirmed deploy keeps the write-back — the undo is not unconditional', async () => {
@@ -1266,12 +1266,12 @@ describe('deployProxy — every refusal after the spend names the proxy and the 
    * address as its argument, so withholding it means the message that stops the run
    * also hides the one value needed to finish it.
    */
-  // The canonical `0x` form, which is what every sibling refusal in the package
-  // prints (`UpgradeVerificationFailedError`, `NotTransparentProxyError`) — not the
-  // `41` form the result surface reports. `forceImport` accepts any of the three
-  // encodings, so this is a consistency choice, and the one that avoids a third
-  // convention in user-facing messages.
+  // Two forms with two jobs (review decision on #18): the STRUCTURED field
+  // carries the canonical `0x` form — the identity a `catch` compares — while
+  // the MESSAGE prints base58, the encoding a user pastes into TronScan and
+  // back into a migration, and one every plugin entry point accepts.
   const deployedProxy = () => String(canonicalizeAddress(PROXY_ADDR));
+  const printedProxy = PROXY_ADDR; // base58, the message form
 
   it('the sender mismatch names the proxy it was already paid for', async () => {
     // The comparison reads the signer OF a confirmed transaction, so it cannot
@@ -1292,7 +1292,7 @@ describe('deployProxy — every refusal after the spend names the proxy and the 
     // And now says what it withheld.
     expect(refusal.spent?.address).toBe(deployedProxy());
     expect(refusal.spent?.transactionHash).toBe(TX_HASH);
-    expect(refusal.message).toContain(`forceImport('${deployedProxy()}')`);
+    expect(refusal.message).toContain(`forceImport('${printedProxy}')`);
     expect(refusal.message).toContain('Nothing here removes it');
     // It fired before the record write, so the proxy is genuinely unrecorded.
     expect(fake.log).not.toContain('recordProxy');
@@ -1316,7 +1316,7 @@ describe('deployProxy — every refusal after the spend names the proxy and the 
     // still branch on it — RecordLockedError versus RecordUnreadableError.
     expect((refusal.cause as Error).message).toBe(RECORD_WRITE_REFUSED);
     expect(refusal.message).toContain(RECORD_WRITE_REFUSED);
-    expect(refusal.message).toContain(`forceImport('${deployedProxy()}')`);
+    expect(refusal.message).toContain(`forceImport('${printedProxy}')`);
     expect(refusal.message).toContain('The proxy is live');
     // The consequence, said rather than left for the user to discover.
     expect(refusal.message).toContain('deploys a second proxy beside this one');

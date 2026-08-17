@@ -197,6 +197,7 @@ export async function runUpgradeProxy(
         proxyAddress,
         implementationAddress,
         observed,
+        writeBack.transactionHash,
       );
     }
 

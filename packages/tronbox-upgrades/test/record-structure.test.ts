@@ -1594,14 +1594,17 @@ describe('`openRecord` is the only way in; the consumers that would test it do n
   it('the consumer census is exact: the deployment seam, importing through the face', () => {
     // Originally asserted as zero consumers, recorded as a measured state rather
     // than a satisfied rule. Consumers have appeared since — most recently
-    // `erc1967.ts`, which takes the mint and the base58 conversion, both
-    // through the face, to answer the public 1967 readers in TRON's own
-    // address form. A new consumer, or a route change, edits this list
-    // deliberately or fails here.
+    // `deploy/errors.ts` (the mint and the base58 conversion feeding
+    // `printedAddress`, the post-spend messages' address form — review
+    // decision on #18) and `standalone/index.ts` (canonicalizing the
+    // indeterminate refusal's `spent` like every sibling construction). A new
+    // consumer, or a route change, edits this list deliberately or fails here.
     expect(recordImportsFromOutside(allSources())).toEqual([
       `${path.join('admin', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('adopt', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('beacon', 'index.ts')} -> canonicalizeAddress`,
+      `${path.join('deploy', 'errors.ts')} -> canonicalizeAddress`,
+      `${path.join('deploy', 'errors.ts')} -> toBase58`,
       `${path.join('deploy', 'sender.ts')} -> canonicalizeAddress`,
       `${path.join('deploy', 'sender.ts')} -> CanonicalAddress`,
       `erc1967.ts -> canonicalizeAddress`,
@@ -1616,6 +1619,7 @@ describe('`openRecord` is the only way in; the consumers that would test it do n
       `${path.join('proxy', 'toolkit.ts')} -> ProxyRecordVerdict`,
       `${path.join('proxy', 'toolkit.ts')} -> RecordSession`,
       `${path.join('proxy', 'upgrade-proxy.ts')} -> canonicalizeAddress`,
+      `${path.join('standalone', 'index.ts')} -> canonicalizeAddress`,
     ]);
   });
 
