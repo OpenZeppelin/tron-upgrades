@@ -80,7 +80,7 @@ afterAll(() => {
 
 interface FakeSpec {
   readonly priorAddress?: string | null;
-  readonly verdictStatus?: 'authoritative' | 'no-code-at-address';
+  readonly verdictStatus?: 'authoritative' | 'no-code-at-address' | 'unrecorded';
   readonly noDeployer?: boolean;
   readonly wildcard?: boolean;
   readonly beacon?: string;
@@ -89,6 +89,14 @@ interface FakeSpec {
   readonly currentImplementation?: string;
   readonly observedAfterUpgrade?: string;
   readonly existingProxyRecord?: boolean;
+  /**
+   * Whether `session.getImplRecord` vouches for the prior address as a
+   * recorded implementation. Defaults to `false` (undefined) — every other
+   * test in this file gets the real `getImplRecord`'s "nothing recorded"
+   * answer; the "recorded implementation, not a stale proxy" test is the one
+   * that sets it `true`.
+   */
+  readonly implRecordKnown?: boolean;
   readonly constructorArgs?: readonly unknown[];
   /**
    * Whether `fetchOrDeployImplementation`'s own record reuse fetches the
@@ -232,12 +240,22 @@ function buildFake(spec: FakeSpec = {}): Fake {
   const verdicts =
     spec.priorAddress != null
       ? [
-          {
-            address: canonicalizeAddress(spec.priorAddress),
-            status: spec.verdictStatus ?? 'authoritative',
-            kindProvenance: 'recorded',
-            kind: 'transparent',
-          } as never,
+          spec.verdictStatus === 'unrecorded'
+            ? // Mirrors production: an `unrecorded` verdict has no stored
+              // record to have supplied a kind from, so the engine has none
+              // to report yet — `kindProvenance: 'inferred-by-engine'`, no
+              // `kind` field (`src/record/types.ts:175-183`).
+              ({
+                address: canonicalizeAddress(spec.priorAddress),
+                status: 'unrecorded',
+                kindProvenance: 'inferred-by-engine',
+              } as never)
+            : ({
+                address: canonicalizeAddress(spec.priorAddress),
+                status: spec.verdictStatus ?? 'authoritative',
+                kindProvenance: 'recorded',
+                kind: 'transparent',
+              } as never),
         ]
       : [];
 
@@ -273,7 +291,10 @@ function buildFake(spec: FakeSpec = {}): Fake {
         log.push('getProxyRecord');
         return spec.existingProxyRecord ? ({ kind: 'transparent' } as never) : undefined;
       },
-      getImplRecord: async () => undefined,
+      getImplRecord: async (address: string) =>
+        spec.implRecordKnown === true
+          ? ({ address: canonicalizeAddress(address), layout: { of: 'Box' } } as never)
+          : undefined,
       addProxyRecord: async () => undefined,
       recordCount: async () => 0,
       manifestFile: '/proj/.openzeppelin/m.json',
@@ -612,6 +633,42 @@ describe('deployProxy — the order is the contract', () => {
         fakeAbstraction({ priorAddress: PROXY_ADDR }),
         [42],
       ),
+    ).rejects.toBeInstanceOf(StaleProxyRecordError);
+    expect(fake.log).not.toContain('queue');
+  });
+
+  it('a prior address the record knows as an IMPLEMENTATION proceeds as a fresh deploy (review r3787284026)', async () => {
+    // migration 2: deployImplementation(Box) leaves the impl address in the
+    // artifact slot; migration 3: deployProxy(Box) must not read it as a
+    // stale proxy. The record vouches for it as an implementation, so the
+    // deploy proceeds and fetchOrDeployImplementation reuses it by version —
+    // only the proxy hostDeploys.
+    const fake = buildFake({
+      priorAddress: OWNER_BASE58,
+      verdictStatus: 'unrecorded',
+      implRecordKnown: true,
+      implementationReused: true,
+    });
+    const result = await runDeployProxy(
+      fake.context,
+      fakeAbstraction({ priorAddress: OWNER_BASE58 }),
+      [42],
+    );
+    expect(fake.log).toContain('queue');
+    expect(fake.log.filter(e => e.startsWith('hostDeploy:'))).toEqual([
+      'hostDeploy:TransparentUpgradeableProxy',
+    ]);
+    expect(result.address).toBe(toTronHex(canonicalizeAddress(PROXY_ADDR)));
+  });
+
+  it('a prior address that is neither a recorded proxy nor a recorded implementation still refuses', async () => {
+    const fake = buildFake({
+      priorAddress: PROXY_ADDR,
+      verdictStatus: 'unrecorded',
+      implRecordKnown: false,
+    });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({ priorAddress: PROXY_ADDR }), [42]),
     ).rejects.toBeInstanceOf(StaleProxyRecordError);
     expect(fake.log).not.toContain('queue');
   });

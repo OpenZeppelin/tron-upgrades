@@ -159,7 +159,24 @@ export async function runDeployProxy(
   const prior = toolkit.priorDeployedAddress(contract);
   const decision = decideDeployReplay(prior, toolkit.replayVerdicts());
   if (decision.kind === 'refuse') {
-    throw new StaleProxyRecordError(decision.address, decision.because);
+    // One narrow exception, and only for `unrecorded` (code at the address,
+    // no proxy record): the standalone operations write the IMPLEMENTATION
+    // address into this same per-network slot through `hostDeploy` and never
+    // correct it, so `deployImplementation(Box)` followed by
+    // `deployProxy(Box, …)` is an ordinary sequence, not a stale proxy. When
+    // the record vouches for the address as an implementation, proceed as a
+    // fresh deploy — `fetchOrDeployImplementation` reuses it under its
+    // version hash, and this operation's own write-back (step 9b) corrects
+    // the slot to the proxy. An address the record knows in NEITHER role
+    // keeps refusing, exactly as before: this exception never widens to
+    // "not a recorded proxy, so proceed".
+    const knownImplementation =
+      decision.because === 'unrecorded'
+        ? await toolkit.session.getImplRecord(decision.address)
+        : undefined;
+    if (knownImplementation === undefined) {
+      throw new StaleProxyRecordError(decision.address, decision.because);
+    }
   }
 
   // 6 — pre-queue refusals that need no chain.
