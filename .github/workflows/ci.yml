@@ -19,6 +19,23 @@ jobs:
           node-version: '22'
           cache: npm
 
+      # A rolling cache of the tron-solc manifest and compiler wasm. The
+      # hardhat-tron plugin already implements stale-on-network-failure: it
+      # falls back to ANY cached list.json when the upstream fetch fails, and
+      # only a runner with an empty cache turns a raw.githubusercontent.com
+      # outage or rate-limit into a red job (measured: HTTP 503/429 from
+      # tronprotocol/solc-bin failed this job on three branches at once).
+      # A per-run key over an OS-scoped restore-key keeps the newest copy
+      # warm; the 24h TTL in the plugin still refreshes it when upstream is
+      # healthy.
+      - name: Cache the tron-solc manifest and compiler
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/hardhat-nodejs/compilers-v2/wasm/tron-solc
+          key: tron-solc-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            tron-solc-${{ runner.os }}-
+
       - run: npm ci
 
       - run: npm run build --workspaces --if-present
@@ -50,6 +67,17 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+
+      # Same rolling tron-solc cache as the main test job, for the same
+      # reason: the example project compiles through hardhat-tron, and a cold
+      # runner cannot use the plugin's stale-cache fallback.
+      - name: Cache the tron-solc manifest and compiler
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/hardhat-nodejs/compilers-v2/wasm/tron-solc
+          key: tron-solc-${{ runner.os }}-example-${{ github.run_id }}
+          restore-keys: |
+            tron-solc-${{ runner.os }}-
 
       - run: npm ci
 
