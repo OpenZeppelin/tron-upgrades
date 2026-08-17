@@ -301,6 +301,32 @@ export class BeaconInitialOwnerRequiredError extends ProxyOperationRefusedError 
 }
 
 /**
+ * `deployProxy` (transparent) could not derive an owner for the proxy's
+ * admin: no `initialOwner` was given and the effective-sender resolution
+ * came back `'unconfigured'`. Refused HERE, before the queued step, because
+ * the alternative is measured and worse: the null rides in the MIDDLE of
+ * the constructor args, past the trailing-argument guard, so the operation
+ * deploys and pays for the implementation and THEN fails client-side in
+ * the host's ABI encoder with `invalid address … value=null` — a message
+ * about an address when the real problem is that no owner was named.
+ * `deployBeacon` refuses the identical state with its own class; this is
+ * the transparent twin.
+ */
+export class TransparentInitialOwnerRequiredError extends ProxyOperationRefusedError {
+  readonly code = 'transparent-initial-owner-required';
+  constructor() {
+    super(
+      `deployProxy could not determine an initial owner for the transparent ` +
+        `proxy's admin: no \`initialOwner\` option was given, and the ` +
+        `configured network names no sending account to fall back to. ` +
+        `Configure a sending account (\`from\`) in your network settings, ` +
+        `or pass \`initialOwner\` explicitly.`,
+    );
+    this.name = 'TransparentInitialOwnerRequiredError';
+  }
+}
+
+/**
  *`initialOwner` looks like a ProxyAdmin contract: the v5 transparent
  * proxy deploys its OWN admin owned by `initialOwner`, so handing it an
  * existing ProxyAdmin is almost always a v4-era habit that buries the real

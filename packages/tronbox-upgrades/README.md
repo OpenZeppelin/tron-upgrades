@@ -219,7 +219,8 @@ parameter is genuinely a struct, wrap it so it is not the final argument —
 pass it as an array member, or add a trailing dummy argument — or restructure
 the constructor. `deployBeacon` also refuses up front if it cannot derive an
 owner for the beacon (no `initialOwner` given and no sending account
-configured) — pass `initialOwner` or configure a `from` address.
+configured) — pass `initialOwner` or configure a `from` address. `deployProxy`
+refuses the same state for a transparent proxy's admin.
 
 ## Divergences from the Hardhat/Truffle plugins
 

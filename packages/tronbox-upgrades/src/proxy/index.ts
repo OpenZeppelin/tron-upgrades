@@ -21,6 +21,7 @@ export {
   ProxyArtifactMissingError,
   ProxyOperationRefusedError,
   StaleProxyRecordError,
+  TransparentInitialOwnerRequiredError,
   UnknownProxyGenerationError,
   UpgradeVerificationFailedError,
 } from './errors';

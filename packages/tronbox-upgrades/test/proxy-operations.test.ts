@@ -23,6 +23,7 @@ import {
   OptionsInArgsPositionError,
   ProxyAdminAsOwnerError,
   StaleProxyRecordError,
+  TransparentInitialOwnerRequiredError,
   UpgradeVerificationFailedError,
 } from '../src/proxy/errors';
 import { PROXY_CONTRACT_NAMES } from '../src/proxy/artifacts';
@@ -159,6 +160,8 @@ interface FakeSpec {
    * catch, not merely a call the fake's own log recorded.
    */
   readonly realSession?: RecordSession;
+  /** `resolveSender` answers `'unconfigured'` instead of a resolved address. */
+  readonly unconfiguredSender?: boolean;
   /**
    * Overrides merged over the `ResolvedForProxyOps` defaults below. The
    * defaults fix every field to its "caller said nothing" value, which is
@@ -369,7 +372,9 @@ function buildFake(spec: FakeSpec = {}): Fake {
 
     resolveSender: () => {
       log.push('resolveSender');
-      return { kind: 'resolved', address: canonicalizeAddress(IMPL_OWNER) };
+      return spec.unconfiguredSender
+        ? { kind: 'unconfigured' as const }
+        : { kind: 'resolved' as const, address: canonicalizeAddress(IMPL_OWNER) };
     },
     signerOf: async () => {
       log.push('signerOf');
@@ -1081,6 +1086,30 @@ describe('deployProxy — the ProxyAdmin-as-owner refusal and its escape', () =>
       'hostDeploy:Box',
       'hostDeploy:TransparentUpgradeableProxy',
     ]);
+    expect(result.address).toBe(toTronHex(canonicalizeAddress(PROXY_ADDR)));
+  });
+});
+
+describe('deployProxy — the transparent initialOwner refusal and its escape', () => {
+  it('transparent with no initialOwner and an unconfigured sender refuses by name, before the queue (review r3787162127)', async () => {
+    // The null owner used to sail into the queued step, deploy the
+    // implementation, and die in the host's ABI encoder — a wrong message
+    // after an irreversible spend. Same rule as deployBeacon's.
+    const fake = buildFake({ unconfiguredSender: true });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(TransparentInitialOwnerRequiredError);
+    expect(fake.log).not.toContain('queue');
+    expect(fake.log.some(e => e.startsWith('hostDeploy:'))).toBe(false);
+  });
+
+  it('an unconfigured sender WITH an explicit initialOwner deploys normally', async () => {
+    const fake = buildFake({
+      unconfiguredSender: true,
+      resolved: { initialOwner: OWNER_BASE58 },
+    });
+    const result = await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
+    expect(fake.log).toContain('hostDeploy:TransparentUpgradeableProxy');
     expect(result.address).toBe(toTronHex(canonicalizeAddress(PROXY_ADDR)));
   });
 });

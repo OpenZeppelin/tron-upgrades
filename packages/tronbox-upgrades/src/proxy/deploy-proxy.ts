@@ -31,6 +31,7 @@ import {
   InitialOwnerUnsupportedKindError,
   ProxyAdminAsOwnerError,
   StaleProxyRecordError,
+  TransparentInitialOwnerRequiredError,
 } from './errors';
 import { decideDeployReplay } from './replay';
 import {
@@ -220,8 +221,13 @@ export async function runDeployProxy(
         : sender.kind === 'resolved'
           ? canonicalizeAddress(sender.address)
           : null;
+    // Before the queue, where the value is computed: a null owner used to
+    // sail into the queued step and fail in the host's ABI encoder AFTER the
+    // implementation deploy — see the error class for the measurement.
+    if (initialOwner === null) {
+      throw new TransparentInitialOwnerRequiredError();
+    }
     if (
-      initialOwner !== null &&
       !resolved.unsafeSkipProxyAdminCheck &&
       (await toolkit.looksLikeProxyAdmin(initialOwner))
     ) {

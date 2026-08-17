@@ -828,9 +828,12 @@ export async function createOperationToolkit(request: {
             // argument is an encoded call/address string. That is a claim about
             // the last position only, which is all this guard can see: the
             // transparent proxy's `initialOwner` is a second plugin-built
-            // nullable, but it rides in the MIDDLE of the constructor args, so
-            // an unconfigured sender with no `initialOwner` sails past this
-            // guard and fails later, client-side, in the host's ABI encoder.
+            // nullable, and it still rides in the MIDDLE of the constructor
+            // args where this guard cannot see it — but it no longer reaches
+            // here as a null. An unconfigured sender with no `initialOwner`
+            // is refused pre-flight, before the queue, by `deployProxy` itself
+            // (`TransparentInitialOwnerRequiredError`), symmetric with the
+            // beacon clause above.
             assertNoCheatcodeCollision(args);
             const instance = (await deployable.new(...args)) as {
               address?: unknown;
