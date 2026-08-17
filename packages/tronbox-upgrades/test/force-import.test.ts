@@ -61,6 +61,8 @@ interface Spec {
   readonly layout?: unknown;
   /** Enables the installed engine and a real manifest behind the recording fake. */
   readonly engineChainId?: string;
+  /** Overrides the fake's `validateImplementation` version key (default 'vkey'). */
+  readonly versionKey?: string;
 }
 
 function abstraction(
@@ -105,9 +107,9 @@ async function manifestFor(chainId: string) {
   return new Manifest(Number.parseInt(chainId.slice(2), 16));
 }
 
-async function implementationRecord(chainId: string) {
+async function implementationRecord(chainId: string, key = 'vkey') {
   const data = await (await manifestFor(chainId)).read();
-  return data.impls['vkey'];
+  return data.impls[key];
 }
 
 async function writeEngineDeployment(
@@ -190,7 +192,7 @@ function buildFake(spec: Spec = {}) {
         name,
         input: {} as never,
         validations: {},
-        version: { linkedWithoutMetadata: 'vkey' },
+        version: { linkedWithoutMetadata: spec.versionKey ?? 'vkey' },
         layout: spec.layout ?? { of: name },
         encodedArgs: '0x',
       };
@@ -436,16 +438,26 @@ describe('adoption delegates implementation records to the engine', () => {
     );
   });
 
-  it('leaves the implementation entry byte-for-byte unchanged on replay', async () => {
+  it('replay leaves the record SEMANTICALLY unchanged: same primary address, same layout, no new addresses', async () => {
+    // Byte-identity was the old property, and it was a property of merge-off
+    // — the mode whose clash check breaks the double-import path (review
+    // r3787536670). Merge-on may rewrite the entry (e.g. materialize
+    // `allAddresses`); what an exact replay must never do is CHANGE what the
+    // record says: the primary address, the layout, and the set of known
+    // addresses.
     const chainId = '0x7f1703';
     const fake = buildFake({ engineChainId: chainId });
 
     await runForceImport(fake.context, ADDR, abstraction(CODE));
-    const manifestFile = (await manifestFor(chainId)).file;
-    const before = fs.readFileSync(manifestFile);
+    const before = await implementationRecord(chainId);
     await runForceImport(fake.context, ADDR, abstraction(CODE));
+    const after = await implementationRecord(chainId);
 
-    expect(fs.readFileSync(manifestFile)).toEqual(before);
+    expect(after.address).toBe(before.address);
+    expect(after.layout).toEqual(before.layout);
+    expect(new Set(after.allAddresses ?? [after.address])).toEqual(
+      new Set(before.allAddresses ?? [before.address]),
+    );
   });
 
   it('unions a second address for the same version into allAddresses', async () => {
@@ -485,5 +497,28 @@ describe('adoption delegates implementation records to the engine', () => {
       layout: { of: 'baseline' },
       allAddresses: [first, second],
     });
+  });
+
+  it('a second import of the same address under a different version key completes — no raw engine clash (review r3787536670)', async () => {
+    // First try omits the constructor args (wrong version key), second run
+    // corrects them: the user's ordinary error-fixing path. Constructor args
+    // feed getVersion's linkedWithoutMetadata, so the corrected run arrives
+    // under a SECOND key with the SAME address — exactly the shape merge-off's
+    // checkForAddressClash refused with the engine's raw clash error.
+    const chainId = '0x7f1706';
+    const first = buildFake({ engineChainId: chainId });
+    await runForceImport(first.context, ADDR, abstraction(CODE));
+
+    const corrected = buildFake({ engineChainId: chainId, versionKey: 'vkey-corrected' });
+    await runForceImport(corrected.context, ADDR, abstraction(CODE));
+
+    // Both entries exist, both name the same address AND the same layout —
+    // the harmless state Eric's comment describes (a lookup by either key
+    // answers the same thing), now representable instead of refused.
+    const first_ = await implementationRecord(chainId);
+    const second = await implementationRecord(chainId, 'vkey-corrected');
+    expect(first_.address).toBe(canonicalizeAddress(ADDR));
+    expect(second.address).toBe(canonicalizeAddress(ADDR));
+    expect(second.layout).toEqual(first_.layout);
   });
 });

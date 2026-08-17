@@ -169,22 +169,20 @@ export async function runForceImport(
     transactionHash: readWriteBackHash(contract) ?? undefined,
   });
 
-  // Probe with normal reuse first: an exact replay returns the recorded address
-  // without writing. If this version is recorded at another live address, make a
-  // second engine call in merge mode so its own address-union and layout-preserving
-  // semantics own the manifest update.
-  const recorded = await toolkit.fetchOrDeployImplementation(
+  // ONE engine call, merge on — Hardhat's own forceImport semantics. Merge
+  // off is the only mode that reaches the engine's checkForAddressClash, and
+  // on TRON (never a dev-EVM network to the engine's probe) that check turns
+  // the harmless re-import of one address under a second version key — e.g.
+  // a corrected `constructorArgs` — into a raw, remedy-less clash error.
+  // `redeployImplementation: 'always'` is safe HERE and only here because
+  // `simulatedDeploy` returns the address already on chain instead of
+  // deploying; on a real deploy path the same setting means "deploy fresh
+  // every time". Scoped to adoption on purpose — do not generalize.
+  await toolkit.fetchOrDeployImplementation(
     validated,
-    { ...resolved, redeployImplementation: 'onchange' },
+    { ...resolved, redeployImplementation: 'always' },
     simulatedDeploy,
   );
-  if (canonicalizeAddress(recorded) !== implementation) {
-    await toolkit.fetchOrDeployImplementation(
-      validated,
-      { ...resolved, redeployImplementation: 'always' },
-      simulatedDeploy,
-    );
-  }
 
   return Object.freeze({
     kind: found,

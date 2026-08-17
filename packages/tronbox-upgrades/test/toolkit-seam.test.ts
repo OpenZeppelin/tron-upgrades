@@ -1252,7 +1252,8 @@ describe("fetchOrDeployImplementation's engine DeployOpts — the REAL productio
  * `ImplementationNotPreviouslyDeployedError`'s own doc comment): neither
  * `redeployImplementation` nor `useDeployedImplementation` is in
  * `FORCE_IMPORT_ACCEPTED_OPTIONS`, and `runForceImport` overrides the field
- * unconditionally on the two calls it does make. This suite pins the FIRST
+ * unconditionally on the one engine call it does make (merge on, always —
+ * review r3787536670). This suite pins the FIRST
  * ground's public face — the PUBLIC `forceImport(...)`, not `runForceImport`
  * against an already-built context — because that is the one a caller
  * actually calls, and the one that has to refuse before adoption's own logic
