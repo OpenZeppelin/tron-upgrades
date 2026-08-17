@@ -543,6 +543,64 @@ describe('the same pair is genuinely inert for deployBeacon\'s own validation pa
 });
 
 /*
+ * The clobber regression pin (Eric's review, r3787161941): the round-1 fix
+ * removed `validateImplementation`'s `kind: 'transparent'` overwrite of the
+ * engine options, and nothing tested the case that fix exists for. The engine
+ * filters its uups-only `missing-public-upgradeto` judgement for transparent
+ * and beacon (`upgrades-core/dist/validate/overrides.js:86-88`), so under the
+ * old clobber `getErrors` answered EMPTY for a UUPS implementation that had
+ * dropped its upgrade mechanism — the deploy proceeded, and the eventual
+ * upgrade would have removed the proxy's upgradeability. The e2e migrations
+ * use UUPS-safe contracts, so only this pair dies if the clobber returns:
+ * REAL toolkit, REAL engine, a corpus contract with no upgradeTo/
+ * upgradeToAndCall, judged under each kind.
+ */
+describe('kind:uups over an implementation with no upgrade mechanism — the clobber regression pin (review r3787161941)', () => {
+  it('refuses naming the missing upgrade entry point with kind:uups, and accepts the same contract as transparent', async () => {
+    // `flat` is a plain storage-layout fixture with no UUPSUpgradeable parent,
+    // so it has no upgrade entry point — unsafe as uups, fine as transparent.
+    const project = realToolkitProject({ standaloneId: 'flat' });
+
+    const uups = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: { kind: 'uups' },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    // The wiring the refusal below rests on: the caller's kind genuinely
+    // reached the engine options — under the old clobber this read
+    // 'transparent' whatever the caller passed.
+    expect(uups.resolved.engineOptions['kind']).toBe('uups');
+
+    let caught: unknown;
+    try {
+      await uups.toolkit.validateImplementation(project.contractName, uups.resolved);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain('is not upgrade-safe');
+    // The engine's own diagnosis for THIS judgement — never a generic refusal
+    // this fixture happens to trigger some other way.
+    expect((caught as Error).message).toMatch(/upgradeTo/);
+
+    const transparent = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: { kind: 'transparent' },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    const validated = await transparent.toolkit.validateImplementation(
+      project.contractName,
+      transparent.resolved,
+    );
+    expect(validated.name).toBe(project.contractName);
+  });
+});
+
+/*
  * The degraded-output channel, made truthful (Eric's review, r3739084431):
  * `captureEngineWarnings` had zero production callers and the two silent
  * accepts of a non-`'unique'` artifact resolution never told anyone. Both
