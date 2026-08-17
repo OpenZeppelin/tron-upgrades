@@ -107,6 +107,9 @@ module.exports = async function (deployer) {
   const upgraded = await upgradeProxy(deployed.address, BoxV2, handles);
   console.log('upgradeProxy implementation:', upgraded.implementation);
   console.log('upgradeProxy tx:', upgraded.transaction.hash);
+
+  // The upgraded contract instance rides on the result:
+  console.log('value:', (await upgraded.contract.value()).toString());
 };
 ```
 
