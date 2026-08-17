@@ -273,10 +273,12 @@ a deployment record — "this is a different chain" versus "the record's
 fingerprint file is unusable" (`ChainInstanceChangedError`,
 `RecordFingerprintUnreadableError`).
 
-Everything else that can reach you — a node outage, a malformed reply, an
+Many of the remaining errors — a node outage, a malformed reply, an
 environment missing one handle, an error raised while a result is built —
-carries a stable **`code`** string, and branching on `code` is the documented
-path for those. The class surface is deliberately small: an exported class can
+carry a stable **`code`** string, and branching on `code` is the documented
+path for those. The rest, including the engine's own verdicts ("is not
+upgrade-safe", "not storage-compatible"), carry only their message. The class
+surface is deliberately small: an exported class can
 never be renamed once published, while adding one later is safe — and for a
 migration tool, most errors reach a human reading `tronbox migrate` output,
 where the message is the surface that matters. `ResultCapabilityUnavailableError`

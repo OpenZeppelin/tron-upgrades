@@ -170,10 +170,11 @@ export { RecordFingerprintUnreadableError } from './record/errors';
  * chain-state refusals a caller must branch on to recover
  * (`RecordFingerprintUnreadableError` above, `ChainInstanceChangedError`
  * below), and the two family bases that make a one-`instanceof` catch
- * possible. Everything else that can reach a caller — transport failures,
- * malformed environments beyond the family base, result-building refusals —
- * carries a stable `code` string, and branching on `code` is the documented
- * path for those. For a migration tool, most errors reach a human reading
+ * possible. Many of the remaining errors — transport failures, malformed
+ * environments beyond the family base, result-building refusals — carry a
+ * stable `code` string, and branching on `code` is the documented path for
+ * those; the rest, the engine's own verdicts among them, carry only their
+ * message. For a migration tool, most errors reach a human reading
  * `tronbox migrate` output rather than a `catch`; the message, not the class,
  * is the primary surface.
  */
