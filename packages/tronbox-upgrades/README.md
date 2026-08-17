@@ -235,6 +235,56 @@ every invocation: re-running a migration whose `call` targets a one-time
 reinitializer reverts on-chain (`TransactionRevertedError`), not as a quiet
 skip.
 
+**The types say exactly what each operation accepts.** An operation's options
+parameter is its own exported alias intersected with `MigrationHandles` (the
+five migration handles), so `deployProxy`'s final argument is
+`DeployProxyOptions & MigrationHandles`, and a key that operation does not
+accept is a **compile error at the call site** — where it previously
+type-checked and only failed at runtime, because the parameter was an open bag
+with a string index signature.
+
+That compile error is TypeScript's excess-property check, so it applies to an
+object literal written at the call, which is how a migration normally passes
+options. Hoist the options into a variable first and the extra key becomes
+structurally invisible to the compiler:
+
+```js
+const opts = { ...handles, totallyMadeUpKey: 1 };
+await deployProxy(Box, [42], opts);   // compiles; refused at runtime
+```
+
+Write `satisfies DeployProxyOptions & MigrationHandles` on that variable to get
+the check back. Either way the runtime refusal (`UnknownOptionError`) stands —
+it is what covers JavaScript callers and anything that reaches an operation
+untyped. Each alias's members are checked against its operation's own
+accepted-options list in both directions, and each signature against its own
+alias including member types (`test/public-option-surface.test.ts`), so a key
+added to one side and not the other is a build failure rather than a published
+lie.
+
+**The refusals you can cause — and fix — are exported classes**, so a `catch`
+can branch on `instanceof` instead of matching a message: each operation
+family's own refusals (a bad option value, a missing owner, an unsupported
+kind, and their siblings), the option family (`UpgradesOptionError` plus
+`UnknownOptionError`, `OptionValueError`, `OptionConflictError`), the
+environment family's base (`TronBoxEnvironmentError`),
+`ValidationInputRefusedError`, and the pair a caller distinguishes to recover
+a deployment record — "this is a different chain" versus "the record's
+fingerprint file is unusable" (`ChainInstanceChangedError`,
+`RecordFingerprintUnreadableError`).
+
+Many of the remaining errors — a node outage, a malformed reply, an
+environment missing one handle, an error raised while a result is built —
+carry a stable **`code`** string, and branching on `code` is the documented
+path for those. The rest, including the engine's own verdicts ("is not
+upgrade-safe", "not storage-compatible"), carry only their message. The class
+surface is deliberately small: an exported class can
+never be renamed once published, while adding one later is safe — and for a
+migration tool, most errors reach a human reading `tronbox migrate` output,
+where the message is the surface that matters. `ResultCapabilityUnavailableError`
+(raised from a returned result's own accessor, on a member this plugin cannot
+support) stays unexported under the same rule and carries its `code`.
+
 **`constructorArgs` cannot end in a plain object or `null`.** TronBox's own
 contract layer treats a trailing non-array object — and `null`, since
 `typeof null` is also `"object"` — as its own energy-parameter slot, never as

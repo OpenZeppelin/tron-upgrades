@@ -907,6 +907,27 @@ describe('applied to the real tree', () => {
     // 1967 reader errors, `ChainImplementationNotFoundError` and
     // `ChainBeaconNotFoundError` — real classes, for the same reason
     // `./record/errors` is: a consumer needs them to write a `catch`).
+    //
+    // Re-pinned again when the published surface was made to match the
+    // runtime: `./options/errors` (the option-refusal family a caller catches
+    // — a leaf that imports NOTHING, which is why the family is reachable
+    // from here while `./options` itself, whose face re-exports the
+    // engine-loading resolver, still is not), `./validation-input/errors`
+    // (same shape: a leaf whose only imports are `import type`),
+    // `./environment` (the environment refusals, through the seam's FACE
+    // because `test/performance-and-reuse.test.ts` forbids anything outside
+    // the seam reaching a seam internal — and the face was already in the
+    // runtime closure through `./erc1967`), and a third `./proxy` specifier,
+    // which is the erased `export type { MigrationHandles }`.
+    //
+    // Re-pinned again when the error surface was CUT to the review's principle
+    // (r3788402299: exporting is the commitment): the second `./record/errors`
+    // edge (the location/address pair), `./results/limitations`
+    // (`UnavailableMemberAbsentError`) and the VALUE edge to `./results/types`
+    // (`TransactionHashUnavailableError`) are gone with their exports — the
+    // one `./results/types` left is the erased type edge. The classes those
+    // edges carried still exist and still carry their `code`s; they are no
+    // longer part of the published surface.
     expect(entry?.moduleSpecifiers.map(edge => edge.specifier).sort()).toEqual([
       './admin',
       './admin/errors',
@@ -915,14 +936,18 @@ describe('applied to the real tree', () => {
       './beacon',
       './chain',
       './deploy',
+      './environment',
       './erc1967',
+      './options/errors',
       './options/types',
       './output/silence',
+      './proxy',
       './proxy',
       './proxy',
       './record/errors',
       './results/types',
       './standalone',
+      './validation-input/errors',
     ]);
     const closure = runtimeStaticClosure(
       specifierIndex(allSources()),
@@ -1398,7 +1423,7 @@ describe('the face is `openRecord` plus four named values, and everything else i
     );
   });
 
-  it('the report type is internal in this version: the entry module re-exports nothing from the record layer\'s operations, and exactly one thing from its errors', () => {
+  it("the report type is internal in this version: the entry module re-exports nothing from the record layer's operations, and only error classes from its errors", () => {
     // "Internal in v1" is a statement about the package's public API, not about this
     // directory's own face — the report type is on the internal face, because the
     // preflight returns it. Re-pinned when the entry module gained its type-only
@@ -1414,9 +1439,16 @@ describe('the face is `openRecord` plus four named values, and everything else i
     // directly, so a caller has to be able to catch it, and `./record`'s own face
     // (asserted above) deliberately exports it as a type only — a consumer is meant
     // to distinguish record-layer errors by `code`, not by importing constructors.
-    // This one class is the sanctioned exception, named explicitly below rather
-    // than matched by a prefix, so a second `./record/*` edge — or a route to any
-    // of the five operational values — still fails here by name.
+    // Briefly widened to three classes when the surface was "completed", then
+    // CUT BACK to this one on the review's principle (r3788402299: exporting
+    // is the commitment; the published classes are the refusals a caller can
+    // cause and fix, everything else branches on `code`). The route rule is
+    // unchanged and is what this test actually guards:
+    // `./record/errors` is the only record-layer edge the entry may carry, and
+    // the names it re-exports are error classes only — never one of the face's
+    // five operational values. The exported names are listed explicitly rather
+    // than matched by a prefix, so a fourth one has to be added here on
+    // purpose.
     const SANCTIONED_RECORD_EDGE = './record/errors';
     for (const edge of entry.moduleSpecifiers) {
       if (edge.specifier === SANCTIONED_RECORD_EDGE) {
@@ -1436,7 +1468,8 @@ describe('the face is `openRecord` plus four named values, and everything else i
     expect(
       faceExports(entry)
         .filter(export_ => export_.from === SANCTIONED_RECORD_EDGE)
-        .map(export_ => export_.name),
+        .map(export_ => export_.name)
+        .sort(),
     ).toEqual(['RecordFingerprintUnreadableError']);
     const exportedNames = new Set(faceExports(entry).map(entry_ => entry_.name));
     for (const recordValue of FACE_VALUES) {

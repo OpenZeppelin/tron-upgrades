@@ -7,6 +7,7 @@
  */
 
 import type { ContractAbstraction } from '../environment';
+import type { TransferProxyAdminOwnershipOptions } from '../options/types';
 import { canonicalizeAddress } from '../record';
 import {
   ConfirmationIndeterminateError,
@@ -20,18 +21,18 @@ import {
   handlesFrom,
   HANDLE_OPTION_KEYS,
   type OperationContext,
-  type RawOperationOptions,
+  type MigrationHandles,
 } from '../proxy/toolkit';
 import {
   AuthorityAlreadyTransferredError,
   AuthorityVerificationFailedError,
 } from './errors';
 
-export const TRANSFER_OWNERSHIP_ACCEPTED_OPTIONS: readonly string[] = [
+export const TRANSFER_OWNERSHIP_ACCEPTED_OPTIONS = [
   ...HANDLE_OPTION_KEYS,
   'timeout',
   'pollingInterval',
-];
+] as const;
 
 /** The pipeline over an already-built toolkit. Exported for the tests. */
 export async function runTransferProxyAdminOwnership(
@@ -127,7 +128,7 @@ export async function runTransferProxyAdminOwnership(
 export async function transferProxyAdminOwnership(
   proxy: string,
   newOwner: string,
-  options: RawOperationOptions = {},
+  options: TransferProxyAdminOwnershipOptions & MigrationHandles = {},
 ): Promise<AuthorityTransfer> {
   const context = await createOperationToolkit({
     handles: handlesFrom(options),

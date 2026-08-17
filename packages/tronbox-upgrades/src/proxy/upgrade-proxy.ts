@@ -9,6 +9,7 @@
 
 import { Interface } from 'ethers';
 import type { ContractAbstraction } from '../environment';
+import type { UpgradeProxyOptions } from '../options/types';
 import { canonicalizeAddress } from '../record';
 import {
   ConfirmationIndeterminateError,
@@ -32,10 +33,10 @@ import {
   handlesFrom,
   HANDLE_OPTION_KEYS,
   type OperationContext,
-  type RawOperationOptions,
+  type MigrationHandles,
 } from './toolkit';
 
-export const UPGRADE_PROXY_ACCEPTED_OPTIONS: readonly string[] = [
+export const UPGRADE_PROXY_ACCEPTED_OPTIONS = [
   ...HANDLE_OPTION_KEYS,
   'kind',
   'call',
@@ -49,7 +50,7 @@ export const UPGRADE_PROXY_ACCEPTED_OPTIONS: readonly string[] = [
   'useDeployedImplementation',
   'timeout',
   'pollingInterval',
-];
+] as const;
 
 function nameOf(contract: ContractAbstraction): string {
   const name = (contract as { contractName?: unknown }).contractName;
@@ -228,7 +229,7 @@ export async function runUpgradeProxy(
 export async function upgradeProxy(
   proxy: string,
   contract: ContractAbstraction,
-  options: RawOperationOptions = {},
+  options: UpgradeProxyOptions & MigrationHandles = {},
 ): Promise<UpgradedProxy> {
   const context = await createOperationToolkit({
     handles: handlesFrom(options),

@@ -12,8 +12,10 @@
  *    the three dynamic imports the closure rule requires (`../options/resolve`
  *    and `../validation-input` each hold a static engine value-import; the
  *    engine itself is the third) — and it does them *after*
- *    `configureRecordLocation` has run inside `openRecord`, which is the
- *    whole point of deferring.
+ *    `configureRecordLocation` has run: this factory calls it directly, so it
+ *    runs in both modes, and `openRecord` calls it again for the
+ *    state-changing one. Deferring the loads until after it is the whole
+ *    point.
  *
  * Everything else the operations touch is statically engine-free and imported
  * through its face: the environment seam, the chain seam, the record face, the
@@ -244,15 +246,31 @@ export interface OperationContext {
   readonly resolved: ResolvedForProxyOps;
 }
 
-/** Options every operation accepts at minimum; the per-operation lists extend it. */
-export interface RawOperationOptions {
-  readonly deployer?: unknown;
-  readonly artifacts?: unknown;
-  readonly tronWrap?: unknown;
-  readonly tronWeb?: unknown;
-  readonly waitForTransactionReceipt?: unknown;
-  readonly [key: string]: unknown;
-}
+/**
+ * The migration handles as an options member — the shared half of every
+ * public operation's parameter, which is its own option type intersected with
+ * this one.
+ *
+ * Declared over `environment/types.ts:RawMigrationHandles` rather than as a
+ * second declaration of the same five keys, for the reason
+ * `erc1967.ts:Erc1967ReadOptions` is one too: the sandbox shape is described in
+ * exactly one place, and the public surface names it in the vocabulary of the
+ * surface it belongs to.
+ *
+ * An alias and not an empty `extends`, which was tried and reverted: an
+ * exported interface is open to declaration merging, so a consumer could
+ * augment this module and add a REQUIRED member to every operation's option
+ * parameter at once. The cost of the alias is cosmetic and worth naming: an
+ * alias is erased in compiler diagnostics, so a call-site error prints
+ * `RawMigrationHandles`, a name the package root does not export. The same
+ * trade already exists one module over, on `erc1967.ts:Erc1967ReadOptions`.
+ *
+ * It replaced an open bag (`RawOperationOptions`, five known keys plus
+ * `[key: string]: unknown`), whose index signature is why
+ * `deployProxy(Box, [42], { totallyMadeUpKey: 1 })` used to type-check while
+ * the runtime refused it by name.
+ */
+export type MigrationHandles = RawMigrationHandles;
 
 /**
  * The migration-scope handles, lifted off the options object. TronBox's
@@ -264,8 +282,12 @@ export interface RawOperationOptions {
  *
  *   const handles = { deployer, artifacts, tronWrap, waitForTransactionReceipt };
  *   await deployProxy(Box, [42], handles);
+ *
+ * The parameter is the handles type itself, not an index-signature bag: every
+ * public operation's option type intersects `RawMigrationHandles`, so the five
+ * keys are all this function is entitled to read and the only ones it can.
  */
-export function handlesFrom(options: RawOperationOptions): RawMigrationHandles {
+export function handlesFrom(options: RawMigrationHandles): RawMigrationHandles {
   return {
     deployer: options.deployer,
     artifacts: options.artifacts,
@@ -275,14 +297,22 @@ export function handlesFrom(options: RawOperationOptions): RawMigrationHandles {
   };
 }
 
-/** The five handle keys, accepted by every operation's option list. */
-export const HANDLE_OPTION_KEYS: readonly string[] = [
+/**
+ * The five handle keys, accepted by every operation's option list.
+ *
+ * `as const` rather than `readonly string[]`, here and on every per-operation
+ * list built from it: the literal element type is what
+ * `test/public-option-surface.test.ts` compares against each operation's
+ * published option type, in both directions. Widened to `string`, that test
+ * would compile no matter what either side said.
+ */
+export const HANDLE_OPTION_KEYS = [
   'deployer',
   'artifacts',
   'tronWrap',
   'tronWeb',
   'waitForTransactionReceipt',
-];
+] as const;
 
 /**
  * Refuses the dropped positional-overloads shape: `args` must be an array.
@@ -410,13 +440,27 @@ type OperationEnvironment = Pick<
 };
 
 /**
- * The production toolkit. The engine and the option resolver load *inside*
- * this call — after `openRecord` has configured the record location — which is
- * the deferred-import pattern the entry-closure guard enforces.
+ * The production toolkit. The engine and the option resolver load *inside* this
+ * call — after `configureRecordLocation` has run, which happens in BOTH modes
+ * (a validate-only operation opens no record but still configures the location,
+ * because the engine reads it once at module scope and a wrong value would
+ * poison every later call in the process) — which is the deferred-import
+ * pattern the entry-closure guard enforces.
  */
 export async function createOperationToolkit(request: {
   readonly handles: RawMigrationHandles;
-  readonly rawOptions: RawOperationOptions;
+  /**
+   * The caller's options object, exactly as it arrived.
+   *
+   * Typed `object`, deliberately: each public operation declares a **closed**
+   * per-operation option type, and a type without an index signature is not
+   * assignable to one that has it — which is the whole point of the closed
+   * types, so the seam widens instead of forcing every entry point back to a
+   * bag. Nothing on this side reads a member off it; it goes to the resolver
+   * below, which validates every key and every value at runtime and is the
+   * only reader.
+   */
+  readonly rawOptions: object;
   readonly acceptedOptions: readonly string[];
   readonly processEnv?: Readonly<Record<string, string | undefined>>;
   /**
@@ -486,7 +530,7 @@ export async function createOperationToolkit(request: {
 
   const resolvedOptions = optionsModule.resolveUpgradeOptions(
     // The one assertion on this seam, documented here: `rawOptions` is the
-    // migration's own object, typed as an index-signature bag because a
+    // migration's own object, typed `object` at this boundary because a
     // JavaScript caller can pass any key with any value, so it cannot satisfy
     // the resolver's typed parameter structurally. The resolver validates
     // every accepted key and value at runtime before anything reads them —

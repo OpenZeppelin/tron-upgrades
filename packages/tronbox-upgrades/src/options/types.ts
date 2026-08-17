@@ -145,42 +145,113 @@ export interface CallOption {
   call?: { fn: string; args?: unknown[] } | string;
 }
 
-export type DeployProxyOptions = StandaloneOptions & InitializerOption;
+/**
+ * The owner a fresh deploy installs: the transparent proxy's `ProxyAdmin`
+ * owner (`deployProxy`) or the beacon's own owner (`deployBeacon`). A plain
+ * string in either form the chain accepts — never canonicalized on this
+ * surface, which stays chain-agnostic; see
+ * {@link ResolvedUpgradeOptions.initialOwner}. `resolve.ts:readInitialOwner`
+ * refuses a non-string or an empty one by name.
+ *
+ * No upgrade-shaped operation carries it: an upgrade never re-owns anything.
+ */
+export interface InitialOwnerOption {
+  initialOwner?: string;
+}
+
+/**
+ * `deployProxy`'s single opt-out: skips the ProxyAdmin-as-owner probe run
+ * before anything is spent. Defaults to `false`, the safe posture. Declared
+ * apart from the `unsafeAllow*` family above because that family is
+ * upstream's validation surface and this one is this plugin's own — it gates
+ * a TRON-side ownership probe, not an engine validation.
+ */
+export interface ProxyAdminCheckOption {
+  unsafeSkipProxyAdminCheck?: boolean;
+}
+
+/*
+ * The per-operation aliases below obey one rule, and it is checked rather
+ * than asserted: **each alias's key set equals its operation's runtime
+ * accepted-options list, minus the five migration handles**, in both
+ * directions. `test/public-option-surface.test.ts` states that equality as a
+ * compile-time obligation per operation, so a key added to one side and not
+ * the other is a build failure rather than a published lie.
+ *
+ * That rule is what settles the compositions here. Where an alias and its
+ * runtime list once disagreed, the list won: these types are the published
+ * description of what the operations accept, and the operations already
+ * refuse an unaccepted key by name (`UnknownOptionError`). Widening a type to
+ * match a list that accepts the key changes nothing at runtime; narrowing the
+ * list to match the type would refuse a key that works today. Two aliases
+ * therefore carry the upgrade-shaped `unsafeAllowRenames`/
+ * `unsafeSkipStorageCheck` pair even though the operation compares no storage
+ * (`deployProxy`, `deployImplementation`) — accepted-and-inert, the same
+ * disposition the README's divergences table records for that group, not a
+ * claim that the pair does something there.
+ */
+
+/**
+ * **A recorded divergence from the parity target**, whose `DeployProxyOptions`
+ * is `StandaloneOptions & Initializer`. Four members are added — `initialOwner`,
+ * `unsafeSkipProxyAdminCheck`, `unsafeAllowRenames` and
+ * `unsafeSkipStorageCheck` — because `DEPLOY_PROXY_ACCEPTED_OPTIONS` accepts
+ * every one of them:
+ *
+ * - `initialOwner` and `unsafeSkipProxyAdminCheck` — this plugin's own
+ *   transparent-proxy ownership surface, which the parity target has no
+ *   equivalent of.
+ * - the `ValidationOptions` pair (hence `UpgradeOptions` as the base rather
+ *   than `StandaloneOptions`) — accepted, and inert on a path that deploys a
+ *   brand-new proxy and compares no storage. See the block comment above for
+ *   why the type follows the list here rather than the other way round.
+ */
+export type DeployProxyOptions = UpgradeOptions &
+  InitializerOption &
+  InitialOwnerOption &
+  ProxyAdminCheckOption;
 export type UpgradeProxyOptions = UpgradeOptions & CallOption;
 export type PrepareUpgradeOptions = UpgradeOptions;
-export type DeployImplementationOptions = StandaloneOptions;
+/**
+ * Same base as {@link PrepareUpgradeOptions}, and for the same reason the
+ * runtime gives both operations one list (`DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS`): the
+ * upgrade-shaped validation pair is accepted here too, inert on a standalone
+ * implementation deploy that compares nothing.
+ */
+export type DeployImplementationOptions = UpgradeOptions;
 /**
  * **A recorded divergence from the parity target, the same pattern as
  * {@link DeployBeaconProxyOptions}'s own `kind` omission below:** a beacon
  * has exactly one kind, so `deployBeacon`'s accepted-options list
  * (`beacon/index.ts:DEPLOY_BEACON_ACCEPTED_OPTIONS`) refuses `kind` outright. Built
- * as `Omit<StandaloneOptions, 'kind'>` rather than a fresh composition —
- * `StandaloneOptions` itself keeps `kind` (`DeployProxyOptions` and
- * `DeployImplementationOptions` both need it, and both genuinely accept it
- * at runtime), so the member is dropped locally, on this alias only, rather
- * than widening the omission to every type built from the shared base.
+ * as `Omit<UpgradeOptions, 'kind'>` rather than a fresh composition —
+ * `UpgradeOptions` itself keeps `kind` (`DeployProxyOptions` and
+ * `DeployImplementationOptions` both build on it, and both genuinely accept
+ * the option at runtime), so the member is dropped locally, on this alias
+ * only, rather than widening the omission to every type built from the shared
+ * base.
  *
- * Beyond `kind`, this alias needed no further narrowing when
- * `beacon/index.ts`'s accepted-options list was split per operation:
- * `StandaloneOptions` never carried `initializer` (that is
- * `InitializerOption`'s, added only to `DeployProxyOptions`) or
- * `unsafeAllowRenames`/`unsafeSkipStorageCheck` (those are
- * `ValidationOptions`-only, i.e. upgrade-shaped, and `deployBeacon` — a
- * fresh deploy with no prior layout — never compares storage). The type was
- * already exactly this narrow; only the runtime accepted-options list
- * (formerly the shared `BEACON_ACCEPTED_OPTIONS`) had to catch up.
+ * Beyond `kind`, the alias mirrors `DEPLOY_BEACON_ACCEPTED_OPTIONS` member for
+ * member. It carries `initialOwner` — a beacon's owner IS set here, unlike a
+ * beacon proxy's — and it carries the upgrade-shaped
+ * `unsafeAllowRenames`/`unsafeSkipStorageCheck` pair, which that list accepts
+ * as engine-inert on a fresh deploy that has no prior layout to compare. It
+ * does not carry `initializer`: a beacon takes no init call, and that member
+ * belongs to `deployBeaconProxy` and `deployProxy`.
  */
-export type DeployBeaconOptions = Omit<StandaloneOptions, 'kind'>;
+export type DeployBeaconOptions = Omit<UpgradeOptions, 'kind'> & InitialOwnerOption;
 /**
  * Same divergence, same reason, same pattern: see {@link DeployBeaconOptions}.
  *
- * Also already exactly narrow enough beyond `kind`: `UpgradeOptions` never
- * carried `initializer` (an upgrade sends no proxy init call) or
- * `initialOwner` (the beacon's owner is set once, at `deployBeacon`; an
- * upgrade never touches it) — unlike `deployBeacon`'s alias above,
- * `unsafeAllowRenames`/`unsafeSkipStorageCheck` DO belong here, because
- * `upgradeBeacon` compares storage against the beacon's current
- * implementation and both options reach that comparison.
+ * Narrower than that sibling by exactly one member, matching
+ * `UPGRADE_BEACON_ACCEPTED_OPTIONS`: no `initialOwner`, because the beacon's
+ * owner is set once, at `deployBeacon`, and an upgrade never touches it. No
+ * `initializer` either, for the same reason no upgrade has one. The
+ * `unsafeAllowRenames`/`unsafeSkipStorageCheck` pair both aliases carry is
+ * the one place they differ in *effect* rather than in shape: here it is
+ * genuinely consumed — `upgradeBeacon` compares the new implementation
+ * against the beacon's current one — where on `deployBeacon` it is accepted
+ * and inert.
  */
 export type UpgradeBeaconOptions = Omit<UpgradeOptions, 'kind'>;
 /**
@@ -190,12 +261,14 @@ export type UpgradeBeaconOptions = Omit<UpgradeOptions, 'kind'>;
  *    is an upstream inconsistency — the Hardhat plugin's equivalent does
  *    include it — harmless in Truffle where the fields are inert, but on
  *    TRON it would leave one operation with no confirmation control, which is
- *    itself a second recorded divergence. **Type-shape only, today**:
- *    `timeout`/`pollingInterval` resolve with defaults on every operation,
- *    this one included, but nothing yet threads them to the confirmation
- *    wait (`proxy/toolkit.ts`'s `confirm` always uses the host's own fixed
- *    bound) — a separate, pre-existing gap this composition choice does not
- *    itself close.
+ *    itself a second recorded divergence. **Type-shape only for THIS
+ *    operation**: `timeout`/`pollingInterval` resolve with defaults
+ *    everywhere, and the six operations that deploy or fetch an
+ *    implementation now thread the pair into the engine's
+ *    mined-transaction wait — but `deployBeaconProxy` deploys no
+ *    implementation, so its pair reaches no wait at all. No operation's own
+ *    `confirm` step reads it either (`proxy/toolkit.ts` uses the host's fixed
+ *    bound); the README's divergences table carries both halves.
  * 2. It omits `ProxyKindOption`, where the parity-shaped type would include
  *    it. A beacon proxy has exactly one kind, so `deployBeaconProxy`'s own
  *    accepted-options list (`beacon/index.ts:DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS`)
@@ -216,9 +289,41 @@ export type UpgradeBeaconOptions = Omit<UpgradeOptions, 'kind'>;
  * was the one still accepting all nine of those at runtime.
  */
 export type DeployBeaconProxyOptions = InitializerOption & DeployOpts;
-export type ForceImportOptions = ProxyKindOption;
-export type ValidateImplementationOptions = StandaloneValidationOptions;
-export type ValidateUpgradeOptions = ValidationOptions;
+/**
+ * `forceImport` adopts an already-deployed proxy: it sends nothing, so it
+ * takes neither `DeployOpts` nor a redeploy policy — but it does build the
+ * implementation's validation input from the reference contract, which is why
+ * it accepts `constructorArgs` and the full `ValidationOptions` surface, and
+ * why this alias is more than the bare `ProxyKindOption` it used to be. The
+ * members here are exactly `FORCE_IMPORT_ACCEPTED_OPTIONS` minus the handles.
+ */
+export type ForceImportOptions = ValidationOptions &
+  Pick<StandaloneOptions, 'constructorArgs'>;
+/**
+ * The two validation entry points share one runtime list (`VALIDATE_ACCEPTED_OPTIONS`)
+ * because they build the same validation input, so they share one shape here
+ * too — `validateImplementation`'s alias is no longer the standalone-only
+ * subset, which advertised three fewer members than the operation accepts.
+ * They stay two names because they are two operations and their surfaces are
+ * free to diverge later.
+ */
+export type ValidateImplementationOptions = ValidationOptions &
+  Pick<StandaloneOptions, 'constructorArgs'>;
+/** See {@link ValidateImplementationOptions}: same list, same shape. */
+export type ValidateUpgradeOptions = ValidationOptions &
+  Pick<StandaloneOptions, 'constructorArgs'>;
+/**
+ * The confirmation pair and nothing else, matching
+ * `TRANSFER_OWNERSHIP_ACCEPTED_OPTIONS`: the operation sends one ownership
+ * transfer, validates nothing, deploys nothing, and reads no build record — no
+ * artifact, no layout, no compiler input. It does open the DEPLOYMENT record,
+ * as every state-changing operation does; that is the chain-instance check,
+ * not a build-record read.
+ *
+ * It had no exported alias at all until this type existed, which left one
+ * operation of the eleven undescribed on the published surface.
+ */
+export type TransferProxyAdminOwnershipOptions = DeployOpts;
 
 /**
  * Options after resolution.

@@ -10,6 +10,7 @@ export { planUpgradeDispatch, type DispatchProbe, type UpgradePlan, type Upgrade
 export { PROXY_CONTRACT_NAMES, requireProxyArtifact } from './artifacts';
 export { decideDeployReplay, isAlreadyCurrent, type DeployReplayDecision } from './replay';
 export {
+  BeaconInitialOwnerRequiredError,
   BeaconProxyRefusedError,
   EmptyInitializerRefusedError,
   ImplementationNotPreviouslyDeployedError,
@@ -28,7 +29,7 @@ export {
 export type {
   OperationContext,
   OperationToolkit,
-  RawOperationOptions,
+  MigrationHandles,
   ResolvedForProxyOps,
   ValidatedImplementation,
 } from './toolkit';
