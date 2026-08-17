@@ -939,6 +939,12 @@ describe('applied to the real tree', () => {
     // one `./results/types` left is the erased type edge. The classes those
     // edges carried still exist and still carry their `code`s; they are no
     // longer part of the published surface.
+    //
+    // Re-pinned once more on this branch: a SECOND `./record/errors` edge
+    // returns, carrying `RecordUnreadableError` and `RecordLockedError` — the
+    // two record refusals this stack adds that survive the surface rule,
+    // because a caller acts on both (fix or replace the file; wait out or
+    // find the other run).
     expect(entry?.moduleSpecifiers.map(edge => edge.specifier).sort()).toEqual([
       './admin',
       './admin/errors',
@@ -955,6 +961,7 @@ describe('applied to the real tree', () => {
       './proxy',
       './proxy',
       './proxy',
+      './record/errors',
       './record/errors',
       './results/types',
       './standalone',
