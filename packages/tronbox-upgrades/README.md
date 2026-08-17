@@ -262,38 +262,26 @@ alias including member types (`test/public-option-surface.test.ts`), so a key
 added to one side and not the other is a build failure rather than a published
 lie.
 
-**Every refusal an operation throws at you is an exported class**, so a `catch`
+**The refusals you can cause — and fix — are exported classes**, so a `catch`
 can branch on `instanceof` instead of matching a message: each operation
-family's own refusals, the option family (`UpgradesOptionError` plus
-`UnknownOptionError`, `OptionValueError`, `OptionConflictError`,
-`OptionUnsupportedOnTronError`), the environment family
-(`TronBoxEnvironmentError` plus the absent/incomplete/inconsistent three),
-`ValidationInputRefusedError`, `ArtifactNameAmbiguousError`, the record pair
-that distinguishes "a different chain" from "an unusable record file"
-(`ChainInstanceChangedError`, `RecordFingerprintUnreadableError`) plus
-`RecordLocationUnusableError` and `AddressNotCanonicalizableError`, and the
-chain layer's six (`ChainTransportError`, `ChainRpcError`,
-`ChainResultShapeError`, `ChainEndpointRefusedError`, `ChainSlotMalformedError`,
-`ChainAddressUnusableError`) — the ones a node outage or a malformed reply
-reaches — and the two raised while an operation builds its result
-(`TransactionHashUnavailableError`, `UnavailableMemberAbsentError`). Most of
-them also carry a stable `code`, which is the way to branch without importing a
-constructor — `TronBoxEnvironmentError` declares its as `abstract`, so every
-environment refusal has one. Two do not: the `UpgradesOptionError` base (its
-four subclasses each do) and `ArtifactNameAmbiguousError`, where `instanceof`
-is the only handle.
+family's own refusals (a bad option value, a missing owner, an unsupported
+kind, and their siblings), the option family (`UpgradesOptionError` plus
+`UnknownOptionError`, `OptionValueError`, `OptionConflictError`), the
+environment family's base (`TronBoxEnvironmentError`),
+`ValidationInputRefusedError`, and the pair a caller distinguishes to recover
+a deployment record — "this is a different chain" versus "the record's
+fingerprint file is unusable" (`ChainInstanceChangedError`,
+`RecordFingerprintUnreadableError`).
 
-Two groups are deliberately **not** exported, and neither is a refusal of
-yours. The invariant classes fire only on a bug in this plugin or a host
-contradicting its own contract: `DeploySeamInvariantError`,
-`ValidationInputInvariantError`, the two engine-capture errors,
-`DegradedNoteInvalidError`, `HostInstanceSharedError`, and the provider's
-`ChainMethodRefusedError` / `ChainBlockTagRefusedError` — nothing a caller asks
-for reaches those. And `ResultCapabilityUnavailableError` comes from the
-returned result's own `get` trap, on a member this plugin cannot support, so it
-is reached by reading a result rather than by calling an operation; it carries
-a `code`, and whether it joins the exported set is tracked on the
-release-blocking issue rather than decided here.
+Everything else that can reach you — a node outage, a malformed reply, an
+environment missing one handle, an error raised while a result is built —
+carries a stable **`code`** string, and branching on `code` is the documented
+path for those. The class surface is deliberately small: an exported class can
+never be renamed once published, while adding one later is safe — and for a
+migration tool, most errors reach a human reading `tronbox migrate` output,
+where the message is the surface that matters. `ResultCapabilityUnavailableError`
+(raised from a returned result's own accessor, on a member this plugin cannot
+support) stays unexported under the same rule and carries its `code`.
 
 **`constructorArgs` cannot end in a plain object or `null`.** TronBox's own
 contract layer treats a trailing non-array object — and `null`, since

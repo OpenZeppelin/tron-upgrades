@@ -919,6 +919,15 @@ describe('applied to the real tree', () => {
     // the seam reaching a seam internal — and the face was already in the
     // runtime closure through `./erc1967`), and a third `./proxy` specifier,
     // which is the erased `export type { MigrationHandles }`.
+    //
+    // Re-pinned again when the error surface was CUT to the review's principle
+    // (r3788402299: exporting is the commitment): the second `./record/errors`
+    // edge (the location/address pair), `./results/limitations`
+    // (`UnavailableMemberAbsentError`) and the VALUE edge to `./results/types`
+    // (`TransactionHashUnavailableError`) are gone with their exports — the
+    // one `./results/types` left is the erased type edge. The classes those
+    // edges carried still exist and still carry their `code`s; they are no
+    // longer part of the published surface.
     expect(entry?.moduleSpecifiers.map(edge => edge.specifier).sort()).toEqual([
       './admin',
       './admin/errors',
@@ -936,9 +945,6 @@ describe('applied to the real tree', () => {
       './proxy',
       './proxy',
       './record/errors',
-      './record/errors',
-      './results/limitations',
-      './results/types',
       './results/types',
       './standalone',
       './validation-input/errors',
@@ -1433,11 +1439,11 @@ describe('the face is `openRecord` plus four named values, and everything else i
     // directly, so a caller has to be able to catch it, and `./record`'s own face
     // (asserted above) deliberately exports it as a type only — a consumer is meant
     // to distinguish record-layer errors by `code`, not by importing constructors.
-    // Re-pinned again when the published error surface was completed: two more
-    // classes from the SAME leaf — `RecordLocationUnusableError` (a record
-    // location that cannot be used) and `AddressNotCanonicalizableError` (the
-    // refusal a malformed address reaches on every operation that takes one).
-    // The route rule is unchanged and is what this test actually guards:
+    // Briefly widened to three classes when the surface was "completed", then
+    // CUT BACK to this one on the review's principle (r3788402299: exporting
+    // is the commitment; the published classes are the refusals a caller can
+    // cause and fix, everything else branches on `code`). The route rule is
+    // unchanged and is what this test actually guards:
     // `./record/errors` is the only record-layer edge the entry may carry, and
     // the names it re-exports are error classes only — never one of the face's
     // five operational values. The exported names are listed explicitly rather
@@ -1464,11 +1470,7 @@ describe('the face is `openRecord` plus four named values, and everything else i
         .filter(export_ => export_.from === SANCTIONED_RECORD_EDGE)
         .map(export_ => export_.name)
         .sort(),
-    ).toEqual([
-      'AddressNotCanonicalizableError',
-      'RecordFingerprintUnreadableError',
-      'RecordLocationUnusableError',
-    ]);
+    ).toEqual(['RecordFingerprintUnreadableError']);
     const exportedNames = new Set(faceExports(entry).map(entry_ => entry_.name));
     for (const recordValue of FACE_VALUES) {
       expect(exportedNames.has(recordValue), `${recordValue} escaped`).toBe(false);

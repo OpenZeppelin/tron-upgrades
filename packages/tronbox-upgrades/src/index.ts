@@ -151,19 +151,32 @@ export {
   StaleTransactionIdentityError,
   CheatcodeSlotCollisionError,
 } from './deploy';
-// The first of three record-layer errors a consumer must be able to catch (the
-// other two are exported below, from the same leaf): `openRecord` throws this
-// one directly, on a fingerprint sidecar it cannot use. The rest of the record
-// layer's errors are internal to `./record`, whose own face exports this class as a
-// type only — deliberately, so a consumer distinguishes by `code` rather than by
-// importing constructors. These three are the sanctioned exceptions, made here
-// rather than there, and this one because catching it is how a caller tells
-// "corrupt" from "the chain instance changed". Those two are not the whole of
-// what `openRecord` raises — its contract documents five, and the other three
-// are exported from here too (`RecordLocationUnusableError`,
-// `AddressNotCanonicalizableError`, `ChainResultShapeError`), so every refusal
-// that call can produce is catchable by class.
+// The one record-layer error a consumer must be able to catch by class:
+// `openRecord` throws it directly, on a fingerprint sidecar it cannot use, and
+// catching it is how a caller tells "corrupt" from "the chain instance
+// changed" (its counterpart below). The rest of the record layer's errors are
+// internal to `./record`, whose own face exports this class as a type only —
+// deliberately, so a consumer distinguishes by `code` rather than by importing
+// constructors. `openRecord`'s contract documents more refusals than these
+// two; the others carry a `code`, which is the documented way to branch on
+// them (see the surface rule below).
 export { RecordFingerprintUnreadableError } from './record/errors';
+
+/*
+ * THE ERROR-SURFACE RULE (review r3788402299). An exported class is a
+ * commitment — it can never be renamed once published — so the classes below
+ * are only the refusals a CALLER can cause and fix from the call site:
+ * API-misuse (a bad option, a missing owner, a wrong kind) plus the two
+ * chain-state refusals a caller must branch on to recover
+ * (`RecordFingerprintUnreadableError` above, `ChainInstanceChangedError`
+ * below), and the two family bases that make a one-`instanceof` catch
+ * possible. Everything else that can reach a caller — transport failures,
+ * malformed environments beyond the family base, result-building refusals —
+ * carries a stable `code` string, and branching on `code` is the documented
+ * path for those. For a migration tool, most errors reach a human reading
+ * `tronbox migrate` output rather than a `catch`; the message, not the class,
+ * is the primary surface.
+ */
 
 /**
  * The public 1967-slot readers — cheap, engine-free, and mirroring Hardhat's
@@ -175,23 +188,8 @@ export { erc1967, beacon, type Erc1967ReadOptions } from './erc1967';
 // never throws for an empty slot; the other two do). Real classes, for the
 // same reason `RecordFingerprintUnreadableError` is one: a consumer needs
 // them to write a `catch`, not merely a `code` to switch on.
-/*
- * The chain layer's refusals a caller can receive from any state-changing
- * operation — a node that cannot be reached or answers wrongly, an endpoint or
- * an address the layer will not use. All six carry a `code` and all six were
- * reachable-but-unexported until now.
- *
- * Two chain classes stay unexported deliberately, and they are the ones a
- * caller cannot cause: `ChainMethodRefusedError` and
- * `ChainBlockTagRefusedError` fire when something asks the provider for an RPC
- * method or a block tag its per-method policy does not allow, and every such
- * ask originates in this plugin — so they report a bug here, not a state a
- * caller handles.
- */
 export {
-  ChainAddressUnusableError,
   ChainBeaconNotFoundError,
-  ChainEndpointRefusedError,
   ChainImplementationNotFoundError,
   // Reachable from every STATE-CHANGING operation, not only the readers:
   // opening the deployment record compares the recorded chain instance against
@@ -200,26 +198,12 @@ export {
   // record (`proxy/toolkit.ts`, `mode: 'validate-only'`). Its fingerprint
   // sibling above was already exported, and the two are the pair a caller
   // distinguishes — "the record file is unusable" from "this is a different
-  // chain than the one the record was written against" — so exporting one and
-  // not the other made the omission look deliberate.
+  // chain than the one the record was written against". The chain layer's
+  // OTHER refusals (transport, RPC, endpoint, address shape) stay unexported
+  // under the surface rule above: a caller does not fix a node from a `catch`
+  // — branch on their `code` where automation needs to.
   ChainInstanceChangedError,
-  ChainResultShapeError,
-  ChainRpcError,
-  ChainSlotMalformedError,
-  ChainTransportError,
 } from './chain';
-
-/*
- * The two record-layer refusals a caller can act on beyond the fingerprint one
- * above: a record location that cannot be used (unreadable, not a directory,
- * outside the project), and an address the layer cannot canonicalize — which
- * is the refusal a malformed proxy address reaches on every operation that
- * takes one.
- */
-export {
-  AddressNotCanonicalizableError,
-  RecordLocationUnusableError,
-} from './record/errors';
 
 /*
  * The option-refusal family, thrown by the resolver every operation runs: an
@@ -228,9 +212,11 @@ export {
  * operation does — the environment resolves, and a state-changing operation
  * opens its chain access and record session, before the resolver sees the
  * options at all (`proxy/toolkit.ts`) — so a call with a bad option can still
- * fail on the environment first. `UpgradesOptionError` is the base all four extend and is exported for
- * the one thing the subclasses cannot express — catching the family in a
- * single `instanceof`.
+ * fail on the environment first. `UpgradesOptionError` is the base the whole
+ * family extends and is exported for the one thing the subclasses cannot
+ * express — catching the family in a single `instanceof`. One subclass,
+ * `OptionUnsupportedOnTronError`, stays unexported under the surface rule
+ * above — the family base catches it, and its `code` names it.
  *
  * Imported from the leaf, never from `./options`, whose face re-exports
  * `./options/resolve` and would load the engine at import time — the rule
@@ -241,7 +227,6 @@ export {
  */
 export {
   OptionConflictError,
-  OptionUnsupportedOnTronError,
   OptionValueError,
   UnknownOptionError,
   UpgradesOptionError,
@@ -257,41 +242,19 @@ export {
 export { ValidationInputRefusedError } from './validation-input/errors';
 
 /*
- * Two refusals raised while an operation BUILDS its result, before it returns —
- * so they reach a caller exactly like any other operation refusal, and the
- * first classification of them as "result-accessor errors" was wrong:
- *
- * - `TransactionHashUnavailableError` comes from `transactionIdentity`, which
- *   every operation that reports a transaction calls on its way out; the
- *   standalone replay path can reach it with a hash the caller's own
- *   abstraction supplied as `null`.
- * - `UnavailableMemberAbsentError` comes from `sealUnavailable`, which checks
- *   the handle synchronously before the sealed proxy exists at all.
- *
- * Their sibling `ResultCapabilityUnavailableError` is the one that genuinely
- * fires from the returned proxy's own `get` trap, on a member this plugin
- * cannot support — a different surface, reached only by reading a result, and
- * left unexported pending the decision recorded on the release issue.
+ * The result-side errors are deliberately NOT exported — including
+ * `ResultCapabilityUnavailableError`, whose disposition the release issue
+ * left open and which is hereby decided: unexported. Exporting later is
+ * additive and safe; unexporting later is breaking, so the smaller surface is
+ * the reversible choice. All of them carry a `code` to branch on.
  */
-export { TransactionHashUnavailableError } from './results/types';
-export { UnavailableMemberAbsentError } from './results/limitations';
 
 /*
- * The environment refusals: no TronBox context at all, one missing a handle
- * the operation needs, or handles that disagree with each other. Reachable
- * from every operation, since each resolves the environment before doing
- * anything, and the most likely error a programmatic (non-`tronbox migrate`)
- * caller meets first. The abstract base is exported for the same reason
- * `UpgradesOptionError` is.
+ * The environment family's base: the most likely error a programmatic
+ * (non-`tronbox migrate`) caller meets first, since every operation resolves
+ * the environment before doing anything. Exported for the same reason
+ * `UpgradesOptionError` is — one `instanceof` catches the family — while the
+ * shape-specific subclasses stay unexported under the surface rule above and
+ * branch by `code`.
  */
-export {
-  // Not an environment-shape refusal like its three siblings: this is the one a
-  // build tree causes, when a contract name resolves to more than one artifact
-  // and the validation input cannot say which the caller meant. It reaches a
-  // caller from every operation that derives a validation input.
-  ArtifactNameAmbiguousError,
-  EnvironmentAbsentError,
-  EnvironmentIncompleteError,
-  EnvironmentInconsistentError,
-  TronBoxEnvironmentError,
-} from './environment';
+export { TronBoxEnvironmentError } from './environment';
