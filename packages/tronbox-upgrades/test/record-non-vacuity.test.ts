@@ -1636,9 +1636,19 @@ describe('the session gate names an unreadable record, and the lock that is held
     const held = new Promise<void>(resolve => {
       releaseHolder = resolve;
     });
+    // The acquisition is awaited BEFORE openRecord runs: `lockedRun` gives no
+    // acquisition signal of its own, so without this the test races its own
+    // holder — under a full-suite run openRecord's read can slip through
+    // before the lock exists, succeed, and report a vacuous pass-turned-fail.
+    let markAcquired: (() => void) | undefined;
+    const acquired = new Promise<void>(resolve => {
+      markAcquired = resolve;
+    });
     const holding = holder.lockedRun(async () => {
+      markAcquired?.();
       await held;
     });
+    await acquired;
 
     try {
       const failure = await openRecord(
