@@ -109,7 +109,14 @@ async function manifestFor(chainId: string) {
 
 async function implementationRecord(chainId: string, key = 'vkey') {
   const data = await (await manifestFor(chainId)).read();
-  return data.impls[key];
+  const entry = data.impls[key];
+  if (entry === undefined) {
+    // Loud, not `undefined`: every caller asserts on a record it expects to
+    // exist, and a missing entry failing on property access would report the
+    // wrong defect.
+    throw new Error(`no implementation entry under version key '${key}'`);
+  }
+  return entry;
 }
 
 async function writeEngineDeployment(
