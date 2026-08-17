@@ -252,8 +252,12 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
  * ask the chain for code, and nothing else. Any failure inside the diagnosis
  * — the manifest unreadable too, the chain unreachable — answers
  * `indeterminate` rather than masking the fingerprint refusal this decorates.
- * The loop stops at the first live proxy: one hit is enough to know deleting
- * the record would abandon a real deployment.
+ * The loop stops at the first live proxy: one hit is enough for the one
+ * conclusion the disposition draws from it — deleting the record file RISKS
+ * abandoning a real deployment. Code presence cannot prove chain identity
+ * (a reset node or another endpoint can hold other code at the same
+ * address), and the `proxies-live` disposition says so rather than claiming
+ * more than the evidence supports.
  */
 async function diagnoseFingerprintRefusal(
   manifest: RecordManifest,

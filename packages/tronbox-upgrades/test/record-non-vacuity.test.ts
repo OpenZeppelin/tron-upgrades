@@ -1399,8 +1399,18 @@ describe('the fingerprint tables split diagnosis from disposition, and every dis
       expect(remedy, `remedy for ${because}`).not.toBe('');
       // The exits moved to the disposition table, chosen by what the chain
       // says about the recorded proxies — repeating them per cause is the
-      // duplication the split removes.
-      expect(remedy, `remedy for ${because}`).not.toContain('delete the record file');
+      // duplication the split removes. And no ACTION of any kind: a cause
+      // that told the user what to do could contradict the disposition that
+      // follows it in the same message (measured: the schema cause used to
+      // advise upgrading to preserve the newer file while `proxies-live`
+      // advised deleting that same file).
+      // 'check' is deliberately absent from this list: it appears as a NOUN
+      // in the hash-field diagnosis ("the check it feeds").
+      for (const imperative of ['delete', 're-run', 'redeploy', 'upgrad', 'restore']) {
+        expect(remedy.toLowerCase(), `remedy for ${because} carries '${imperative}'`).not.toContain(
+          imperative,
+        );
+      }
       // And the retired self-explanations stay retired.
       expect(remedy, `remedy for ${because}`).not.toContain('readable-mismatch');
       expect(remedy, `remedy for ${because}`).not.toContain('value to disagree with');
@@ -1414,10 +1424,16 @@ describe('the fingerprint tables split diagnosis from disposition, and every dis
       'proxies-absent',
       'proxies-live',
     ]);
-    // Live proxies: the one case where deleting the record abandons real
-    // deployments — the disposition must say to keep it.
+    // Live proxies: the one case where deleting the record risks abandoning
+    // real deployments — the disposition must say to keep it, must NOT claim
+    // code presence proves chain identity (a reset node or another endpoint
+    // can hold other code at the same address), and must gate the
+    // fingerprint deletion on the endpoint being the expected one.
     expect(dispositions['proxies-live']).toContain('Do not delete the record file');
-    expect(dispositions['proxies-live']).toContain('Delete the fingerprint file');
+    expect(dispositions['proxies-live']).toContain('delete the fingerprint file and re-run');
+    expect(dispositions['proxies-live']).toContain('cannot prove');
+    expect(dispositions['proxies-live']).toContain('verify the endpoint before deleting');
+    expect(dispositions['proxies-live']).not.toContain('so the records describe');
     // Absent proxies: the wiped case must name all THREE places that remember
     // the old chain (record, fingerprint, build artifacts) — advice naming two
     // of the three walks the user into the stale-artifact refusal — and must

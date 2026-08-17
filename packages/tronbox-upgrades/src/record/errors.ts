@@ -279,11 +279,16 @@ const fingerprintDispositions: Readonly<
   Record<FingerprintRefusalDiagnosis, string>
 > = Object.freeze({
   'proxies-live':
-    'The recorded proxies are live at this endpoint, so the records describe ' +
-    'this chain and only the fingerprint file is damaged. Delete the ' +
-    'fingerprint file and re-run — it is rewritten from the current chain. ' +
-    'Do not delete the record file: it holds the addresses of live ' +
-    'deployments.',
+    'At least one recorded proxy holds code at this endpoint. That is ' +
+    'consistent with these records describing this chain — though code ' +
+    'presence alone cannot prove it: a reset node or a different endpoint ' +
+    'can hold other code at the same address — and it does mean deleting ' +
+    'the record file risks abandoning live deployments. Do not delete the ' +
+    'record file. If this endpoint is the one these records have always ' +
+    'pointed at, delete the fingerprint file and re-run — it is rewritten ' +
+    'from the current chain. If the endpoint changed recently, or the node ' +
+    'may have been wiped and redeployed since, verify the endpoint before ' +
+    'deleting anything.',
   'proxies-absent':
     'None of the recorded proxies hold code at this endpoint, so the records ' +
     'describe a different chain. If this is a local node that was reset or ' +
@@ -322,14 +327,12 @@ const fingerprintRemedies: Readonly<
     'The fingerprint file holds a JSON value that is not an object, so there ' +
     'is no field in it to compare against.',
   'unrecognised-schema':
-    'The fingerprint was written by a newer version of this plugin. ' +
-    'Upgrading is the exit that loses nothing: an older version rewriting ' +
-    'the file loses whatever the newer one recorded. If upgrading is not ' +
-    'possible right now, the file is unreadable to this version.',
+    'The fingerprint was written by a newer version of this plugin, so this ' +
+    'version cannot read it — and a rewrite at this version would discard ' +
+    'whatever the newer one recorded.',
   'chain-id-unusable':
     'The fingerprint names no usable chain id, so there is nothing to ' +
-    'compare against. This is what a hand-edited file most often looks like; ' +
-    'restore it from version control if you have it.',
+    'compare against. This is what a hand-edited file most often looks like.',
   'hash-field-unusable':
     'One of the fingerprint\'s hashes is present but is not a 32-byte hash. ' +
     'Clearing a field does not clear the check it feeds — it turns the check ' +
@@ -338,9 +341,9 @@ const fingerprintRemedies: Readonly<
     'The fingerprint file carries fields this plugin does not write, so it ' +
     'was not written by this plugin.',
   'unreadable-file':
-    'The fingerprint file exists and could not be read — check its ' +
-    'permissions and the permissions of the directory holding it; once it is ' +
-    'readable again the check runs normally with no further action needed.',
+    'The fingerprint file exists and could not be read — most often a ' +
+    'permission problem on the file or on the directory holding it. Once it ' +
+    'is readable again the check runs normally.',
 });
 
 /**

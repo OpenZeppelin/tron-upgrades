@@ -182,9 +182,11 @@ All operations take the migration `handles` object as their final argument
 | `forceImport(proxyAddress, Contract, opts)` | Adopt an existing proxy (or beacon) into the deployment record, verifying on-chain bytecode against the artifact. |
 | `transferProxyAdminOwnership(proxyAddress, newOwner, opts)` | Transfer ownership of a transparent proxy's ProxyAdmin, with a pre-read that turns a repeat into a declared no-op. |
 
-Every address an operation or reader returns is TRON base58, like every other
-address this plugin reports; convert explicitly
-(`TronWeb.utils.address.toHex`) if you need the hex form.
+The ERC-1967 and beacon readers below return TRON base58 addresses; convert
+explicitly (`TronWeb.utils.address.toHex`) if you need the hex form.
+Operation results carry their addresses tool-verbatim — whatever form the
+host reported — so compare addresses by identity (canonicalize both sides),
+never by spelling.
 
 Two more exports round out the public surface, both cheap — no validation, no record, no spend:
 
