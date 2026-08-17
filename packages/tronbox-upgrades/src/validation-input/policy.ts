@@ -42,7 +42,7 @@ import { unreachableCause, type Cause } from './causes';
  * the real work.
  */
 
-/** One member in v1, and v1 never constructs it outside the flip test. */
+/** One member in v1, and nothing — production or test — constructs it yet. */
 export type ReducedMode = { readonly kind: 'declaration-order-only' };
 
 /**

@@ -232,10 +232,11 @@
     "_comment": [
       "TronBox's own contract-level allow-list, ten entries, with storageLayout",
       "absent — which is why a build record can never supply positions and why the",
-      "fresh path is AST-only. The host-only selection is these ten plus `'': ['ast']`;",
-      "the plugin's is the same ten plus `pluginAddition`. Both are asserted equal to",
-      "src/validation-input/solc-input.ts's own constants by the fidelity test, so this",
-      "copy cannot drift from the production one."
+      "fresh path is AST-only. Recorded verbatim from what the installed TronBox",
+      "emitted when this corpus was generated: under the Foundry model the plugin",
+      "never builds a solc input of its own (solc-input.ts is type-only now), so",
+      "this is a record of the HOST's observed behavior, not a mirror of any",
+      "production constant."
     ],
     "hostContractOutputs": [
       "abi",

@@ -1010,3 +1010,26 @@ describe('packaging inherits a two-clause boundary check, not one item', () => {
     expect(seam).toContain(path.join(srcDir, 'environment', 'index.ts'));
   });
 });
+
+/*
+ * The instrument `src/validation-input/causes.ts` cites (its exhaustiveness
+ * guard's placement argument rests on "an instrument pins `policy.ts` to
+ * exactly one module specifier — `./causes`"). This is that instrument, over
+ * the AST scanner's full specifier surface rather than a regex:
+ * `moduleSpecifiers` covers `import`, `export … from`, `import = require`,
+ * and literal `require`/`require.resolve`/`import()`; computed specifiers
+ * land in `dynamicSpecifierSites`, so an edge this guard cannot name is an
+ * edge it refuses.
+ */
+describe('policy.ts loads exactly one module specifier — ./causes', () => {
+  it('every loading syntax resolves to ./causes, and no specifier is computed', () => {
+    const policy = allSources().find(
+      source => source.relative === path.join('validation-input', 'policy.ts'),
+    );
+    expect(policy, 'policy.ts must exist where causes.ts says it does').toBeDefined();
+    expect(
+      [...new Set(policy!.moduleSpecifiers.map(entry => entry.specifier))],
+    ).toEqual(['./causes']);
+    expect(policy!.dynamicSpecifierSites).toEqual([]);
+  });
+});

@@ -6,10 +6,9 @@
  * `sourceKey`, `detectFidelity`, `resolveSourceGraph` and
  * `cutPartition` are deliberately **not** here. If they were, a
  * consumer could assemble a validation input from the parts and bypass the
- * policy point entirely — and the call-site scan for `policy`
- * usage would still pass, because that second pipeline would never call
- * `policy` at all. They stay reachable by direct module import, which is how
- * the tests see them.
+ * policy point entirely — a bypass no count of `policy`'s call sites could
+ * catch, because that second pipeline would never call `policy` at all. They
+ * stay reachable by direct module import, which is how the tests see them.
  *
  * Packaging owns the package entry point; this is the directory's face to its
  * siblings.
