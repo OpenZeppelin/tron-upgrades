@@ -247,62 +247,100 @@ export type FingerprintUnreadableCause =
   | 'unreadable-file';
 
 /**
- * The disposition, shared verbatim by every cause below.
- *
- * A fingerprint that cannot be read has nothing left to launder: unlike
- * {@link ChainInstanceChangedError}'s own refusal — which must never let a user delete
- * the fingerprint *alone*, because that would erase the one signal that a readable
- * mismatch is real — an unreadable file carries no signal to erase. So the same two
- * outcomes that refusal names are available here without that restriction: deleting
- * the fingerprint by itself is a legitimate exit rather than a way to make the guard
- * silently trust a wrong chain. Named identically across all seven causes so that
- * which cause fired never changes what the user is told to *do* — only the diagnosis
- * that precedes it does.
+ * What the refusal could find out about the state it is refusing over, by
+ * asking instead of listing possibilities (review r3787429147): the corrupt
+ * file is the FINGERPRINT, and both the manifest and the chain reader are in
+ * the caller's hands — so the refusal checks whether the recorded PROXIES
+ * exist at this endpoint and reports the case. Proxies only, never
+ * implementations: a manifest holding implementations but no proxies has
+ * nothing this check can vouch for, which is the `no-proxies` case.
+ * `indeterminate` is the honest answer when the diagnosis itself cannot run —
+ * the manifest is unreadable too, or the chain does not answer — and it must
+ * never mask the fingerprint refusal it decorates.
  */
-const fingerprintTwoExits =
-  'If this is still the same chain, delete the fingerprint file and re-run — the ' +
-  'guard re-arms from the current chain. If the node was wiped, delete the ' +
-  'record file and the fingerprint and redeploy — the same two outcomes ' +
-  'the readable-mismatch refusal already names.';
+export type FingerprintRefusalDiagnosis =
+  | 'proxies-live'
+  | 'proxies-absent'
+  | 'no-proxies'
+  | 'indeterminate';
 
+/**
+ * The disposition per diagnosis — what the user is told to DO. The diagnosis
+ * of what is wrong with the file stays per-cause (below); which exit applies
+ * is a fact about the CHAIN and the records, not about the file's bytes, so
+ * the two tables are indexed by different things on purpose. Every wiped-node
+ * exit names all three places that remember the old chain — the record file,
+ * the fingerprint, and TronBox's build artifacts — because advice that names
+ * two of the three walks the user into the stale-artifact refusal. And no
+ * disposition tells a user to delete records without first telling them how
+ * to know whether those records describe live deployments.
+ */
+const fingerprintDispositions: Readonly<
+  Record<FingerprintRefusalDiagnosis, string>
+> = Object.freeze({
+  'proxies-live':
+    'The recorded proxies are live at this endpoint, so the records describe ' +
+    'this chain and only the fingerprint file is damaged. Delete the ' +
+    'fingerprint file and re-run — it is rewritten from the current chain. ' +
+    'Do not delete the record file: it holds the addresses of live ' +
+    'deployments.',
+  'proxies-absent':
+    'None of the recorded proxies hold code at this endpoint, so the records ' +
+    'describe a different chain. If this is a local node that was reset or ' +
+    'replaced, delete the record file and the fingerprint, delete the build ' +
+    "directory and run `tronbox compile --all` — TronBox's artifacts also " +
+    'remember the old chain — and redeploy. If you did not expect the chain ' +
+    'to change, the endpoint is probably not the one you think — fix the ' +
+    'network configuration and delete nothing.',
+  'no-proxies':
+    'The record file lists no proxies, so there is nothing to check the ' +
+    'fingerprint against. Delete the fingerprint file and re-run — it is ' +
+    'rewritten from the current chain. If the node was wiped, also delete ' +
+    'the record file and the build directory (then run ' +
+    '`tronbox compile --all`) and redeploy.',
+  indeterminate:
+    'If this is still the same chain, delete the fingerprint file and ' +
+    're-run — it is rewritten from the current chain. If the node was wiped, ' +
+    'delete the record file and the fingerprint, delete the build directory ' +
+    'and run `tronbox compile --all`, and redeploy. If you are on a live ' +
+    'network or did not expect the chain to change, check the endpoint and ' +
+    'the network configuration before deleting anything.',
+});
+
+/**
+ * The diagnosis per cause — what is wrong with the file's bytes. Diagnosis
+ * only: what to do about it is the disposition table above, chosen by what
+ * the chain says about the recorded proxies rather than repeated verbatim
+ * seven times.
+ */
 const fingerprintRemedies: Readonly<
   Record<FingerprintUnreadableCause, string>
 > = Object.freeze({
   'not-json':
-    'The fingerprint file is not JSON, so nothing could be read from it at all — ' +
-    'not even a value to disagree with. ' +
-    fingerprintTwoExits,
+    'The fingerprint file is not JSON, so nothing could be read from it.',
   'not-an-object':
-    'The fingerprint file holds a JSON value that is not an object, so there is ' +
-    'no field in it to compare against. ' +
-    fingerprintTwoExits,
+    'The fingerprint file holds a JSON value that is not an object, so there ' +
+    'is no field in it to compare against.',
   'unrecognised-schema':
-    'The fingerprint was written by a newer version of this plugin. Upgrading is ' +
-    'the exit that loses nothing: an older version rewriting the file loses ' +
-    'whatever the newer one recorded. If upgrading is not possible right now, ' +
-    'the fingerprint is still unreadable to this version, so the same two exits ' +
-    'apply as to any other unreadable one. ' +
-    fingerprintTwoExits,
+    'The fingerprint was written by a newer version of this plugin. ' +
+    'Upgrading is the exit that loses nothing: an older version rewriting ' +
+    'the file loses whatever the newer one recorded. If upgrading is not ' +
+    'possible right now, the file is unreadable to this version.',
   'chain-id-unusable':
-    'The fingerprint names no usable chain id, so there is nothing to compare ' +
-    'against. This is what a hand-edited file most often looks like; restore it ' +
-    'from version control if you have it, or take one of the two exits below. ' +
-    fingerprintTwoExits,
+    'The fingerprint names no usable chain id, so there is nothing to ' +
+    'compare against. This is what a hand-edited file most often looks like; ' +
+    'restore it from version control if you have it.',
   'hash-field-unusable':
     'One of the fingerprint\'s hashes is present but is not a 32-byte hash. ' +
     'Clearing a field does not clear the check it feeds — it turns the check ' +
-    'off, which is why this is reported rather than ignored. ' +
-    fingerprintTwoExits,
+    'off, which is why this is reported rather than ignored.',
   'unexpected-keys':
-    'The fingerprint file carries fields this plugin does not write, so it was ' +
-    'not written by this plugin. ' +
-    fingerprintTwoExits,
+    'The fingerprint file carries fields this plugin does not write, so it ' +
+    'was not written by this plugin.',
   'unreadable-file':
-    'The fingerprint file exists and could not be read — check its permissions ' +
-    'and the permissions of the directory holding it, and once it is readable ' +
-    'again the check runs normally with no further action needed. If fixing ' +
-    'permissions is not an option right now: ' +
-    fingerprintTwoExits,
+    'The fingerprint file exists and could not be read — check its ' +
+    'permissions and the permissions of the directory holding it; once it is ' +
+    'readable again the check runs normally with no further action needed.',
 });
 
 /**
@@ -320,8 +358,12 @@ const fingerprintRemedies: Readonly<
  * happened to the *chain* the fingerprint exists to guard. Proceeding past that
  * is the silent continue this sub-feature exists to close, so this class is now
  * the record layer's second refusal, alongside `ChainInstanceChangedError`:
- * named by `because`, with a remedy per cause, and every one of those remedies
- * resolves to the two exits that refusal already names.
+ * named by `because` (what is wrong with the file), and by `diagnosis` (what
+ * the chain says about the recorded proxies), each choosing its own half of
+ * the message. The caller supplies the diagnosis because only it holds the
+ * manifest and the chain reader; construction without one renders the
+ * `indeterminate` disposition, which is also the honest fallback when the
+ * diagnosis itself cannot run.
  */
 export class RecordFingerprintUnreadableError extends Error {
   readonly code = 'TRON_RECORD_FINGERPRINT_UNREADABLE' as const;
@@ -329,10 +371,12 @@ export class RecordFingerprintUnreadableError extends Error {
   constructor(
     readonly file: string,
     readonly because: FingerprintUnreadableCause,
+    readonly diagnosis: FingerprintRefusalDiagnosis = 'indeterminate',
   ) {
     super(
       `The chain fingerprint in ${file} cannot be used ` +
-        `(${because}).\n\n${fingerprintRemedies[because]}`,
+        `(${because}).\n\n${fingerprintRemedies[because]} Nothing has been ` +
+        `changed or removed.\n\n${fingerprintDispositions[diagnosis]}`,
     );
     this.name = 'RecordFingerprintUnreadableError';
   }
@@ -346,4 +390,5 @@ export const recordRemedyTables = Object.freeze({
   location: locationRemedies,
   address: addressRemedies,
   fingerprint: fingerprintRemedies,
+  fingerprintDisposition: fingerprintDispositions,
 });

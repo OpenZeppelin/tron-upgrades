@@ -20,8 +20,10 @@
  *    fingerprint is not an absent one — absence is the state every existing project is
  *    in on its first run, and must never refuse; corruption is evidence something has
  *    already gone wrong with a file this plugin owns, and proceeding past it is exactly
- *    the silent continue this refusal exists to close. It needs no record count and
- *    takes no lock, so it is cheaper than the refusal in step 5, not merely earlier.
+ *    the silent continue this refusal exists to close. The refusal carries a diagnosis
+ *    — do the recorded proxies exist at this endpoint? — so it reads the manifest and
+ *    asks the chain for code before throwing: reads only, failure-tolerant, and still
+ *    ahead of every write.
  * 5. **Refuse on a changed instance, before any write.** The refusal message promises
  *    *"Nothing has been changed or removed."* If the refusal came after step 6 it would
  *    already have rewritten the manifest's address casing and the promise would be
@@ -48,17 +50,22 @@ import type {
   ProxyDeployment,
 } from '@openzeppelin/upgrades-core';
 import { canonicalizeAddress } from './address';
-import { RecordFingerprintUnreadableError } from './errors';
+import {
+  RecordFingerprintUnreadableError,
+  type FingerprintRefusalDiagnosis,
+} from './errors';
 import { assertRecordLocation, configureRecordLocation } from './location';
 import {
   canonicalizeStoredAddresses,
   openRecordManifest,
   recordCount,
+  type RecordManifest,
 } from './manifest';
 import {
   buildReport,
   instanceOutcomeOf,
   reconcileProxies,
+  type CodePresence,
   type SettledInstanceComparison,
 } from './reconcile';
 import {
@@ -78,9 +85,13 @@ import type { RecordDeps, RecordSession } from './types';
  *   record path is not under it — including the case where something loaded the engine
  *   before the anchor was set, which is otherwise silent.
  * @throws {RecordFingerprintUnreadableError} the fingerprint sidecar exists and cannot
- *   be used — corrupt, not merely absent. Raised before the manifest is read at all, so
- *   it is the cheapest of this function's refusals as well as the earliest. An absent
- *   sidecar is a different state and never reaches this throw.
+ *   be used — corrupt, not merely absent. Still the earliest of this function's
+ *   refusals and still ahead of every write, but no longer the cheapest: it carries a
+ *   diagnosis of whether the recorded proxies exist at this endpoint, which reads the
+ *   manifest (through the engine's own reader, transient lock and all) and asks the
+ *   chain for code — reads only, and failure-tolerant, so a manifest or chain that
+ *   cannot answer degrades the diagnosis to `indeterminate` rather than masking this
+ *   refusal. An absent sidecar is a different state and never reaches this throw.
  * @throws {ChainInstanceChangedError} the chain reports a different instance than the
  *   records were written against. The chain seam owns that message and never throws it;
  *   deciding that refusal is the policy is this layer's act. **Nothing has been written
@@ -110,12 +121,24 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
   // Step 4.
   const read = await readFingerprint(fingerprintFile);
 
-  // A file that exists and cannot be used is refused here, before the manifest is
-  // ever touched — this throw sits ahead of `manifest.read()` below, so it needs
-  // no record count and takes no lock. An absent fingerprint is not this: `read.kind`
-  // is `'record'` or `'absent'` from here on, and both still reach the comparator.
+  // A file that exists and cannot be used is refused here, ahead of every write and
+  // of the comparison itself. The refusal answers its own question first (review
+  // r3787429147): with the manifest handle and the chain reader both already in
+  // hand, it checks whether the recorded proxies exist at this endpoint and reports
+  // THE case instead of listing possibilities. That diagnosis is reads only — the
+  // manifest through the engine's own reader (whose transient lock is the same
+  // unavoidable nuance the step-5 comment below documents) and one `hasCode` per
+  // recorded proxy until the first hit — and failure-tolerant by design: a manifest
+  // that cannot be read either, or a chain that does not answer, degrades it to
+  // `indeterminate` rather than masking this refusal with a different error. An
+  // absent fingerprint is not this: `read.kind` is `'record'` or `'absent'` from
+  // here on, and both still reach the comparator.
   if (read.kind === 'unreadable') {
-    throw new RecordFingerprintUnreadableError(fingerprintFile, read.because);
+    throw new RecordFingerprintUnreadableError(
+      fingerprintFile,
+      read.because,
+      await diagnoseFingerprintRefusal(manifest, deps.chain.read),
+    );
   }
 
   const comparison = compareChainInstance(
@@ -214,4 +237,40 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
       }),
     recordCount: async (): Promise<number> => recordCount(await manifest.read()),
   });
+}
+
+/**
+ * The corrupt-fingerprint refusal's diagnosis: do the recorded PROXIES exist
+ * at this endpoint? Proxies only, never implementations — a manifest holding
+ * implementations but no proxies has nothing this check can vouch for, and
+ * that is the `no-proxies` answer, not a live one.
+ *
+ * Read-only, and failure-tolerant BY DESIGN: this runs inside a refusal whose
+ * text promises nothing has been changed or removed, so it may read the
+ * manifest (the engine's `read` takes and releases its own transient lock —
+ * the same unavoidable nuance `openRecord`'s step-5 comment documents) and
+ * ask the chain for code, and nothing else. Any failure inside the diagnosis
+ * — the manifest unreadable too, the chain unreachable — answers
+ * `indeterminate` rather than masking the fingerprint refusal this decorates.
+ * The loop stops at the first live proxy: one hit is enough to know deleting
+ * the record would abandon a real deployment.
+ */
+async function diagnoseFingerprintRefusal(
+  manifest: RecordManifest,
+  read: CodePresence,
+): Promise<FingerprintRefusalDiagnosis> {
+  try {
+    const proxies = (await manifest.read()).proxies ?? [];
+    if (proxies.length === 0) {
+      return 'no-proxies';
+    }
+    for (const proxy of proxies) {
+      if (await read.hasCode(proxy.address)) {
+        return 'proxies-live';
+      }
+    }
+    return 'proxies-absent';
+  } catch {
+    return 'indeterminate';
+  }
 }

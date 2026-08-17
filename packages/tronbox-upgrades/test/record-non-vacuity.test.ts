@@ -66,6 +66,7 @@ import {
 import {
   RecordFingerprintUnreadableError,
   recordRemedyTables,
+  type FingerprintRefusalDiagnosis,
   type FingerprintUnreadableCause,
 } from '../src/record/errors';
 import {
@@ -1131,12 +1132,15 @@ describe('the session gate refuses a corrupt fingerprint before any write, namin
       expect(refusal.because).toBe('not-json');
       expect(refusal.file).toBe(SIDECAR_FILE);
 
-      // Both exits, in the readable-mismatch refusal's own wording: same chain,
-      // delete the fingerprint file and re-run; node wiped, delete the record
-      // and the fingerprint and redeploy.
-      expect(refusal.message).toContain('delete the fingerprint file and re-run');
+      // The refusal answered its own question: no manifest exists, so the
+      // engine's reader answers the default (empty) record and the diagnosis
+      // is `no-proxies` — there is nothing the fingerprint could vouch for,
+      // and the disposition says so instead of listing possibilities.
+      expect(refusal.diagnosis).toBe('no-proxies');
+      expect(refusal.message).toContain('lists no proxies');
+      expect(refusal.message).toContain('Delete the fingerprint file and re-run');
       expect(refusal.message).toContain(
-        'delete the record file and the fingerprint',
+        'delete the record file and the build directory',
       );
       expect(refusal.message).toContain('redeploy');
 
@@ -1224,26 +1228,214 @@ describe('the session gate refuses a corrupt fingerprint before any write, namin
   });
 });
 
-describe('the fingerprint remedy table names both exits for every cause', () => {
+// ── The refusal answers its own question ─────────────────────────────────────────
+
+/**
+ * A deps variant whose `hasCode` is the test's to script — the only difference
+ * from `seamFor`, whose reader REJECTS by design (these paths make no chain
+ * reads outside the diagnosis under test here).
+ */
+function depsWithCode(
+  identity: ChainInstanceIdentity,
+  hasCode: (address: string) => Promise<boolean>,
+): RecordDeps {
+  // Built from parts rather than by spreading `seamFor`'s object: a spread
+  // would EVALUATE its throwing `provider` getter, which is the seam's whole
+  // point. The getter is reproduced here so the no-provider invariant keeps
+  // holding on these paths too.
+  const chain: ChainAccess = {
+    get provider(): ChainAccess['provider'] {
+      throw new Error(
+        'the preflight reached for the engine provider on a path that has none',
+      );
+    },
+    endpoint: Object.freeze({
+      describe: identity.observedThrough,
+      origin: 'derived' as const,
+    }),
+    identity: () => Promise.resolve(identity),
+    read: { hasCode } as unknown as ChainAccess['read'],
+  };
+  return { ...depsFor(identity), chain };
+}
+
+/** A manifest whose one proxy is already canonical, so the diagnosis sees it as stored. */
+const DIAGNOSABLE_MANIFEST = {
+  manifestVersion: '3.2',
+  proxies: [
+    { address: CANONICAL_PROXY, txHash: FIXTURE_TX_HASH, kind: 'transparent' },
+  ],
+  impls: {},
+};
+
+/** Same shape with the proxy list empty and an implementation present — the
+ * `no-proxies` case must NOT read an implementation as a live record. */
+const IMPLS_ONLY_MANIFEST = {
+  manifestVersion: '3.2',
+  proxies: [],
+  impls: {
+    [`${'0'.repeat(63)}2`]: {
+      address: CANONICAL_PROXY,
+      txHash: FIXTURE_TX_HASH,
+      layout: { storage: [], types: {} },
+    },
+  },
+};
+
+describe('the corrupt-fingerprint refusal answers its own question (review r3787429147)', () => {
+  async function refusalWith(
+    manifest: object | string | undefined,
+    deps: RecordDeps,
+  ): Promise<RecordFingerprintUnreadableError> {
+    await fs.mkdir(RECORD_DIR, { recursive: true });
+    if (manifest !== undefined) {
+      const bytes =
+        typeof manifest === 'string'
+          ? manifest
+          : `${JSON.stringify(manifest, null, 2)}\n`;
+      await fs.writeFile(MANIFEST_FILE, bytes, 'utf8');
+    }
+    await fs.writeFile(SIDECAR_FILE, 'not json at all\n', 'utf8');
+    const failure = await openRecord(deps).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(RecordFingerprintUnreadableError);
+    return failure as RecordFingerprintUnreadableError;
+  }
+
+  it('recorded proxies live at this endpoint: keep the record, delete only the fingerprint', async () => {
+    try {
+      const codeAsked: string[] = [];
+      const refusal = await refusalWith(
+        DIAGNOSABLE_MANIFEST,
+        depsWithCode(identityFor(mainnetFirstBlockHash), async address => {
+          codeAsked.push(address);
+          return true;
+        }),
+      );
+      expect(refusal.diagnosis).toBe('proxies-live');
+      expect(refusal.message).toContain('Do not delete the record file');
+      // The question was actually asked of the chain, about the stored proxy.
+      expect(codeAsked).toEqual([CANONICAL_PROXY]);
+    } finally {
+      await clearRecordFixtures();
+    }
+  });
+
+  it('recorded proxies absent: the records describe a different chain, and the wiped exit names all three places', async () => {
+    try {
+      const refusal = await refusalWith(
+        DIAGNOSABLE_MANIFEST,
+        depsWithCode(identityFor(mainnetFirstBlockHash), async () => false),
+      );
+      expect(refusal.diagnosis).toBe('proxies-absent');
+      expect(refusal.message).toContain('describe a different chain');
+      expect(refusal.message).toContain('tronbox compile --all');
+      expect(refusal.message).toContain('delete nothing');
+    } finally {
+      await clearRecordFixtures();
+    }
+  });
+
+  it('a manifest holding an implementation but no proxies diagnoses no-proxies, never live', async () => {
+    try {
+      const refusal = await refusalWith(
+        IMPLS_ONLY_MANIFEST,
+        // `hasCode` answering true is the trap: if the diagnosis read
+        // implementations, this would come back `proxies-live`.
+        depsWithCode(identityFor(mainnetFirstBlockHash), async () => true),
+      );
+      expect(refusal.diagnosis).toBe('no-proxies');
+      expect(refusal.message).toContain('lists no proxies');
+    } finally {
+      await clearRecordFixtures();
+    }
+  });
+
+  it('a chain that cannot answer degrades to indeterminate without masking the refusal', async () => {
+    try {
+      const refusal = await refusalWith(
+        DIAGNOSABLE_MANIFEST,
+        depsWithCode(identityFor(mainnetFirstBlockHash), async () => {
+          throw new Error('endpoint down');
+        }),
+      );
+      expect(refusal.because).toBe('not-json');
+      expect(refusal.diagnosis).toBe('indeterminate');
+      expect(refusal.message).toContain('before deleting anything');
+    } finally {
+      await clearRecordFixtures();
+    }
+  });
+
+  it('a manifest that cannot be read either degrades to indeterminate — the fingerprint refusal is never masked', async () => {
+    try {
+      const refusal = await refusalWith(
+        'this is not a manifest\n',
+        depsWithCode(identityFor(mainnetFirstBlockHash), async () => true),
+      );
+      expect(refusal.because).toBe('not-json');
+      expect(refusal.diagnosis).toBe('indeterminate');
+    } finally {
+      await clearRecordFixtures();
+    }
+  });
+});
+
+describe('the fingerprint tables split diagnosis from disposition, and every disposition is complete', () => {
   const causes = Object.keys(
     recordRemedyTables.fingerprint,
   ) as FingerprintUnreadableCause[];
+  const dispositions = recordRemedyTables.fingerprintDisposition;
 
   it('has seven causes, so the audit below is not vacuously short', () => {
     expect(causes).toHaveLength(7);
   });
 
-  it('names both exits in every cause\'s remedy, in the readable-mismatch refusal\'s own wording', () => {
+  it('per-cause remedies are diagnosis only — what to DO lives in the disposition table', () => {
     for (const because of causes) {
       const remedy = recordRemedyTables.fingerprint[because];
-      expect(remedy, `remedy for ${because}`).toContain(
-        'delete the fingerprint file and re-run',
-      );
-      expect(remedy, `remedy for ${because}`).toContain(
-        'delete the record file and the fingerprint',
-      );
-      expect(remedy, `remedy for ${because}`).toContain('redeploy');
+      expect(remedy, `remedy for ${because}`).not.toBe('');
+      // The exits moved to the disposition table, chosen by what the chain
+      // says about the recorded proxies — repeating them per cause is the
+      // duplication the split removes.
+      expect(remedy, `remedy for ${because}`).not.toContain('delete the record file');
+      // And the retired self-explanations stay retired.
+      expect(remedy, `remedy for ${because}`).not.toContain('readable-mismatch');
+      expect(remedy, `remedy for ${because}`).not.toContain('value to disagree with');
     }
+  });
+
+  it('exactly four dispositions, and each answers the question it is named for', () => {
+    expect(Object.keys(dispositions).sort()).toEqual([
+      'indeterminate',
+      'no-proxies',
+      'proxies-absent',
+      'proxies-live',
+    ]);
+    // Live proxies: the one case where deleting the record abandons real
+    // deployments — the disposition must say to keep it.
+    expect(dispositions['proxies-live']).toContain('Do not delete the record file');
+    expect(dispositions['proxies-live']).toContain('Delete the fingerprint file');
+    // Absent proxies: the wiped case must name all THREE places that remember
+    // the old chain (record, fingerprint, build artifacts) — advice naming two
+    // of the three walks the user into the stale-artifact refusal — and must
+    // not send a misconfigured-endpoint user deleting anything.
+    expect(dispositions['proxies-absent']).toContain(
+      'delete the record file and the fingerprint',
+    );
+    expect(dispositions['proxies-absent']).toContain('tronbox compile --all');
+    expect(dispositions['proxies-absent']).toContain('delete nothing');
+    // No proxies: nothing to check, and the wiped exit still names the build
+    // directory.
+    expect(dispositions['no-proxies']).toContain('lists no proxies');
+    expect(dispositions['no-proxies']).toContain(
+      'delete the record file and the build directory',
+    );
+    // Indeterminate: the no-diagnosis fallback keeps its live-network caution.
+    expect(dispositions['indeterminate']).toContain('before deleting anything');
+    expect(dispositions['indeterminate']).toContain('tronbox compile --all');
   });
 
   it('renders a distinct message per cause, so the audit is not passing by coincidence', () => {
@@ -1254,5 +1446,17 @@ describe('the fingerprint remedy table names both exits for every cause', () => 
       ),
     );
     expect(messages.size).toBe(causes.length);
+  });
+
+  it('renders a distinct message per diagnosis for one fixed cause, so the disposition genuinely reaches the user', () => {
+    const diagnoses = Object.keys(dispositions) as FingerprintRefusalDiagnosis[];
+    const messages = new Set(
+      diagnoses.map(
+        diagnosis =>
+          new RecordFingerprintUnreadableError(SIDECAR_FILE, 'not-json', diagnosis)
+            .message,
+      ),
+    );
+    expect(messages.size).toBe(diagnoses.length);
   });
 });

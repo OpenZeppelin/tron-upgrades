@@ -1045,36 +1045,47 @@ function caughtSites(
   return found;
 }
 
-describe('exactly one caught-and-not-rethrown site in the record layer, and it is the sidecar read', () => {
-  it('the census finds two `catch` clauses, and exactly one of them swallows', () => {
-    // The count is the invariant, not a spot check: the hazard is a second swallow
+describe('exactly two caught-and-not-rethrown sites in the record layer, each converting the failure into a named state', () => {
+  it('the census finds three `catch` clauses, and exactly two of them swallow', () => {
+    // The count is the invariant, not a spot check: the hazard is a NEW swallow
     // appearing somewhere unrelated, which is how a failed manifest write becomes a
     // silent no-op — a session returned, the operation proceeding, the record
-    // half-canonicalized, and nothing in the output channel.
+    // half-canonicalized, and nothing in the output channel. Two swallows are
+    // sanctioned, and both convert the failure into a named state instead of
+    // dropping it: the sidecar read (an unreadable fingerprint IS a state), and
+    // the fingerprint refusal's diagnosis (failure-tolerant BY DESIGN — it runs
+    // inside a refusal whose message promises nothing was changed, so a manifest
+    // or chain that cannot answer degrades the diagnosis to `indeterminate`
+    // rather than masking the refusal with a different error).
     const sites = caughtSites(recordSources());
-    expect(sites).toHaveLength(2);
-    expect(sites.filter(site => !site.rethrows)).toHaveLength(1);
+    expect(sites).toHaveLength(3);
+    expect(sites.filter(site => !site.rethrows)).toHaveLength(2);
   });
 
-  it('the one that swallows is the fingerprint read, and the one that rethrows is the record lookup', () => {
+  it('the swallows are the fingerprint read and the refusal diagnosis; the rethrow is the record lookup', () => {
     const sites = caughtSites(recordSources());
     expect(
-      sites.filter(site => !site.rethrows).map(site => site.relative),
-    ).toEqual(['sidecar.ts']);
+      sites
+        .filter(site => !site.rethrows)
+        .map(site => site.relative)
+        .sort(),
+    ).toEqual(['session.ts', 'sidecar.ts']);
     expect(
       sites.filter(site => site.rethrows).map(site => site.relative),
     ).toEqual(['manifest.ts']);
   });
 
-  it('the swallowing site converts the failure into a named state rather than dropping it', () => {
+  it('both swallowing sites convert the failure into a named state rather than dropping it', () => {
     const sidecar = sourceNamed(recordSources(), 'sidecar.ts');
     expect(sidecar.text).toContain("return Object.freeze({ kind: 'absent' }");
     expect(sidecar.text).toContain(
       "return unreadable(cause instanceof SyntaxError ? 'not-json' : 'unreadable-file');",
     );
+    const session = sourceNamed(recordSources(), 'session.ts');
+    expect(session.text).toContain("return 'indeterminate';");
   });
 
-  it('non-vacuity: a second swallow anywhere in the tree is reported', () => {
+  it('non-vacuity: a further swallow anywhere in the tree is reported', () => {
     const offender = scanText(
       [
         'export async function migrate(): Promise<void> {',
@@ -1085,10 +1096,10 @@ describe('exactly one caught-and-not-rethrown site in the record layer, and it i
         '  }',
         '}',
       ].join('\n'),
-      'session.ts',
+      'migrator.ts',
     );
     const sites = caughtSites([...recordSources(), offender]);
-    expect(sites.filter(site => !site.rethrows)).toHaveLength(2);
+    expect(sites.filter(site => !site.rethrows)).toHaveLength(3);
   });
 
   it('non-vacuity: a throw nested in an uninvoked closure does not count as a rethrow', () => {
