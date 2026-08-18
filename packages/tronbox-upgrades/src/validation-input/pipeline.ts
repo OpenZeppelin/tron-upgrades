@@ -408,8 +408,10 @@ function assertInput(input: ValidationInput): void {
  *
  * - **`unique`** — proceed.
  * - **`ambiguous`** — the pipeline decides for itself when every candidate
- *   names the same `(sourcePath, contractName)`: recompiles accumulate
- *   build-info files (two `tronbox compile` runs are enough), so that shape
+ *   names the same `(sourcePath, contractName)`: build records accumulate
+ *   whenever the compiler input differs between runs — a source edit, or a
+ *   partial compile followed by `--all`; the record's filename is the sha256
+ *   of the solc input, so identical runs rewrite one file — and that shape
  *   is one contract seen in several records, not a collision. Only DISTINCT
  *   sources are a collision a user must resolve, and *that* decision stays
  *   the operation's — stated in the seam itself, and expected before calling

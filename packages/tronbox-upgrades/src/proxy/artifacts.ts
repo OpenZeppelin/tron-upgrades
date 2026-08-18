@@ -47,9 +47,10 @@ export function requireProxyArtifact(
       /*
        * The seam detects; the refusal-or-pick policy is this operation
        * layer's. Candidates that share one (sourcePath, contractName) are the
-       * SAME contract seen in several build records — recompiles accumulate
-       * build-info files, and the first live migration hit exactly that shape
-       * — so only DISTINCT sources constitute a collision a user must
+       * SAME contract seen in several build records — records accumulate when
+       * the compiler input differs between runs (the filename is the sha256
+       * of the solc input), and the first live migration hit exactly that
+       * shape — so only DISTINCT sources constitute a collision a user must
        * resolve. With one distinct source the resolver's single abstraction
        * is unambiguous for deployment, whatever record later describes it.
        */

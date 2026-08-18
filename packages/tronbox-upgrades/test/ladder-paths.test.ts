@@ -9,6 +9,7 @@ import {
 import { deriveValidationInput } from '../src/validation-input';
 import type { ValidationInput } from '../src/validation-input';
 import { verifyBuildRecordFreshness } from '../src/validation-input/identity';
+import { createArtifactAccess } from '../src/environment/artifacts';
 
 import {
   BUILD_INFO_DIR,
@@ -1160,6 +1161,61 @@ describe('artifact-name ambiguity across build records', () => {
       deps: ladderDeps(project, { readBuildInfo: buildInfoReader([VERIFYING_RECORD]) }),
     });
     expect(outcome.kind).toBe('input');
+  });
+
+  it('two accumulated records of one source, through the REAL index: resolution proceeds and the gate consumes the record matching the artifact', async () => {
+    // The accumulated shape produced the way it actually happens — the source
+    // changed between compiles, so two build-info files name the same
+    // (sourcePath, contractName) with different content — and detected by the
+    // real ambiguity index, not a relabeled resolution (review comment on
+    // #20). The stale record sorts FIRST, so consuming the right one is the
+    // gate's bytecode verification at work, never file order.
+    const project = pairProject('append', 'after');
+    const stale = recordFor('append', 'before', `${BUILD_INFO_DIR}/aaa-stale.output.json`);
+    const fresh = recordFor('append', 'after', `${BUILD_INFO_DIR}/bbb-fresh.output.json`);
+    const readBoth = buildInfoReader([stale, fresh]);
+    const resolved = project.env.artifacts.resolve(CONTRACT);
+    if (resolved.status !== 'unique') throw new Error('unreachable');
+    const abstraction = resolved.contract;
+    const access = createArtifactAccess(
+      {
+        resolver: {},
+        require: () => abstraction,
+        contracts: () => [abstraction],
+      },
+      {
+        ...project.env.paths,
+        contractsBuildDirectory: project.env.paths.buildInfoDirectory,
+        contractsBuildDirectoryIsExternal: false,
+      },
+      { read: readBoth, exists: () => true },
+    );
+    // The index itself reports the accumulation.
+    const resolution = access.resolve(CONTRACT);
+    expect(resolution.status).toBe('ambiguous');
+
+    const outcome = await deriveValidationInput({
+      contract: CONTRACT,
+      // Resolution goes through the REAL access; artifact-fact reading keeps
+      // the fixture's reader, which is not this test's subject.
+      env: {
+        ...project.env,
+        artifacts: { ...access, record: project.env.artifacts.record },
+      },
+      deps: ladderDeps(project, { readBuildInfo: readBoth }),
+    });
+    const input = expectInput(outcome);
+    // The record consumed describes the artifact's bytes: its layout is the
+    // 'after' shape, not the stale 'before' one.
+    const consumed = JSON.stringify(layoutOfInput(input));
+    const afterLayout = JSON.stringify(
+      layoutOfInput((await deriveFresh('append', 'after')).input),
+    );
+    const beforeLayout = JSON.stringify(
+      layoutOfInput((await deriveFresh('append', 'before')).input),
+    );
+    expect(consumed).toBe(afterLayout);
+    expect(afterLayout).not.toBe(beforeLayout);
   });
 
   it('still refuses when the same name comes from two distinct sources', async () => {
