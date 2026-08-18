@@ -229,7 +229,7 @@ export async function deployImplementation(
 /**
  * Prepares an upgrade: validates the candidate against the layout of the
  * implementation CURRENTLY installed at the proxy (chain-read, never
- * name-guessed) and WITH that proxy's kind (slot-read, never inferred from
+ * name-guessed) and WITH that proxy's recorded kind (never inferred from
  * the candidate), deploys only the new implementation, and never touches the
  * proxy (scenario 2) — the switch stays a later governance action.
  */
@@ -255,18 +255,12 @@ export async function runPrepareUpgrade(
     requireProxyKind(resolved.kind, ['transparent', 'uups'], 'prepareUpgrade');
   }
 
-  // The kind comes from the REFERENCED proxy, never inferred from the
-  // candidate: a candidate that dropped its upgrade entry point would
-  // self-infer `transparent`, which makes the engine suppress exactly the
-  // missing-entry-point error that matters (`runValidateUpgrade` above states
-  // the same rule for a contract reference; here the reference is a chain
-  // address). Slots are read BEFORE validation — the reverse of
-  // `runUpgradeProxy`'s ordering — because the kind must exist when
-  // `getErrors` judges the candidate, and `processProxyKind` cannot run
-  // before the validation it consumes. One non-raising slot read, as there:
-  // the per-slot readers raise on an empty slot, measured live. Known limit,
-  // shared with force-import: a uups proxy whose 1967 admin slot was left
-  // dirty classifies as transparent here.
+  // Slots are read BEFORE validation — the reverse of `runUpgradeProxy`'s
+  // ordering — because the kind must exist when `getErrors` judges the
+  // candidate, and `processProxyKind` cannot run before the validation it
+  // consumes. One non-raising slot read, as there: the per-slot readers
+  // raise on an empty slot, measured live. The three refusals below are
+  // chain facts no record can overrule.
   const slots = await toolkit.proxySlots(proxy);
   if (slots.kind === 'no-code') {
     throw new NothingToAdoptError(proxy);
@@ -280,14 +274,41 @@ export async function runPrepareUpgrade(
       'code with an empty 1967 implementation slot — not a proxy this plugin can prepare an upgrade for',
     );
   }
-  const kind =
-    resolved.kind ?? (slots.admin !== null ? 'transparent' : 'uups');
-  if (kind === 'beacon') {
-    // `requireProxyKind` refused above; this is TypeScript's proof of it.
+  // The kind comes from the proxy's own RECORD, the way upstream's
+  // `setProxyKind` reads it — never inferred from the candidate (a candidate
+  // that dropped its upgrade entry point self-infers `transparent`, which
+  // makes the engine suppress exactly the missing-entry-point error that
+  // matters; `runValidateUpgrade` above states the same rule for a contract
+  // reference). Every proxy this plugin deploys or imports is recorded with
+  // its kind, and this operation already requires registration — the layout
+  // lookup below refuses unregistered references toward force-import — so a
+  // record is not an extra demand. An omitted option uses the recorded kind;
+  // an explicit option that contradicts the record REFUSES rather than
+  // overriding it, because the override is itself the bricking path: kind
+  // `transparent` against a uups proxy filters the missing-entry-point
+  // judgement (review comment on #20).
+  const record = await toolkit.session.getProxyRecord(proxy);
+  if (record === undefined) {
     throw new Error(
-      'unreachable: requireProxyKind admits only transparent | uups here',
+      `No recorded proxy at ${proxy}. Register the deployment first with ` +
+        'forceImport, or upgrade from the plugin that deployed it.',
     );
   }
+  if (record.kind === 'beacon') {
+    // Unreachable through this plugin's own writes (a beacon proxy is
+    // recorded by its beacon, never as a proxy record), but the manifest is
+    // a file a user can edit.
+    throw new Error(
+      `The recorded kind for ${proxy} is beacon — upgrade its beacon with ` +
+        'upgradeBeacon instead.',
+    );
+  }
+  if (resolved.kind !== undefined && resolved.kind !== record.kind) {
+    throw new Error(
+      `Requested an upgrade of kind ${resolved.kind} but proxy is ${record.kind}`,
+    );
+  }
+  const kind = record.kind;
   // Threaded through the CONTEXT so the second validation inside
   // `deployImplementationThroughQueue` judges with the same kind.
   const bound: OperationContext = {

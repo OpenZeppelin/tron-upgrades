@@ -64,6 +64,13 @@ interface Spec {
       };
   /** A caller-supplied kind option, as resolution would carry it. */
   readonly resolvedKind?: 'transparent' | 'uups' | 'beacon';
+  /**
+   * The proxy's manifest record. Present-but-undefined means unregistered;
+   * omitted defaults to a recorded uups proxy.
+   */
+  readonly proxyRecord?:
+    | { readonly kind: 'transparent' | 'uups' | 'beacon' }
+    | undefined;
 }
 
 function abstraction(name: string): ContractAbstraction {
@@ -105,6 +112,12 @@ function buildFake(spec: Spec = {}) {
       {},
       {
         get: (_t, property) => {
+          if (property === 'getProxyRecord') {
+            return async () => {
+              log.push('getProxyRecord');
+              return 'proxyRecord' in spec ? spec.proxyRecord : { kind: 'uups' };
+            };
+          }
           throw new Error(`session.${String(property)} reached from a validate path`);
         },
       },
@@ -266,6 +279,7 @@ function buildFake(spec: Spec = {}) {
 
 const CHAIN_OR_STATE = [
   'proxySlots',
+  'getProxyRecord',
   'queue',
   'requireDeployer',
   'fetchOrDeployImplementation',
@@ -421,10 +435,9 @@ describe('deployImplementation and prepareUpgrade', () => {
 });
 
 describe('prepareUpgrade binds the kind of the referenced proxy (F4)', () => {
-  const ADMIN = '0x1111111111111111111111111111111111111111';
   const BEACON = '0x2222222222222222222222222222222222222222';
 
-  it('a uups proxy (empty admin slot) judges BOTH candidate validations as uups', async () => {
+  it('a proxy recorded as uups judges BOTH candidate validations as uups', async () => {
     // The deep-review probe recorded {"kinds":[null,null]} here — an omitted
     // kind let the candidate self-infer transparent, suppressing exactly the
     // missing-entry-point error that matters.
@@ -433,23 +446,35 @@ describe('prepareUpgrade binds the kind of the referenced proxy (F4)', () => {
     expect(fake.kindsSeen).toEqual(['uups', 'uups']);
   });
 
-  it('a transparent proxy (occupied admin slot) judges the candidate as transparent', async () => {
-    const fake = buildFake({
-      slots: {
-        kind: 'code',
-        implementation: toTronHex(canonicalizeAddress(IMPL)),
-        admin: ADMIN,
-        beacon: null,
-      },
-    });
+  it('a proxy recorded as transparent judges the candidate as transparent', async () => {
+    const fake = buildFake({ proxyRecord: { kind: 'transparent' } });
     await runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2'));
     expect(fake.kindsSeen).toEqual(['transparent', 'transparent']);
   });
 
-  it('a caller-supplied kind is honored over the slot reading', async () => {
-    const fake = buildFake({ resolvedKind: 'transparent' });
+  it('a caller kind matching the record is accepted', async () => {
+    const fake = buildFake({ resolvedKind: 'uups' });
     await runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2'));
-    expect(fake.kindsSeen).toEqual(['transparent', 'transparent']);
+    expect(fake.kindsSeen).toEqual(['uups', 'uups']);
+  });
+
+  it('a caller kind contradicting the record refuses instead of overriding (review comment on #20)', async () => {
+    // The override was the bricking path: transparent against a uups proxy
+    // filters the missing-entry-point judgement, and nothing downstream of
+    // prepareUpgrade catches it.
+    const fake = buildFake({ resolvedKind: 'transparent' });
+    await expect(
+      runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2')),
+    ).rejects.toThrow('Requested an upgrade of kind transparent but proxy is uups');
+    expect(fake.log).not.toContain('validate:BoxV2');
+  });
+
+  it('an unregistered proxy refuses toward forceImport before validating', async () => {
+    const fake = buildFake({ proxyRecord: undefined });
+    await expect(
+      runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2')),
+    ).rejects.toThrow('forceImport');
+    expect(fake.log).not.toContain('validate:BoxV2');
   });
 
   it('refuses kind: beacon before touching the chain', async () => {
@@ -490,9 +515,10 @@ describe('prepareUpgrade binds the kind of the referenced proxy (F4)', () => {
     ).rejects.toBeInstanceOf(NothingToAdoptError);
   });
 
-  it('deployImplementation never consults the proxy slots', async () => {
+  it('deployImplementation never consults the proxy slots or the proxy record', async () => {
     const fake = buildFake();
     await runDeployImplementation(fake.context, abstraction('Box'));
     expect(fake.log).not.toContain('proxySlots');
+    expect(fake.log).not.toContain('getProxyRecord');
   });
 });

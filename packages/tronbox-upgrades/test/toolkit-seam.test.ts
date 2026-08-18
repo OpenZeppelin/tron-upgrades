@@ -630,6 +630,12 @@ describe('kind:uups over an implementation with no upgrade mechanism — the clo
           admin: null,
           beacon: null,
         }),
+        // validate-only mode opens no record session; the recorded kind is
+        // the one chain-adjacent answer this path needs before validation
+        // throws.
+        session: {
+          getProxyRecord: async () => ({ kind: 'uups' as const }),
+        } as never,
       },
     };
     let caught: unknown;
