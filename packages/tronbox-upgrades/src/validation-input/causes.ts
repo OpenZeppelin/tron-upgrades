@@ -214,9 +214,11 @@ export interface BuildRecordRejection {
  * file. Byte-identical in the fields that matter —
  * `contract_name, sourcePath, source, sourceMap, deployedSourceMap,
  * abi, bytecode, deployedBytecode, unlinked_binary, compiler`. Deliberately
- * *not* the package's declared peer range (`>=4.0.0`): nothing measured says
- * these fields were present at 4.0.0, and cause 4's whole job is to name a
- * version a user can act on.
+ * its own literal rather than a read of the declared peer range (`>=4.8.0`,
+ * which now coincides): the range says what the plugin refuses to load
+ * beside, this constant says what was MEASURED, and cause 4's whole job is to
+ * name a version a user can act on — a future range edit must not silently
+ * widen that claim.
  */
 export const ARTIFACT_FIELDS_VERIFIED_SINCE = '4.8.0';
 
