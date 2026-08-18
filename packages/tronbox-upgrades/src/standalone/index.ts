@@ -24,7 +24,6 @@ import {
 import { canonicalizeAddress } from '../record';
 import { NothingToAdoptError } from '../adopt/errors';
 import { BeaconProxyRefusedError } from '../proxy/errors';
-import { requireProxyKind } from '../options/resolve';
 import { transactionIdentity, operationNotes } from '../results/types';
 import type {
   ImplementationDeployment,
@@ -248,6 +247,11 @@ export async function runPrepareUpgrade(
   // 86-88`) — honoring it would reopen the hole this kind resolution exists
   // to close. Same narrowing `deployProxy` applies to its own kind.
   if (resolved.kind !== undefined) {
+    // Imported lazily, as `deployProxy` does: `options/resolve` reaches the
+    // engine at import time, and this module sits in the entry's static
+    // closure — a static import here would load the engine before the record
+    // location is configured (the exact hazard the module header names).
+    const { requireProxyKind } = await import('../options/resolve');
     requireProxyKind(resolved.kind, ['transparent', 'uups'], 'prepareUpgrade');
   }
 
