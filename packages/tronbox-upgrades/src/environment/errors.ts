@@ -220,7 +220,10 @@ export class ArtifactNameAmbiguousError extends Error {
               `- ${candidate.sourcePath}:${candidate.contractName} ` +
               `(from build info ${candidate.buildInfoFile})`,
           )
-          .join('\n'),
+          .join('\n') +
+        '\nRename one of the contracts so the name is unique, or delete the ' +
+        'build directory and run `tronbox compile --all` if a listed source ' +
+        'file no longer exists in the project.',
     );
     this.name = 'ArtifactNameAmbiguousError';
     this.candidates = frozen;
