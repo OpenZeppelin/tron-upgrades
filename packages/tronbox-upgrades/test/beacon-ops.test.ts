@@ -61,6 +61,12 @@ interface Spec {
    * through the same shape `confirmTransaction` produces.
    */
   readonly confirmOutcome?: 'confirmed-successful' | 'reverted';
+  /**
+   * `fetchOrDeployImplementation` throws AFTER the deploy callback ran — the
+   * engine's own post-deploy verdict (`InvalidDeployment` and kin), which this
+   * plugin's `confirm` never sees.
+   */
+  readonly engineRejectsImplementation?: boolean;
 }
 
 const ABI = [
@@ -184,6 +190,9 @@ function buildFake(spec: Spec = {}) {
     ) => {
       log.push('fetchOrDeployImplementation');
       await deploy();
+      if (spec.engineRejectsImplementation) {
+        throw new Error('The deployment is invalid: reported by the engine');
+      }
       return toTronHex(canonicalizeAddress(NEW_IMPL));
     },
     hostDeploy: async (
@@ -326,6 +335,25 @@ describe('deployBeacon', () => {
     expect(fake.log).toContain('hostDeploy:UpgradeableBeacon');
     expect(fake.proxyArtifactInstance?.network.address).toBeUndefined();
     expect(fake.proxyArtifactInstance?.network.transactionHash).toBeUndefined();
+    expect(contract.network.address).toBeUndefined();
+    expect(contract.network.transactionHash).toBeUndefined();
+  });
+
+  it("an engine-detected implementation failure restores the user contract's write-back (review comment on #18)", async () => {
+    // The exit `confirm` never sees: the implementation deploy ran — its
+    // write-back landed on the user's contract — and then the engine's
+    // `fetchOrDeployGetDeployment` threw its own verdict (`InvalidDeployment`
+    // and kin). The step-level restore covers this by construction; this test
+    // pins the construction, so a wrap narrowed to the reverted branch fails.
+    const fake = buildFake({ engineRejectsImplementation: true });
+    const contract = bearingContract('Box');
+    await expect(
+      runDeployBeacon(fake.context, asAbstraction(contract)),
+    ).rejects.toThrow('The deployment is invalid');
+    // Non-vacuous: the implementation DID deploy through the user's contract
+    // before the engine refused, and the beacon's own deploy never started.
+    expect(fake.log).toContain('hostDeploy:Box');
+    expect(fake.log).not.toContain('hostDeploy:UpgradeableBeacon');
     expect(contract.network.address).toBeUndefined();
     expect(contract.network.transactionHash).toBeUndefined();
   });
