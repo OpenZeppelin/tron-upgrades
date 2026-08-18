@@ -63,7 +63,18 @@ interface Spec {
   readonly engineChainId?: string;
   /** Overrides the fake's `validateImplementation` version key (default 'vkey'). */
   readonly versionKey?: string;
+  /**
+   * Refuses the implementation write. Stands in for the engine's own reasons to
+   * refuse one — an invalid stored entry, a failed manifest write — which this
+   * route inherits (the address-clash check is no longer one of them: the
+   * merge-on adoption call bypasses it by design). What it exists to check is
+   * what the record looks like afterwards, not which reason fired.
+   */
+  readonly implementationWriteFails?: boolean;
 }
+
+/** Distinctive on purpose: the assertion must not pass on some other failure. */
+const IMPL_WRITE_REFUSED = 'the engine refused the implementation write';
 
 function abstraction(
   deployedBytecode: string | undefined,
@@ -237,6 +248,9 @@ function buildFake(spec: Spec = {}) {
       >[2],
     ) => {
       log.push('fetchOrDeployImplementation');
+      if (spec.implementationWriteFails === true) {
+        throw new Error(IMPL_WRITE_REFUSED);
+      }
       if (spec.engineChainId !== undefined) {
         const engine = await import('@openzeppelin/upgrades-core');
         const deployment = await engine.fetchOrDeployGetDeployment(
@@ -323,10 +337,28 @@ describe('classification and the kind gate', () => {
     const fake = buildFake(TRANSPARENT);
     const outcome = await runForceImport(fake.context, ADDR, abstraction(CODE));
     expect((outcome as { kind?: string }).kind).toBe('transparent');
+    // The implementation FIRST, the proxy record last. The order is the
+    // assertion, not incidental: a refusal between the two writes must not be
+    // able to leave "proxy recorded, no layout stored", the one state
+    // `storedLayoutFor` refuses on while advising the very `forceImport` that
+    // produced it. This way round, the in-between state is a stored layout with
+    // no proxy record, which a re-run completes.
     expect(fake.writes).toEqual([
-      `proxy:transparent:${canonicalizeAddress(ADDR).slice(0, 6)}`,
       'impl:vkey',
+      `proxy:transparent:${canonicalizeAddress(ADDR).slice(0, 6)}`,
     ]);
+  });
+
+  it('a refused implementation write leaves NO proxy record behind', async () => {
+    // The state the ordering exists to prevent. Under the old order the proxy
+    // record was already written by the time this refusal fired, leaving a
+    // recorded proxy with no stored layout — and `storedLayoutFor` then told the
+    // user to run the `forceImport` that had just produced it.
+    const fake = buildFake({ ...TRANSPARENT, implementationWriteFails: true });
+    await expect(
+      runForceImport(fake.context, ADDR, abstraction(CODE)),
+    ).rejects.toThrow(IMPL_WRITE_REFUSED);
+    expect(fake.writes).toEqual([]);
   });
 
   it('adopts a UUPS proxy when the admin slot is empty', async () => {

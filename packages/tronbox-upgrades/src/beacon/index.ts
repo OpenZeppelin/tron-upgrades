@@ -18,6 +18,7 @@ import { canonicalizeAddress } from '../record';
 import {
   ConfirmationIndeterminateError,
   TransactionRevertedError,
+  type SpentDeployment,
 } from '../deploy';
 import { transactionIdentity, operationNotes } from '../results/types';
 import { sealUnavailable } from '../results/limitations';
@@ -28,12 +29,17 @@ import {
   handlesFrom,
   HANDLE_OPTION_KEYS,
   encodeInitializer,
+  readWriteBack,
+  restoreWriteBack,
+  restoringWriteBackOnFailure,
   type OperationContext,
   type MigrationHandles,
+  type PriorWriteBack,
 } from '../proxy/toolkit';
 import { NothingToAdoptError } from '../adopt/errors';
 import {
   BeaconInitialOwnerRequiredError,
+  recordingLiveProxy,
   UpgradeVerificationFailedError,
 } from '../proxy/errors';
 import { isAlreadyCurrent } from '../proxy/replay';
@@ -152,13 +158,30 @@ async function requireBeacon(
 async function confirmOrRefuse(
   context: OperationContext,
   transactionHash: string,
+  /**
+   * Present only where the transaction being confirmed is a DEPLOY. A mined
+   * revert deployed nothing, so the write-back `hostDeploy` assigned has to be
+   * undone before it reaches the artifact the host persists. The facade-call
+   * site passes nothing, having deployed nothing to undo.
+   */
+  deploy?: {
+    readonly abstraction: ContractAbstraction;
+    readonly prior: PriorWriteBack;
+    /** What exists on-chain if the transaction landed, for the refusals to name. */
+    readonly live: SpentDeployment;
+  },
 ): Promise<void> {
   const verdict = await context.toolkit.confirm(transactionHash);
   if (verdict.kind === 'reverted') {
+    if (deploy !== undefined) {
+      restoreWriteBack(deploy.abstraction, deploy.prior);
+    }
     throw new TransactionRevertedError(verdict);
   }
   if (verdict.kind === 'indeterminate') {
-    throw new ConfirmationIndeterminateError(verdict);
+    // Named where a deploy is what was indeterminate: the address is known even
+    // though the outcome is not, and it is what makes the advice actionable.
+    throw new ConfirmationIndeterminateError(verdict, deploy?.live);
   }
 }
 
@@ -191,19 +214,32 @@ export async function runDeployBeacon(
   }
   const beaconAbstraction = toolkit.proxyArtifact('UpgradeableBeacon');
 
-  const outcome = await toolkit.queue(deployer, async () => {
+  // The implementation deploys through the USER's contract, so every failing
+  // exit restores the user's write-back (review comment on #18). The beacon
+  // abstraction's own undo stays with `confirmOrRefuse` below.
+  const outcome = await toolkit.queue(deployer, () =>
+    restoringWriteBackOnFailure(contract, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
       () => toolkit.hostDeploy(contract, [...resolved.constructorArgs]),
     );
+    const priorBeaconWriteBack = readWriteBack(beaconAbstraction);
     const deployed = await toolkit.hostDeploy(beaconAbstraction, [
       implementationAddress,
       owner,
     ]);
-    await confirmOrRefuse(context, deployed.transactionHash);
+    await confirmOrRefuse(context, deployed.transactionHash, {
+      abstraction: beaconAbstraction,
+      prior: priorBeaconWriteBack,
+      live: {
+        address: canonicalizeAddress(deployed.address),
+        transactionHash: deployed.transactionHash,
+      },
+    });
     return { deployed, implementationAddress };
-  });
+    }),
+  );
 
   // The declared result promises every field it names: `contract` is the
   // beacon's own handle (implementation()/upgradeTo/owner ABI), and
@@ -253,10 +289,25 @@ export async function runDeployBeaconProxy(
   const proxyAbstraction = toolkit.proxyArtifact('BeaconProxy');
 
   const writeBack = await toolkit.queue(deployer, async () => {
+    const priorProxyWriteBack = readWriteBack(proxyAbstraction);
     const deployed = await toolkit.hostDeploy(proxyAbstraction, [beacon, initData]);
-    await confirmOrRefuse(context, deployed.transactionHash);
-    // Recorded under the beacon kind, never transparent/uups.
-    await toolkit.recordProxy(canonicalizeAddress(deployed.address), 'beacon');
+    await confirmOrRefuse(context, deployed.transactionHash, {
+      abstraction: proxyAbstraction,
+      prior: priorProxyWriteBack,
+      live: {
+        address: canonicalizeAddress(deployed.address),
+        transactionHash: deployed.transactionHash,
+      },
+    });
+    // Recorded under the beacon kind, never transparent/uups. The proxy is
+    // deployed and confirmed by now, so a failed write is named with it.
+    const live = {
+      address: canonicalizeAddress(deployed.address),
+      transactionHash: deployed.transactionHash,
+    };
+    await recordingLiveProxy(live, () =>
+      toolkit.recordProxy(live.address, 'beacon'),
+    );
     return deployed;
   });
 
@@ -312,7 +363,12 @@ export async function runUpgradeBeacon(
 
   const deployer = toolkit.requireDeployer();
 
-  const outcome = await toolkit.queue(deployer, async () => {
+  // Same rule as `runDeployBeacon`: the implementation deploys through the
+  // USER's contract, so a failing exit — reverted or indeterminate upgradeTo,
+  // failed beacon verification — restores the user's write-back (review
+  // comment on #18); a successful upgrade keeps it.
+  const outcome = await toolkit.queue(deployer, () =>
+    restoringWriteBackOnFailure(contract, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
@@ -333,10 +389,12 @@ export async function runUpgradeBeacon(
         beacon,
         implementationAddress,
         observed,
+        writeBack.transactionHash,
       );
     }
     return { writeBack, implementationAddress };
-  });
+    }),
+  );
 
   return Object.freeze({
     contract: sealUnavailable(await toolkit.contractAt(contract, beacon)),

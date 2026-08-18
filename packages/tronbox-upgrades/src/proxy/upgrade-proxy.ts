@@ -25,6 +25,7 @@ import { planUpgradeDispatch } from './dispatch';
 import {
   BeaconProxyRefusedError,
   NotTransparentProxyError,
+  recordingLiveProxy,
   UpgradeVerificationFailedError,
 } from './errors';
 import { isAlreadyCurrent } from './replay';
@@ -32,6 +33,7 @@ import {
   createOperationToolkit,
   handlesFrom,
   HANDLE_OPTION_KEYS,
+  restoringWriteBackOnFailure,
   type OperationContext,
   type MigrationHandles,
 } from './toolkit';
@@ -156,8 +158,14 @@ export async function runUpgradeProxy(
   });
 
   // 8 — ONE queued step: deploy the implementation, send the dispatched call,
-  //     confirm, and re-read the slot.
-  const outcome = await toolkit.queue(deployer, async () => {
+  //     confirm, re-read the slot, and record the proxy when nothing recorded
+  //     it yet. The implementation deploys through the USER's contract, so any
+  //     failing exit — a reverted or indeterminate upgrade call, a failed slot
+  //     verification — restores the user's write-back (review comment on #18);
+  //     a successful upgrade keeps it, since the implementation the artifact
+  //     then names is the one now live behind the proxy.
+  const outcome = await toolkit.queue(deployer, () =>
+    restoringWriteBackOnFailure(contract, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
@@ -189,17 +197,31 @@ export async function runUpgradeProxy(
         proxyAddress,
         implementationAddress,
         observed,
+        writeBack.transactionHash,
+      );
+    }
+
+    // Record only when no record existed — and as the last statement INSIDE
+    // the step, which is where `deployProxy` does it. A write placed after the
+    // step closes sits outside whatever serialization the queue provides, so a
+    // second operation started from the same migration body can interleave
+    // between the verified upgrade and the record that remembers it.
+    const existing = await toolkit.session.getProxyRecord(proxyAddress);
+    if (existing === undefined) {
+      // Named with the on-chain fact for the same reason as `deployProxy`'s:
+      // the upgrade is confirmed and slot-verified by now, so a record-write
+      // failure here leaves a proxy running the new implementation that this
+      // plugin does not remember. The identity is the PROXY's — the write-back
+      // hash is the upgrade transaction's, which is what a user checks.
+      await recordingLiveProxy(
+        { address: proxyAddress, transactionHash: writeBack.transactionHash },
+        () => toolkit.recordProxy(proxyAddress, kind),
       );
     }
 
     return { writeBack, implementationAddress };
-  });
-
-  // 9 — record only when no record existed.
-  const existing = await toolkit.session.getProxyRecord(proxyAddress);
-  if (existing === undefined) {
-    await toolkit.recordProxy(proxyAddress, kind);
-  }
+    }),
+  );
 
   if (toolkit.network.configuredId.syntax === 'wildcard') {
     toolkit.channel.note(

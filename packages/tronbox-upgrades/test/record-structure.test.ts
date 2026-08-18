@@ -92,6 +92,12 @@ const RECORD_MODULES: readonly string[] = [
   'location.ts',
   'manifest.ts',
   'reconcile.ts',
+  // Added with the record file's own named refusals: it turns the engine's bare
+  // `SyntaxError` and raw `ELOCKED` into `RecordUnreadableError` and
+  // `RecordLockedError`. Its only import is `./errors`, whose closure is empty,
+  // so it adds no reachable third-party edge — which the closure counts below
+  // now assert rather than assume.
+  'refusals.ts',
   'session.ts',
   'sidecar.ts',
   'types.ts',
@@ -124,7 +130,7 @@ function allNames(source: ScannedSource): readonly string[] {
 }
 
 describe('the scanning subject itself — because a scan over the wrong tree passes for the wrong reason', () => {
-  it('sees all nine modules of the record layer and nothing else', () => {
+  it('sees all ten modules of the record layer and nothing else', () => {
     expect(recordSources().map(source => source.relative)).toEqual(
       RECORD_MODULES,
     );
@@ -815,15 +821,20 @@ describe('the walker: transitive, static-only, and `typeOnly`-aware', () => {
 
 describe('applied to the real tree', () => {
   it('the record layer\'s own runtime closure spans the seam and the chain layer, and contains no runtime engine import', () => {
-    // The substantive live claim, and it is not vacuous: 33 modules (the seam
+    // The substantive live claim, and it is not vacuous: 34 modules (the seam
     // carries the shared host-sharing leaf; `soljson-path.ts` left the seam
     // with the embedded compiler), three directories plus that
     // leaf, five type-only engine edges and one deferred one.
+    //
+    // Re-pinned from 33 when `refusals.ts` joined the layer. It is reached from
+    // `session.ts` and imports only `./errors`, so it adds exactly one module and
+    // no new third-party or engine edge — which the unchanged edge assertions
+    // below are what actually prove.
     const closure = runtimeStaticClosure(
       specifierIndex(allSources()),
       path.join('record', 'index.ts'),
     );
-    expect(closure.modules.length).toBe(33);
+    expect(closure.modules.length).toBe(34);
     expect(closure.engineRuntimeEdges).toEqual([]);
     expect(
       closure.typeOnlyEdges.filter(edge =>
@@ -928,6 +939,12 @@ describe('applied to the real tree', () => {
     // one `./results/types` left is the erased type edge. The classes those
     // edges carried still exist and still carry their `code`s; they are no
     // longer part of the published surface.
+    //
+    // Re-pinned once more on this branch: a SECOND `./record/errors` edge
+    // returns, carrying `RecordUnreadableError` and `RecordLockedError` — the
+    // two record refusals this stack adds that survive the surface rule,
+    // because a caller acts on both (fix or replace the file; wait out or
+    // find the other run).
     expect(entry?.moduleSpecifiers.map(edge => edge.specifier).sort()).toEqual([
       './admin',
       './admin/errors',
@@ -944,6 +961,7 @@ describe('applied to the real tree', () => {
       './proxy',
       './proxy',
       './proxy',
+      './record/errors',
       './record/errors',
       './results/types',
       './standalone',
@@ -998,7 +1016,9 @@ describe('applied to the real tree', () => {
       scanText("export * from './record';\n", 'index.ts').moduleSpecifiers,
     );
     const closure = runtimeStaticClosure(index, 'index.ts');
-    expect(closure.modules.length).toBe(34);
+    // One more than the record layer's own closure above — the substituted root
+    // itself. Re-pinned from 34 alongside it when `refusals.ts` joined.
+    expect(closure.modules.length).toBe(35);
     expect(closure.engineRuntimeEdges).toEqual([]);
   });
 });
@@ -1071,11 +1091,15 @@ function caughtSites(
 }
 
 describe('exactly two caught-and-not-rethrown sites in the record layer, each converting the failure into a named state', () => {
-  it('the census finds three `catch` clauses, and exactly two of them swallow', () => {
+  it('the census finds five `catch` clauses, and exactly two of them swallow', () => {
     // The count is the invariant, not a spot check: the hazard is a NEW swallow
     // appearing somewhere unrelated, which is how a failed manifest write becomes a
     // silent no-op — a session returned, the operation proceeding, the record
-    // half-canonicalized, and nothing in the output channel. Two swallows are
+    // half-canonicalized, and nothing in the output channel.
+    //
+    // Five clauses: `refusals.ts` brought two catches of its own, and BOTH
+    // raise — one a named refusal, one the original error untouched — so they
+    // move the clause count without moving the swallow count. Two swallows are
     // sanctioned, and both convert the failure into a named state instead of
     // dropping it: the sidecar read (an unreadable fingerprint IS a state), and
     // the fingerprint refusal's diagnosis (failure-tolerant BY DESIGN — it runs
@@ -1083,11 +1107,11 @@ describe('exactly two caught-and-not-rethrown sites in the record layer, each co
     // or chain that cannot answer degrades the diagnosis to `indeterminate`
     // rather than masking the refusal with a different error).
     const sites = caughtSites(recordSources());
-    expect(sites).toHaveLength(3);
+    expect(sites).toHaveLength(5);
     expect(sites.filter(site => !site.rethrows)).toHaveLength(2);
   });
 
-  it('the swallows are the fingerprint read and the refusal diagnosis; the rethrow is the record lookup', () => {
+  it('the swallows are the fingerprint read and the refusal diagnosis; the rethrows are the record lookup and the two refusal wrappers', () => {
     const sites = caughtSites(recordSources());
     expect(
       sites
@@ -1096,8 +1120,8 @@ describe('exactly two caught-and-not-rethrown sites in the record layer, each co
         .sort(),
     ).toEqual(['session.ts', 'sidecar.ts']);
     expect(
-      sites.filter(site => site.rethrows).map(site => site.relative),
-    ).toEqual(['manifest.ts']);
+      sites.filter(site => site.rethrows).map(site => site.relative).sort(),
+    ).toEqual(['manifest.ts', 'refusals.ts', 'refusals.ts']);
   });
 
   it('both swallowing sites convert the failure into a named state rather than dropping it', () => {
@@ -1336,7 +1360,15 @@ const FACE_TYPES: readonly string[] = [
   'RecordLocation',
   'RecordLocationCause',
   'RecordLocationUnusableError',
+  // The record file's own two refusals, added as TYPES like every other error on
+  // this face. `FACE_VALUES` above is deliberately unchanged: the classifier that
+  // raises these lives on the session (`throughLock`) rather than as a sixth
+  // exported value, so the face's five-value guarantee holds — and a classifier
+  // cannot skip the preflight order, which is the risk that guarantee bounds.
+  'RecordLockedError',
   'RecordSession',
+  'RecordUnreadableCause',
+  'RecordUnreadableError',
   'ReplayReconciliationReport',
 ];
 
@@ -1439,15 +1471,21 @@ describe('the face is `openRecord` plus four named values, and everything else i
     // directly, so a caller has to be able to catch it, and `./record`'s own face
     // (asserted above) deliberately exports it as a type only — a consumer is meant
     // to distinguish record-layer errors by `code`, not by importing constructors.
-    // Briefly widened to three classes when the surface was "completed", then
-    // CUT BACK to this one on the review's principle (r3788402299: exporting
-    // is the commitment; the published classes are the refusals a caller can
-    // cause and fix, everything else branches on `code`). The route rule is
-    // unchanged and is what this test actually guards:
+    // Briefly widened when the surface was "completed", then CUT BACK on the
+    // review's principle (r3788402299: exporting is the commitment; the
+    // published classes are the refusals a caller can cause and fix — or must
+    // branch on to recover — and everything else branches on `code`). Two
+    // classes from this leaf survive the cut alongside the fingerprint one:
+    // `RecordUnreadableError` (the record file exists and cannot be read,
+    // where the engine gave a bare `SyntaxError`) and `RecordLockedError`
+    // (another run holds the lock, where it gave a raw `ELOCKED`) — both
+    // reachable from every state-changing operation, both actionable from a
+    // `catch`. The route rule is unchanged and is what this test actually
+    // guards:
     // `./record/errors` is the only record-layer edge the entry may carry, and
     // the names it re-exports are error classes only — never one of the face's
     // five operational values. The exported names are listed explicitly rather
-    // than matched by a prefix, so a fourth one has to be added here on
+    // than matched by a prefix, so a sixth one has to be added here on
     // purpose.
     const SANCTIONED_RECORD_EDGE = './record/errors';
     for (const edge of entry.moduleSpecifiers) {
@@ -1470,7 +1508,11 @@ describe('the face is `openRecord` plus four named values, and everything else i
         .filter(export_ => export_.from === SANCTIONED_RECORD_EDGE)
         .map(export_ => export_.name)
         .sort(),
-    ).toEqual(['RecordFingerprintUnreadableError']);
+    ).toEqual([
+      'RecordFingerprintUnreadableError',
+      'RecordLockedError',
+      'RecordUnreadableError',
+    ]);
     const exportedNames = new Set(faceExports(entry).map(entry_ => entry_.name));
     for (const recordValue of FACE_VALUES) {
       expect(exportedNames.has(recordValue), `${recordValue} escaped`).toBe(false);
@@ -1552,14 +1594,17 @@ describe('`openRecord` is the only way in; the consumers that would test it do n
   it('the consumer census is exact: the deployment seam, importing through the face', () => {
     // Originally asserted as zero consumers, recorded as a measured state rather
     // than a satisfied rule. Consumers have appeared since — most recently
-    // `erc1967.ts`, which takes the mint and the base58 conversion, both
-    // through the face, to answer the public 1967 readers in TRON's own
-    // address form. A new consumer, or a route change, edits this list
-    // deliberately or fails here.
+    // `deploy/errors.ts` (the mint and the base58 conversion feeding
+    // `printedAddress`, the post-spend messages' address form — review
+    // decision on #18) and `standalone/index.ts` (canonicalizing the
+    // indeterminate refusal's `spent` like every sibling construction). A new
+    // consumer, or a route change, edits this list deliberately or fails here.
     expect(recordImportsFromOutside(allSources())).toEqual([
       `${path.join('admin', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('adopt', 'index.ts')} -> canonicalizeAddress`,
       `${path.join('beacon', 'index.ts')} -> canonicalizeAddress`,
+      `${path.join('deploy', 'errors.ts')} -> canonicalizeAddress`,
+      `${path.join('deploy', 'errors.ts')} -> toBase58`,
       `${path.join('deploy', 'sender.ts')} -> canonicalizeAddress`,
       `${path.join('deploy', 'sender.ts')} -> CanonicalAddress`,
       `erc1967.ts -> canonicalizeAddress`,
@@ -1574,6 +1619,7 @@ describe('`openRecord` is the only way in; the consumers that would test it do n
       `${path.join('proxy', 'toolkit.ts')} -> ProxyRecordVerdict`,
       `${path.join('proxy', 'toolkit.ts')} -> RecordSession`,
       `${path.join('proxy', 'upgrade-proxy.ts')} -> canonicalizeAddress`,
+      `${path.join('standalone', 'index.ts')} -> canonicalizeAddress`,
     ]);
   });
 

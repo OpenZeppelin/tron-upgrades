@@ -9,6 +9,7 @@ import {
   tronBoxVersionsUnderTest,
 } from './helpers/locate';
 import { runThroughQueue } from '../src/deploy';
+import { readWriteBack, restoreWriteBack } from '../src/proxy/toolkit';
 
 /*
  * The deploy seam against the real installed host — the queue-arm behavior's
@@ -383,6 +384,130 @@ describe.each(installedVersions)(
         // encoding is `errors.ts`'s and `queue.ts`'s concern, not this one's.)
         expect(synchronousThrow).toBeUndefined();
       }
+    });
+  },
+);
+
+/*
+ * The write-back undo, against the installed host's own `Contract`.
+ *
+ * `hostDeploy` assigns `address` and `transactionHash` the moment `.new()`
+ * resolves, because assigning `address` is what CREATES the per-network entry
+ * TronBox later persists into the artifact file. A confirmation that comes back
+ * *reverted* deployed nothing, so `restoreWriteBack` has to put the abstraction
+ * back — and the only undo the host offers is `resetAddress()`, since the
+ * accessors are defined non-configurable and cannot be deleted.
+ *
+ * These run against the real class rather than the unit suite's mirror
+ * (`writeBackBearingArtifact` in `proxy-operations.test.ts`) so the mirror is
+ * anchored to measured host behaviour on both supported minors instead of to a
+ * reading of its source.
+ */
+interface HostContractClass {
+  clone: (json: unknown) => HostAbstraction;
+}
+
+interface HostAbstraction {
+  address: string;
+  transactionHash: string;
+  network: { address?: unknown; transactionHash?: unknown };
+  networks: Record<string, unknown>;
+  setNetwork: (networkId: string) => void;
+  isDeployed: () => boolean;
+  resetAddress: () => void;
+}
+
+const PROBE_NETWORK_ID = '2';
+const PROBE_ADDRESS = '41a614f803b6fd780986a42c78ec9c7f77e6ded13c';
+const PROBE_HASH = 'cd'.repeat(32);
+const PRIOR_ADDRESS = '41b1eb5c7f0a6d0f4e1c8b3a2d9f6e5c4b3a291807';
+const PRIOR_HASH = 'ab'.repeat(32);
+
+function realAbstraction(installName: string): HostAbstraction {
+  const Contract = hostModule<HostContractClass>(
+    installName,
+    'components/Contract/contract.js',
+  );
+  const artifact = Contract.clone({
+    contractName: 'WriteBackProbe',
+    abi: [],
+    bytecode: '0x60806040',
+    networks: {},
+  });
+  artifact.setNetwork(PROBE_NETWORK_ID);
+  return artifact;
+}
+
+describe.each(installedVersions)(
+  'the write-back and its undo, against the real %s Contract',
+  installName => {
+    it('assigning address is what makes isDeployed() true, and resetAddress is what undoes it', () => {
+      const artifact = realAbstraction(installName);
+      expect(artifact.isDeployed()).toBe(false);
+      // The getter throws rather than answering undefined — the measured fact
+      // `readWriteBack`'s guard exists for.
+      expect(() => artifact.address).toThrow();
+
+      artifact.address = PROBE_ADDRESS;
+      artifact.transactionHash = PROBE_HASH;
+      expect(artifact.isDeployed()).toBe(true);
+      // The per-network entry the host persists into the artifact file.
+      expect(artifact.networks[PROBE_NETWORK_ID]).toMatchObject({
+        address: PROBE_ADDRESS,
+        transactionHash: PROBE_HASH,
+      });
+
+      // `delete` cannot be the undo: the accessors are non-configurable.
+      expect(() => {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete (artifact as unknown as Record<string, unknown>).address;
+      }).toThrow();
+      expect(artifact.isDeployed()).toBe(true);
+
+      artifact.resetAddress();
+      expect(artifact.isDeployed()).toBe(false);
+      expect(() => artifact.address).toThrow();
+    });
+
+    it('restoreWriteBack returns a first deploy to not-deployed', () => {
+      const artifact = realAbstraction(installName);
+      const prior = readWriteBack(artifact as never);
+      expect(prior).toEqual({ address: null, transactionHash: null });
+
+      artifact.address = PROBE_ADDRESS;
+      artifact.transactionHash = PROBE_HASH;
+      expect(readWriteBack(artifact as never)).toEqual({
+        address: PROBE_ADDRESS,
+        transactionHash: PROBE_HASH,
+      });
+
+      restoreWriteBack(artifact as never, prior);
+      expect(artifact.isDeployed()).toBe(false);
+      expect(readWriteBack(artifact as never)).toEqual({
+        address: null,
+        transactionHash: null,
+      });
+      expect(artifact.network.transactionHash).toBeUndefined();
+    });
+
+    it('restoreWriteBack puts an EARLIER deployment back, rather than clearing it', () => {
+      // A redeploy over an artifact that already names a live contract. The
+      // undo has to restore that one, not leave the abstraction blank — which
+      // would break `.deployed()` for a contract that is in fact deployed.
+      const artifact = realAbstraction(installName);
+      artifact.address = PRIOR_ADDRESS;
+      artifact.transactionHash = PRIOR_HASH;
+      const prior = readWriteBack(artifact as never);
+
+      artifact.address = PROBE_ADDRESS;
+      artifact.transactionHash = PROBE_HASH;
+      restoreWriteBack(artifact as never, prior);
+
+      expect(artifact.isDeployed()).toBe(true);
+      expect(readWriteBack(artifact as never)).toEqual({
+        address: PRIOR_ADDRESS,
+        transactionHash: PRIOR_HASH,
+      });
     });
   },
 );

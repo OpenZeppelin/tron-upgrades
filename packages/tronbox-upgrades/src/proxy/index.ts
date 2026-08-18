@@ -21,6 +21,7 @@ export {
   ProxyArtifactCollisionError,
   ProxyArtifactMissingError,
   ProxyOperationRefusedError,
+  ProxyRecordWriteFailedError,
   StaleProxyRecordError,
   TransparentInitialOwnerRequiredError,
   UnknownProxyGenerationError,

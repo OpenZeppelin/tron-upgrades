@@ -31,6 +31,7 @@ import {
   EmptyInitializerRefusedError,
   InitialOwnerUnsupportedKindError,
   ProxyAdminAsOwnerError,
+  recordingLiveProxy,
   StaleProxyRecordError,
   TransparentInitialOwnerRequiredError,
 } from './errors';
@@ -41,7 +42,9 @@ import {
   handlesFrom,
   HANDLE_OPTION_KEYS,
   readPriorDeployedAddress,
-  readWriteBackHash,
+  readWriteBack,
+  restoreWriteBack,
+  restoringWriteBackOnFailure,
   encodeInitializer,
   type OperationContext,
   type MigrationHandles,
@@ -237,28 +240,49 @@ export async function runDeployProxy(
   }
 
   // 9 — ONE queued step: implementation, proxy, confirmation, verification
-  //     (the settlement contract belongs to the queue seam).
-  const outcome = await toolkit.queue(deployer, async () => {
+  //     (the settlement contract belongs to the queue seam). The step deploys
+  //     the implementation through the USER's contract, so any failing exit —
+  //     not only a revert — must put the user's write-back BACK, or the
+  //     artifact leaves the migration naming the implementation (review
+  //     comment on #18). Step 9b below is the success half of the same rule.
+  const outcome = await toolkit.queue(deployer, () =>
+    restoringWriteBackOnFailure(contract, async () => {
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
       () => toolkit.hostDeploy(contract, [...resolved.constructorArgs]),
     );
 
-    const priorProxyHash = readWriteBackHash(proxyAbstraction);
+    // Both write-back fields, not just the hash: the hash is what
+    // `assertFreshTransaction` compares, and the pair is what a reverted
+    // confirmation has to put back.
+    const priorWriteBack = readWriteBack(proxyAbstraction);
     const constructorArgs =
       kind === 'transparent'
         ? [implementationAddress, initialOwner, initData]
         : [implementationAddress, initData];
     const writeBack = await toolkit.hostDeploy(proxyAbstraction, constructorArgs);
-    assertFreshTransaction(priorProxyHash, writeBack);
+    assertFreshTransaction(priorWriteBack.transactionHash, writeBack);
+
+    // The proxy exists on-chain from here on, whatever the verdict says. Every
+    // refusal below this line names it, because every one of them fires after
+    // the spend and the recovery takes the address as its argument.
+    const live = {
+      address: canonicalizeAddress(writeBack.address),
+      transactionHash: writeBack.transactionHash,
+    };
 
     const verdict = await toolkit.confirm(writeBack.transactionHash);
     if (verdict.kind === 'reverted') {
+      // The one exception, and it is not an exception to the rule: a mined
+      // revert deployed nothing, so there is no on-chain fact to name — and the
+      // write-back `hostDeploy` assigned must not survive into the artifact the
+      // host persists after the migration.
+      restoreWriteBack(proxyAbstraction, priorWriteBack);
       throw new TransactionRevertedError(verdict);
     }
     if (verdict.kind === 'indeterminate') {
-      throw new ConfirmationIndeterminateError(verdict);
+      throw new ConfirmationIndeterminateError(verdict, live);
     }
 
     // The sender-identity comparison — and when the node omits the sender,
@@ -266,7 +290,7 @@ export async function runDeployProxy(
     // silently.
     const signer = await toolkit.signerOf(writeBack.transactionHash);
     if (signer !== null) {
-      assertSignerMatches(sender, signer);
+      assertSignerMatches(sender, signer, live);
     } else {
       toolkit.channel.warn(
         'sender comparison skipped',
@@ -277,9 +301,12 @@ export async function runDeployProxy(
       );
     }
 
-    await toolkit.recordProxy(canonicalizeAddress(writeBack.address), kind);
+    await recordingLiveProxy(live, () =>
+      toolkit.recordProxy(live.address, kind),
+    );
     return writeBack;
-  });
+    }),
+  );
 
   // 9b — the recognition key, completed. The replay module documents the key
   //     as the artifact's per-network write-back, but the queue's OWN

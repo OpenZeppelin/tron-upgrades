@@ -21,6 +21,7 @@ import {
   ConfirmationIndeterminateError,
   TransactionRevertedError,
 } from '../deploy';
+import { canonicalizeAddress } from '../record';
 import { transactionIdentity, operationNotes } from '../results/types';
 import type {
   ImplementationDeployment,
@@ -30,7 +31,9 @@ import {
   createOperationToolkit,
   handlesFrom,
   HANDLE_OPTION_KEYS,
+  readWriteBack,
   readWriteBackHash,
+  restoreWriteBack,
   type OperationContext,
   type MigrationHandles,
 } from '../proxy/toolkit';
@@ -151,6 +154,9 @@ async function deployImplementationThroughQueue(
 
   const outcome = await toolkit.queue(deployer, async () => {
     let writeBack: { address: string; transactionHash: string } | null = null;
+    // Captured before the deploy callback can run, so a reverted confirmation
+    // has the pre-deploy write-back to put back.
+    const priorWriteBack = readWriteBack(contract);
     const implementationAddress = await toolkit.fetchOrDeployImplementation(
       validated,
       resolved,
@@ -165,10 +171,21 @@ async function deployImplementationThroughQueue(
       const fresh: { address: string; transactionHash: string } = writeBack;
       const verdict = await toolkit.confirm(fresh.transactionHash);
       if (verdict.kind === 'reverted') {
+        // Nothing was deployed. The user's own artifact must not keep naming
+        // this address — the host persists that entry after the migration.
+        restoreWriteBack(contract, priorWriteBack);
         throw new TransactionRevertedError(verdict);
       }
       if (verdict.kind === 'indeterminate') {
-        throw new ConfirmationIndeterminateError(verdict);
+        // The implementation may be live at `fresh.address`; the refusal names it
+        // so the user can check rather than redeploy blind. Canonicalized like
+        // every other `spent` construction — the host returns its own spelling,
+        // and the structured field's contract is the canonical form (review
+        // comment on #18).
+        throw new ConfirmationIndeterminateError(verdict, {
+          address: canonicalizeAddress(fresh.address),
+          transactionHash: fresh.transactionHash,
+        });
       }
       return { implementationAddress, transactionHash: fresh.transactionHash };
     }

@@ -389,6 +389,132 @@ export function readWriteBackHash(contract: ContractAbstraction): string | null 
   }
 }
 
+/**
+ * The write-back an abstraction carried before a deploy, in the shape
+ * {@link restoreWriteBack} needs to put it back. `null` for either field means
+ * the abstraction carried none — the ordinary state of a contract that has not
+ * been deployed on this network yet.
+ */
+export interface PriorWriteBack {
+  readonly address: string | null;
+  readonly transactionHash: string | null;
+}
+
+/**
+ * Both write-back fields in one guarded read, for the callers that must be able
+ * to undo what `hostDeploy` assigned. Guarded for the same reason as
+ * {@link readWriteBackHash}: the host's getters route through `this.network`,
+ * which throws for a contract with no per-network entry.
+ */
+export function readWriteBack(contract: ContractAbstraction): PriorWriteBack {
+  let address: string | null = null;
+  try {
+    const value = (contract as { address?: unknown }).address;
+    address = typeof value === 'string' && value !== '' ? value : null;
+  } catch {
+    address = null;
+  }
+  return { address, transactionHash: readWriteBackHash(contract) };
+}
+
+/**
+ * Puts an abstraction's write-back back the way it was before a deploy.
+ *
+ * For the reverted-confirmation branches. `hostDeploy` assigns `address` the
+ * moment the host's `.new()` resolves, because that assignment is what creates
+ * the per-network entry the host later persists into the artifact file — so a
+ * transaction that is *mined and reverted* would otherwise leave the user's own
+ * artifact naming an address with no contract at it, and a later migration's
+ * `.deployed()` resolving to it.
+ *
+ * Two distinct callers, two distinct rules. For the abstraction whose OWN
+ * transaction is being judged, this runs only on `reverted`, never on
+ * `indeterminate`: a reverted creation definitively deployed nothing, while an
+ * indeterminate one may well have landed, and erasing a real deployment is the
+ * worse failure — the indeterminate refusal names the address and hash instead,
+ * so the deployment can be adopted. The USER contract's write-back inside a
+ * compound step is different (`restoringWriteBackOnFailure` below): by the time
+ * any later exit fails, the implementation either never deployed or is already
+ * remembered by the deployment record under its version hash, so a rerun
+ * refetches it without the artifact's help — restoring is safe on every
+ * failure, indeterminate included.
+ *
+ * The undo is the host's own: `resetAddress()` deletes `network.address`, and
+ * `isDeployed()` is exactly `!!network.address`. The per-network entry itself may
+ * survive carrying only `events`/`links` — the shape `link()` creates on its own,
+ * and one `isDeployed()` already reads as not deployed.
+ */
+export function restoreWriteBack(
+  contract: ContractAbstraction,
+  prior: PriorWriteBack,
+): void {
+  const target = contract as {
+    address?: unknown;
+    resetAddress?: () => void;
+    network?: { transactionHash?: unknown };
+  };
+  try {
+    if (prior.address === null) {
+      target.resetAddress?.();
+    } else {
+      // The setter refuses a falsy value, which is why the absent case goes
+      // through `resetAddress` rather than assigning null here.
+      target.address = prior.address;
+    }
+  } catch {
+    // An abstraction with no per-network entry to reset is already in the state
+    // this function exists to restore.
+  }
+  try {
+    if (prior.transactionHash === null) {
+      // Deleted off the entry rather than assigned: the host's setter writes
+      // `network.transactionHash` and its getter throws on `null`, so assigning
+      // null would replace one wrong state with another. `resetAddress` reaches
+      // through `network` the same way for the same reason.
+      const entry = target.network;
+      if (entry !== undefined) {
+        delete entry.transactionHash;
+      }
+    } else {
+      (contract as { transactionHash?: unknown }).transactionHash =
+        prior.transactionHash;
+    }
+  } catch {
+    // As above: no entry means nothing was written back.
+  }
+}
+
+/**
+ * Runs a compound queued step with the user contract's write-back captured at
+ * entry and restored on every failing exit — reverted, indeterminate, sender
+ * mismatch, failed slot verification, a record write that could not land, all
+ * of them (review comment on #18).
+ *
+ * The step's implementation deploys through the user's OWN contract, so
+ * `hostDeploy`'s assignment lands on the user's artifact; without this undo, a
+ * step that failed after that deploy leaves the artifact naming the
+ * implementation, and a later `.deployed()` answers the implementation where a
+ * proxy or beacon was meant. Restoring is safe even when the implementation
+ * itself deployed and confirmed: the deployment record remembers it by version
+ * hash (a timeout does not remove that entry — only the engine's
+ * `InvalidDeployment` does), so a rerun refetches it without the artifact's
+ * help. The abstraction whose own transaction ended indeterminate is NOT
+ * restored here — that is the proxy/beacon abstraction, and its handling stays
+ * with its confirmation branch.
+ */
+export async function restoringWriteBackOnFailure<T>(
+  contract: ContractAbstraction,
+  step: () => Promise<T>,
+): Promise<T> {
+  const prior = readWriteBack(contract);
+  try {
+    return await step();
+  } catch (error) {
+    restoreWriteBack(contract, prior);
+    throw error;
+  }
+}
+
 /** The abstraction's public deployed-address surface, guarded. */
 export function readPriorDeployedAddress(
   contract: ContractAbstraction,
@@ -809,21 +935,33 @@ export async function createOperationToolkit(request: {
           } as never,
           resolvedOptions.redeployImplementation === 'always',
         );
-      let deployment: { address: string };
-      try {
-        deployment = (await fetch()) as { address: string };
-      } catch (error) {
-        // Upstream removes an invalid cached deployment and then throws on
-        // non-EVM dev networks; one retry preserves onchange/always semantics.
-        if (
-          (error as { removed?: boolean })?.removed !== true ||
-          resolvedOptions.redeployImplementation === 'never'
-        ) {
-          throw error;
+      // The engine takes the record's lock for this call and HOLDS it across the
+      // implementation deploy — three retries, roughly seven seconds of backoff —
+      // so the loser of a race between two runs surfaces right here, and used to
+      // surface as a raw `ELOCKED`: catchable by no class, and in an unawaited
+      // migration step an unhandled rejection that ends `tronbox migrate` naming
+      // neither the operation nor the record. Lock-only wrapping, never the wide
+      // arm: everything else this call can raise belongs to validation or to the
+      // deploy, and has to reach the caller as itself. The retry below still sees
+      // the engine's own error first — a `RecordLockedError` carries no `removed`
+      // flag, so the two cannot be confused.
+      return requireSession().throughLock(async () => {
+        let deployment: { address: string };
+        try {
+          deployment = (await fetch()) as { address: string };
+        } catch (error) {
+          // Upstream removes an invalid cached deployment and then throws on
+          // non-EVM dev networks; one retry preserves onchange/always semantics.
+          if (
+            (error as { removed?: boolean })?.removed !== true ||
+            resolvedOptions.redeployImplementation === 'never'
+          ) {
+            throw error;
+          }
+          deployment = (await fetch()) as { address: string };
         }
-        deployment = (await fetch()) as { address: string };
-      }
-      return deployment.address;
+        return deployment.address;
+      });
     },
 
     hostDeploy:

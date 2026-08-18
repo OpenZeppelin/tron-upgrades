@@ -14,7 +14,7 @@
  */
 
 import type { EffectiveSender } from './types';
-import { SenderMismatchError } from './errors';
+import { SenderMismatchError, type SpentDeployment } from './errors';
 // Through the record layer's face, never a deep import — the face is the one
 // route its boundary scan permits consumers, and this module is the package's
 // first consumer of it.
@@ -61,12 +61,19 @@ export function resolveEffectiveSender(
 export function assertSignerMatches(
   resolved: EffectiveSender,
   signedBy: string,
+  /**
+   * The deployment this comparison runs *after*, where there is one. Passed
+   * through to the refusal so it can name what already exists on-chain: this
+   * check reads the signer OF a confirmed transaction, so on a deploy path the
+   * spend has always happened by the time it can fail.
+   */
+  spent?: SpentDeployment,
 ): CanonicalAddress {
   const signer = canonicalizeAddress(signedBy);
   if (resolved.kind === 'resolved') {
     const expected = canonicalizeAddress(resolved.address);
     if (signer !== expected) {
-      throw new SenderMismatchError(expected, signer);
+      throw new SenderMismatchError(expected, signer, spent);
     }
   }
   return signer;

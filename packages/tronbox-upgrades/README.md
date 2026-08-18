@@ -268,10 +268,13 @@ family's own refusals (a bad option value, a missing owner, an unsupported
 kind, and their siblings), the option family (`UpgradesOptionError` plus
 `UnknownOptionError`, `OptionValueError`, `OptionConflictError`), the
 environment family's base (`TronBoxEnvironmentError`),
-`ValidationInputRefusedError`, and the pair a caller distinguishes to recover
-a deployment record — "this is a different chain" versus "the record's
+`ValidationInputRefusedError`, and the record-recovery refusals a caller
+branches on to act — "this is a different chain" versus "the record's
 fingerprint file is unusable" (`ChainInstanceChangedError`,
-`RecordFingerprintUnreadableError`).
+`RecordFingerprintUnreadableError`), plus `RecordUnreadableError` (the record
+file itself cannot be read — not JSON, or contents the engine refuses) and
+`RecordLockedError` (another run holds the record's lock; the engine has
+already retried, so it is a real race).
 
 Many of the remaining errors — a node outage, a malformed reply, an
 environment missing one handle, an error raised while a result is built —
@@ -284,6 +287,29 @@ migration tool, most errors reach a human reading `tronbox migrate` output,
 where the message is the surface that matters. `ResultCapabilityUnavailableError`
 (raised from a returned result's own accessor, on a member this plugin cannot
 support) stays unexported under the same rule and carries its `code`.
+
+**No refusal after a confirmed on-chain write withholds the address.** Once a
+transaction has landed, the plugin can still refuse — the effective sender may
+disagree with the account the authority check ran against, or writing the
+deployment record may fail — and a refusal at that point has to be actionable,
+because the contract exists and you are paying for it either way. Every such
+refusal names the address and the transaction, and points at
+`forceImport(address)`, which is the tool that teaches the record about a
+contract that already exists. `SenderMismatchError`,
+`ConfirmationIndeterminateError` and `ProxyRecordWriteFailedError` all carry the
+pair; the last keeps the underlying record-layer error as its `cause`, so you can
+still branch on `RecordLockedError` versus `RecordUnreadableError` while knowing
+which proxy is unrecorded. The one refusal that names no address is
+`TransactionRevertedError`, and that is the point: a mined revert deployed
+nothing.
+
+**A failed operation is safe to re-run.** Whatever step failed, your project
+is left in a state where running the migration again is the right move, and
+each refusal's message says what to do first when there is anything to do. The
+one case needing care is a transaction whose outcome the node never reported:
+the plugin cannot tell whether it landed, so `ConfirmationIndeterminateError`
+says so, names that transaction to check on the chain, and
+`forceImport(address)` adopts the deployment if it did land.
 
 **`constructorArgs` cannot end in a plain object or `null`.** TronBox's own
 contract layer treats a trailing non-array object — and `null`, since

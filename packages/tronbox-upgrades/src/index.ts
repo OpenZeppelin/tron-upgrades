@@ -135,6 +135,12 @@ export {
   ProxyArtifactCollisionError,
   ProxyArtifactMissingError,
   ProxyOperationRefusedError,
+  // The proxy is live and confirmed and the record write failed. Exported
+  // because it is the one refusal where the on-chain fact and the recovery are
+  // the whole content: its `cause` carries the underlying record-layer error, so
+  // a caller can branch on `RecordLockedError` versus `RecordUnreadableError`
+  // while still learning which proxy is unrecorded.
+  ProxyRecordWriteFailedError,
   StaleProxyRecordError,
   TransparentInitialOwnerRequiredError,
   UnknownProxyGenerationError,
@@ -151,15 +157,16 @@ export {
   StaleTransactionIdentityError,
   CheatcodeSlotCollisionError,
 } from './deploy';
-// The one record-layer error a consumer must be able to catch by class:
-// `openRecord` throws it directly, on a fingerprint sidecar it cannot use, and
+// The first of three record-layer errors a consumer must be able to catch by
+// class (the other two are exported below, from the same leaf): `openRecord`
+// throws this one directly, on a fingerprint sidecar it cannot use, and
 // catching it is how a caller tells "corrupt" from "the chain instance
 // changed" (its counterpart below). The rest of the record layer's errors are
 // internal to `./record`, whose own face exports this class as a type only —
 // deliberately, so a consumer distinguishes by `code` rather than by importing
-// constructors. `openRecord`'s contract documents more refusals than these
-// two; the others carry a `code`, which is the documented way to branch on
-// them (see the surface rule below).
+// constructors. `openRecord`'s contract documents more refusals than these;
+// the others carry a `code`, which is the documented way to branch on them
+// (see the surface rule below).
 export { RecordFingerprintUnreadableError } from './record/errors';
 
 /*
@@ -205,6 +212,25 @@ export {
   // — branch on their `code` where automation needs to.
   ChainInstanceChangedError,
 } from './chain';
+
+/*
+ * The two record-layer refusals a caller can act on beyond the fingerprint
+ * one above, both this stack's own additions and both caller-actionable: the
+ * record file itself being unreadable, which used to surface as the engine's
+ * bare `SyntaxError` (fix the file, or take the refusal's exits), and another
+ * run holding the record's lock, which used to surface as a raw `ELOCKED`
+ * (wait, or find the other run). Reachable from more than `openRecord`: every
+ * session accessor routes through the same wrapper, so a mid-migration read
+ * or record write can raise either, and so can the engine's implementation
+ * deploy — it holds this record's lock for the length of that deploy, and the
+ * loser of that race gets `RecordLockedError` rather than an error with no
+ * class. The location/address refusals from the same leaf stay unexported
+ * under the surface rule above and branch by `code`.
+ */
+export {
+  RecordLockedError,
+  RecordUnreadableError,
+} from './record/errors';
 
 /*
  * The option-refusal family, thrown by the resolver every operation runs: an

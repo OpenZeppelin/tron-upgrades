@@ -22,6 +22,7 @@ import {
   NotTransparentProxyError,
   OptionsInArgsPositionError,
   ProxyAdminAsOwnerError,
+  ProxyRecordWriteFailedError,
   StaleProxyRecordError,
   TransparentInitialOwnerRequiredError,
   UpgradeVerificationFailedError,
@@ -32,6 +33,7 @@ import {
   assertNoCheatcodeCollision,
   CheatcodeSlotCollisionError,
   ConfirmationIndeterminateError,
+  SenderMismatchError,
   DeployerAbsentError,
   TransactionRevertedError,
 } from '../src/deploy';
@@ -169,6 +171,18 @@ interface FakeSpec {
    * override exists to exercise.
    */
   readonly resolved?: Partial<ResolvedForProxyOps>;
+  /**
+   * A signer the node reports for the deploy transaction. The effective-sender
+   * comparison then disagrees with it, reaching `SenderMismatchError` — a refusal
+   * that fires AFTER the proxy is deployed and confirmed.
+   */
+  readonly reportedSigner?: string;
+  /**
+   * Makes the proxy record write fail. Stands in for the record layer's own
+   * reasons — a lock another run holds, a file that cannot be read — because what
+   * this exercises is the state afterwards, not which reason fired.
+   */
+  readonly recordWriteFails?: boolean;
 }
 
 interface Fake {
@@ -183,6 +197,12 @@ interface Fake {
    * `undefined` until a proxy deploy actually runs.
    */
   readonly proxyConstructorArgs?: readonly unknown[] | undefined;
+  /**
+   * The proxy abstraction `proxyArtifact` handed the seam, carrying the
+   * per-network entry a write-back lands in. `undefined` until a proxy
+   * abstraction is requested at all.
+   */
+  readonly proxyArtifactInstance?: WriteBackBearing | undefined;
   /**
    * The dispatched upgrade call's data, captured from `sendUpgradeCall`'s
    * request. `undefined` until an upgrade actually dispatches a call.
@@ -225,6 +245,19 @@ function fakeAbstraction(spec: FakeSpec): ContractAbstraction {
   } as unknown as ContractAbstraction;
 }
 
+/**
+ * Distinctive on purpose: the record-write assertions must not pass because some
+ * other failure happened to fire.
+ */
+const RECORD_WRITE_REFUSED = 'the record write was refused';
+
+// The write-back-bearing stand-in lives in a shared helper now: the beacon and
+// standalone suites pin the same `restoreWriteBack` wiring against it.
+import {
+  writeBackBearingArtifact,
+  type WriteBackBearing,
+} from './helpers/write-back-bearing';
+
 function buildFake(spec: FakeSpec = {}): Fake {
   const log: string[] = [];
   const notes: string[] = [];
@@ -233,6 +266,7 @@ function buildFake(spec: FakeSpec = {}): Fake {
   // getters on the returned `Fake` so callers see the latest value without
   // this function reassigning a field the `Fake` interface declares readonly.
   let proxyConstructorArgs: readonly unknown[] | undefined;
+  let proxyArtifactInstance: WriteBackBearing | undefined;
   let upgradeCallData: string | undefined;
   let contractAtCall: { readonly abstraction: unknown; readonly address: string } | undefined;
 
@@ -362,9 +396,21 @@ function buildFake(spec: FakeSpec = {}): Fake {
       return {} as never;
     },
 
+    // Two markers, not one. `queue` alone only says the step was entered, so an
+    // assertion built on it cannot tell a statement inside the step from one
+    // after it — which is exactly the distinction the record write turns on.
+    // `queue:settled` is pushed when the step's promise settles, either way, so
+    // the refusal paths can be pinned with the same pair.
     queue: (host, step) => {
       log.push('queue');
-      return Promise.resolve(step());
+      const settle = <T>(value: T): T => {
+        log.push('queue:settled');
+        return value;
+      };
+      return Promise.resolve(step()).then(settle, error => {
+        settle(undefined);
+        throw error;
+      });
     },
 
     priorDeployedAddress: () => spec.priorAddress ?? null,
@@ -378,12 +424,13 @@ function buildFake(spec: FakeSpec = {}): Fake {
     },
     signerOf: async () => {
       log.push('signerOf');
-      return null;
+      return spec.reportedSigner ?? null;
     },
 
     proxyArtifact: name => {
       log.push(`proxyArtifact:${name}`);
-      return { contractName: name } as never;
+      proxyArtifactInstance = writeBackBearingArtifact(name);
+      return proxyArtifactInstance as never;
     },
     looksLikeProxyAdmin: async () => {
       log.push('looksLikeProxyAdmin');
@@ -430,6 +477,18 @@ function buildFake(spec: FakeSpec = {}): Fake {
       ) {
         proxyConstructorArgs = args;
       }
+      // The write-back the production seam performs on the abstraction it was
+      // handed. Mirrored here because the revert path's whole subject is
+      // whether this assignment survives a mined revert; a fake that skipped
+      // it would leave nothing for `restoreWriteBack` to be tested against.
+      // The host's own semantics are pinned separately, against the installed
+      // TronBox, in `deploy-real-host.test.ts`.
+      const target = abstraction as {
+        address?: unknown;
+        transactionHash?: unknown;
+      };
+      target.address = writeBack.address;
+      target.transactionHash = writeBack.transactionHash;
       return writeBack;
     },
 
@@ -498,6 +557,9 @@ function buildFake(spec: FakeSpec = {}): Fake {
 
     recordProxy: async (address, kind) => {
       log.push('recordProxy');
+      if (spec.recordWriteFails === true) {
+        throw new Error(RECORD_WRITE_REFUSED);
+      }
       if (spec.realSession) {
         await spec.realSession.addProxyRecord({ address, kind });
       }
@@ -537,6 +599,10 @@ function buildFake(spec: FakeSpec = {}): Fake {
     get contractAtCall() {
       return contractAtCall;
     },
+    /** The proxy abstraction the seam deployed through, for write-back checks. */
+    get proxyArtifactInstance() {
+      return proxyArtifactInstance;
+    },
   };
 }
 
@@ -570,8 +636,14 @@ describe('deployProxy — the order is the contract', () => {
     expect(fake.log.filter(entry => entry === 'queue')).toHaveLength(1);
 
     const queueAt = fake.log.indexOf('queue');
+    const settledAt = fake.log.indexOf('queue:settled');
+    expect(settledAt).toBeGreaterThan(queueAt);
     for (const inside of ['fetchOrDeployImplementation', 'confirm', 'recordProxy']) {
+      // Bounded on BOTH sides. After `queue` alone would also hold for a
+      // statement that runs once the step has closed, which is the defect this
+      // pins against — the record write must be inside.
       expect(fake.log.indexOf(inside), inside).toBeGreaterThan(queueAt);
+      expect(fake.log.indexOf(inside), inside).toBeLessThan(settledAt);
     }
     // The proxy deploy is the SECOND hostDeploy — the implementation's rides
     // fetchOrDeployImplementation.
@@ -991,6 +1063,280 @@ describe('deployProxy — a reverted or indeterminate confirmation is never reco
     ).rejects.toBeInstanceOf(ConfirmationIndeterminateError);
     expect(fake.log).not.toContain('recordProxy');
   });
+
+  it('a reverted confirmation also UNDOES the write-back on the proxy abstraction', async () => {
+    // The write-back is what creates the per-network entry the host persists
+    // into the artifact file after the migration. A mined revert deployed
+    // nothing, so leaving it would make a later migration's `.deployed()`
+    // resolve to an address with no contract at it.
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(TransactionRevertedError);
+
+    const artifact = fake.proxyArtifactInstance;
+    expect(artifact, 'the proxy artifact was built').toBeDefined();
+    expect(artifact?.network.address).toBeUndefined();
+    expect(artifact?.network.transactionHash).toBeUndefined();
+  });
+
+  it('an INDETERMINATE confirmation leaves the write-back in place, deliberately', async () => {
+    // The opposite call, for the opposite reason: an indeterminate transaction
+    // may well have landed, and erasing a real deployment is the worse failure.
+    // The address and hash stay reachable so the deployment can be adopted.
+    const fake = buildFake({ confirmOutcome: 'indeterminate' });
+    await expect(
+      runDeployProxy(fake.context, fakeAbstraction({}), [42]),
+    ).rejects.toBeInstanceOf(ConfirmationIndeterminateError);
+
+    const artifact = fake.proxyArtifactInstance;
+    expect(artifact?.network.address).toBe(
+      toTronHex(canonicalizeAddress(PROXY_ADDR)),
+    );
+    expect(artifact?.network.transactionHash).toBe(TX_HASH);
+  });
+
+  it('the indeterminate refusal NAMES the address and the adoption path', async () => {
+    // The rule this pins: a refusal that fires after the spend must name the
+    // on-chain fact and the recovery. The recovery takes the address as its
+    // argument, so a refusal that withholds it hides the one thing needed.
+    const fake = buildFake({ confirmOutcome: 'indeterminate' });
+    const failure = await runDeployProxy(
+      fake.context,
+      fakeAbstraction({}),
+      [42],
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(ConfirmationIndeterminateError);
+    const refusal = failure as ConfirmationIndeterminateError;
+    // The structured field carries the canonical form; the MESSAGE prints
+    // base58 — see the post-spend describe below for the two-form rule.
+    const expected = String(canonicalizeAddress(PROXY_ADDR));
+    expect(refusal.spent?.address).toBe(expected);
+    expect(refusal.spent?.transactionHash).toBe(TX_HASH);
+    expect(refusal.message).toContain(PROXY_ADDR);
+    expect(refusal.message).toContain(`forceImport('${PROXY_ADDR}')`);
+  });
+
+  it('a confirmed deploy keeps the write-back — the undo is not unconditional', async () => {
+    const fake = buildFake();
+    await runDeployProxy(fake.context, fakeAbstraction({}), [42]);
+    const artifact = fake.proxyArtifactInstance;
+    expect(artifact?.network.address).toBe(
+      toTronHex(canonicalizeAddress(PROXY_ADDR)),
+    );
+    expect(artifact?.network.transactionHash).toBe(TX_HASH);
+  });
+});
+
+describe("the USER contract's write-back is restored on every failing exit (review comment on #18)", () => {
+  /**
+   * The implementation deploys through the user's OWN contract, so
+   * `hostDeploy`'s write-back lands on the user's artifact — the file the host
+   * persists after the migration. The proxy artifact's undo (previous
+   * describe) covers the plugin's artifact; these pin the user's, and on EVERY
+   * failing exit rather than only the revert: by the time any later exit
+   * fires, the implementation either never deployed or is already remembered
+   * by the deployment record under its version hash, so a rerun refetches it
+   * without the artifact's help. The success paths are the boundary, pinned
+   * last.
+   */
+  const PRIOR = {
+    address: toTronHex(canonicalizeAddress(IMPL_OWNER)),
+    transactionHash: 'bb'.repeat(32),
+  };
+
+  /**
+   * A user contract whose write-back surface is the host's own shape —
+   * accessors over a per-network entry plus `resetAddress` — because a plain
+   * data-property fake would let `restoreWriteBack` silently do nothing and
+   * this suite pass vacuously.
+   */
+  function bearingUserContract(prior?: typeof PRIOR): WriteBackBearing {
+    const artifact = writeBackBearingArtifact('Box') as WriteBackBearing &
+      Record<string, unknown>;
+    artifact['abi'] = RESULT_ABI;
+    artifact['bytecode'] = '0x60806040';
+    artifact['isDeployed'] = () => artifact.network.address !== undefined;
+    artifact['at'] = async (target: string) => ({ address: target });
+    if (prior !== undefined) {
+      (artifact as { address?: unknown }).address = prior.address;
+      (artifact as { transactionHash?: unknown }).transactionHash =
+        prior.transactionHash;
+    }
+    return artifact;
+  }
+  const asAbstraction = (bearing: WriteBackBearing) =>
+    bearing as unknown as ContractAbstraction;
+
+  it('a sender mismatch restores the user artifact to its prior deployment', async () => {
+    const fake = buildFake({ reportedSigner: OWNER_BASE58 });
+    const contract = bearingUserContract(PRIOR);
+    await expect(
+      runDeployProxy(fake.context, asAbstraction(contract), [42]),
+    ).rejects.toBeInstanceOf(SenderMismatchError);
+    // Non-vacuous: the implementation deploy DID overwrite the entry first
+    // (the fake's hostDeploy assigns a pair distinct from PRIOR), so equality
+    // with PRIOR below proves the restore ran, not that nothing happened.
+    expect(fake.log).toContain('hostDeploy:Box');
+    expect(contract.network.address).toBe(PRIOR.address);
+    expect(contract.network.transactionHash).toBe(PRIOR.transactionHash);
+  });
+
+  it('a reverted confirmation resets a previously-undeployed user artifact entirely', async () => {
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    const contract = bearingUserContract();
+    await expect(
+      runDeployProxy(fake.context, asAbstraction(contract), [42]),
+    ).rejects.toBeInstanceOf(TransactionRevertedError);
+    expect(fake.log).toContain('hostDeploy:Box');
+    expect(contract.network.address).toBeUndefined();
+    expect(contract.network.transactionHash).toBeUndefined();
+  });
+
+  it('an INDETERMINATE confirmation restores the user artifact while the proxy keeps its pair', async () => {
+    // The two rules side by side: the abstraction whose own transaction ended
+    // indeterminate keeps its write-back (that deployment may be live and
+    // adoptable), while the user's entry — whose implementation the record
+    // already remembers by version hash — goes back to what it said before.
+    const fake = buildFake({ confirmOutcome: 'indeterminate' });
+    const contract = bearingUserContract(PRIOR);
+    await expect(
+      runDeployProxy(fake.context, asAbstraction(contract), [42]),
+    ).rejects.toBeInstanceOf(ConfirmationIndeterminateError);
+    expect(contract.network.address).toBe(PRIOR.address);
+    expect(contract.network.transactionHash).toBe(PRIOR.transactionHash);
+    const proxyArtifact = fake.proxyArtifactInstance;
+    expect(proxyArtifact?.network.address).toBe(
+      toTronHex(canonicalizeAddress(PROXY_ADDR)),
+    );
+    expect(proxyArtifact?.network.transactionHash).toBe(TX_HASH);
+  });
+
+  it('a failed slot verification on upgradeProxy restores the user artifact', async () => {
+    // The exit the review comment names outright: the upgrade call confirmed,
+    // the slot re-read disagreed, and the fresh implementation the step
+    // deployed along the way must not stay on the user's entry.
+    const fake = buildFake({
+      observedAfterUpgrade: toTronHex(canonicalizeAddress(IMPL_OWNER)),
+    });
+    const contract = bearingUserContract(PRIOR);
+    await expect(
+      runUpgradeProxy(fake.context, PROXY_ADDR, asAbstraction(contract)),
+    ).rejects.toBeInstanceOf(UpgradeVerificationFailedError);
+    expect(fake.log).toContain('hostDeploy:Box');
+    expect(contract.network.address).toBe(PRIOR.address);
+    expect(contract.network.transactionHash).toBe(PRIOR.transactionHash);
+  });
+
+  it('a successful deployProxy is the boundary: the entry then names the PROXY', async () => {
+    // Step 9b, not the restore: the recognition key replay reads is the
+    // artifact's per-network write-back, and after a successful deploy it must
+    // name the proxy — neither the implementation nor the prior deployment.
+    const fake = buildFake();
+    const contract = bearingUserContract(PRIOR);
+    await runDeployProxy(fake.context, asAbstraction(contract), [42]);
+    expect(contract.network.address).toBe(
+      toTronHex(canonicalizeAddress(PROXY_ADDR)),
+    );
+    expect(contract.network.transactionHash).toBe(TX_HASH);
+  });
+
+  it('a successful upgradeProxy keeps the fresh write-back — the restore is failure-only', async () => {
+    // The fake's hostDeploy assigns one constant pair whatever the
+    // abstraction; here it stands in for the implementation deploy's own
+    // write-back, which a successful upgrade deliberately leaves in place.
+    const fake = buildFake();
+    const contract = bearingUserContract(PRIOR);
+    await runUpgradeProxy(fake.context, PROXY_ADDR, asAbstraction(contract));
+    expect(contract.network.address).toBe(
+      toTronHex(canonicalizeAddress(PROXY_ADDR)),
+    );
+    expect(contract.network.transactionHash).toBe(TX_HASH);
+  });
+});
+
+describe('deployProxy — every refusal after the spend names the proxy and the recovery', () => {
+  /**
+   * The rule: a refusal that can fire after an irreversible on-chain success must
+   * name the on-chain fact and the recovery. Both refusals below fire with a live,
+   * confirmed proxy behind them, and the recovery — `forceImport` — takes the
+   * address as its argument, so withholding it means the message that stops the run
+   * also hides the one value needed to finish it.
+   */
+  // Two forms with two jobs (review decision on #18): the STRUCTURED field
+  // carries the canonical `0x` form — the identity a `catch` compares — while
+  // the MESSAGE prints base58, the encoding a user pastes into TronScan and
+  // back into a migration, and one every plugin entry point accepts.
+  const deployedProxy = () => String(canonicalizeAddress(PROXY_ADDR));
+  const printedProxy = PROXY_ADDR; // base58, the message form
+
+  it('the sender mismatch names the proxy it was already paid for', async () => {
+    // The comparison reads the signer OF a confirmed transaction, so it cannot
+    // run before the spend — which is what made naming nothing so costly here.
+    const fake = buildFake({ reportedSigner: OWNER_BASE58 });
+    const failure = await runDeployProxy(
+      fake.context,
+      fakeAbstraction({}),
+      [42],
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(SenderMismatchError);
+    const refusal = failure as SenderMismatchError;
+    // Still says what it always said — the mismatch is the diagnosis.
+    expect(refusal.preflighted).not.toBe(refusal.signed);
+    // And now says what it withheld.
+    expect(refusal.spent?.address).toBe(deployedProxy());
+    expect(refusal.spent?.transactionHash).toBe(TX_HASH);
+    expect(refusal.message).toContain(`forceImport('${printedProxy}')`);
+    expect(refusal.message).toContain('Nothing here removes it');
+    // It fired before the record write, so the proxy is genuinely unrecorded.
+    expect(fake.log).not.toContain('recordProxy');
+  });
+
+  it('a failed record write names the live proxy, and keeps the cause catchable', async () => {
+    const fake = buildFake({ recordWriteFails: true });
+    const failure = await runDeployProxy(
+      fake.context,
+      fakeAbstraction({}),
+      [42],
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(ProxyRecordWriteFailedError);
+    const refusal = failure as ProxyRecordWriteFailedError;
+    expect(refusal.proxyAddress).toBe(deployedProxy());
+    expect(refusal.transactionHash).toBe(TX_HASH);
+    // The underlying error is kept rather than folded into prose, so a caller can
+    // still branch on it — RecordLockedError versus RecordUnreadableError.
+    expect((refusal.cause as Error).message).toBe(RECORD_WRITE_REFUSED);
+    expect(refusal.message).toContain(RECORD_WRITE_REFUSED);
+    expect(refusal.message).toContain(`forceImport('${printedProxy}')`);
+    expect(refusal.message).toContain('The proxy is live');
+    // The consequence, said rather than left for the user to discover.
+    expect(refusal.message).toContain('deploys a second proxy beside this one');
+  });
+
+  it('the reverted refusal names NO on-chain fact, because there is none', async () => {
+    // The rule's boundary, asserted so "always name it" cannot be applied where it
+    // would be false: a mined revert deployed nothing.
+    const fake = buildFake({ confirmOutcome: 'reverted' });
+    const failure = await runDeployProxy(
+      fake.context,
+      fakeAbstraction({}),
+      [42],
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(TransactionRevertedError);
+    expect((failure as Error).message).not.toContain('forceImport(');
+  });
 });
 
 describe('deployProxy — an interrupted confirmation, and what a re-run does about it', () => {
@@ -1158,6 +1504,41 @@ describe('upgradeProxy — the measured orderings, pinned on the log', () => {
     await expect(
       runUpgradeProxy(bad.context, PROXY_ADDR, newImpl()),
     ).rejects.toBeInstanceOf(UpgradeVerificationFailedError);
+  });
+
+  it('the record write happens INSIDE the queued step, as deployProxy does it', async () => {
+    const fake = buildFake();
+    await runUpgradeProxy(fake.context, PROXY_ADDR, newImpl());
+
+    const queueAt = fake.log.indexOf('queue');
+    const settledAt = fake.log.indexOf('queue:settled');
+    const recordAt = fake.log.indexOf('recordProxy');
+    expect(queueAt).toBeGreaterThanOrEqual(0);
+    expect(settledAt).toBeGreaterThan(queueAt);
+    expect(recordAt).toBeGreaterThan(queueAt);
+    // The assertion that carries this test: the write landed before the step
+    // closed. It used to land after, which put it outside whatever
+    // serialization the queue provides — so a second operation from the same
+    // migration body could interleave between the verified upgrade and the
+    // record of it.
+    expect(recordAt).toBeLessThan(settledAt);
+
+    // And the slot verification still precedes the write: a record is never
+    // written for an upgrade that failed to verify.
+    expect(fake.log.lastIndexOf('readImplementationAddress')).toBeLessThan(
+      recordAt,
+    );
+  });
+
+  it('a failed slot verification closes the step with no record written', async () => {
+    const fake = buildFake({
+      observedAfterUpgrade: toTronHex(canonicalizeAddress(IMPL_OWNER)),
+    });
+    await expect(
+      runUpgradeProxy(fake.context, PROXY_ADDR, newImpl()),
+    ).rejects.toBeInstanceOf(UpgradeVerificationFailedError);
+    expect(fake.log).toContain('queue:settled');
+    expect(fake.log).not.toContain('recordProxy');
   });
 
   it('verification compares identity, not spelling — a base58 observation of the same address passes', async () => {

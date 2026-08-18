@@ -26,6 +26,7 @@ export {
   StaleTransactionIdentityError,
   TransactionRevertedError,
 } from './errors';
+export type { SpentDeployment } from './errors';
 export {
   assertFreshTransaction,
   assertNoCheatcodeCollision,

@@ -455,8 +455,12 @@ describe('one resolution, canonical comparison, mismatch refuses', () => {
       caught = error as SenderMismatchError;
     }
     expect(caught).toBeInstanceOf(SenderMismatchError);
-    expect(caught?.message).toContain(canonicalizeAddress(SENDER_BASE58));
-    expect(caught?.message).toContain(canonicalizeAddress(other));
+    // The structured fields carry the canonical pair; the MESSAGE prints
+    // base58, the form a user looks up (review decision on #18).
+    expect(caught?.preflighted).toBe(canonicalizeAddress(SENDER_BASE58));
+    expect(caught?.signed).toBe(canonicalizeAddress(other));
+    expect(caught?.message).toContain(SENDER_BASE58);
+    expect(caught?.message).toContain(other);
   });
 
   it('accepts any signer when unconfigured, returning it canonicalized for the result', () => {

@@ -74,6 +74,7 @@ import {
   readFingerprint,
   writeFingerprint,
 } from './sidecar';
+import { throughRecordLock, throughRecordRead } from './refusals';
 import type { RecordDeps, RecordSession } from './types';
 
 /**
@@ -101,6 +102,12 @@ import type { RecordDeps, RecordSession } from './types';
  *   to refuse — it is left as it is and reported.
  * @throws {ChainResultShapeError} the chain reports a chain id that is not a hex
  *   quantity parsing to a positive integer.
+ * @throws {RecordUnreadableError} the deployment record exists and cannot be read —
+ *   not JSON, or contents the engine refuses. Replaces the engine's bare
+ *   `SyntaxError`, which named neither the file nor a way out.
+ * @throws {RecordLockedError} another run holds the record's lock. Raised after the
+ *   engine's own retries, so it is a real race rather than a timing hiccup, and
+ *   **nothing has been written** when it is raised from this function.
  */
 export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
   // Step 1. Idempotent, and called again here on purpose: the entry module has already
@@ -158,7 +165,7 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
   // *"Nothing has been changed or removed"* — is about is preserved exactly: no
   // `lockedRun` is entered, neither the manifest nor the fingerprint is created or
   // modified, and in particular the address migration below has not run.
-  const data = await manifest.read();
+  const data = await throughRecordRead(manifestFile, () => manifest.read());
 
   // Step 5. The refusal, before any write.
   if (comparison.kind === 'changed') {
@@ -185,18 +192,24 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
   let addressesMigrated = 0;
 
   if (needsFingerprint || migration.rewritten > 0) {
-    const written = await manifest.lockedRun(async () => {
-      if (needsFingerprint) {
-        await writeFingerprint(fingerprintFile, fingerprintFor(identity));
-      }
-      // Re-read inside the lock rather than reusing the snapshot from before it: that
-      // read was unsynchronized, so another process may have written since.
-      const locked = canonicalizeStoredAddresses(await manifest.read());
-      if (locked.rewritten > 0) {
-        await manifest.write(locked.data);
-      }
-      return locked;
-    });
+    // Lock-only wrapping here, never the wide read arm: this callback runs code
+    // of ours — the fingerprint write and the address migration — and their
+    // refusals must reach the caller as themselves rather than be reinterpreted
+    // as "the record file cannot be read".
+    const written = await throughRecordLock(manifestFile, () =>
+      manifest.lockedRun(async () => {
+        if (needsFingerprint) {
+          await writeFingerprint(fingerprintFile, fingerprintFor(identity));
+        }
+        // Re-read inside the lock rather than reusing the snapshot from before it: that
+        // read was unsynchronized, so another process may have written since.
+        const locked = canonicalizeStoredAddresses(await manifest.read());
+        if (locked.rewritten > 0) {
+          await manifest.write(locked.data);
+        }
+        return locked;
+      }),
+    );
     migration = written;
     addressesMigrated = written.rewritten;
   }
@@ -223,19 +236,33 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
     fingerprintFile,
     identity,
     report,
-    getProxyRecord: (address: string): Promise<ProxyDeployment | undefined> =>
-      manifest.proxyRecord(canonicalizeAddress(address)),
-    getImplRecord: (address: string): Promise<ImplDeployment | undefined> =>
-      manifest.implRecord(canonicalizeAddress(address)),
+    // Every accessor goes through the record-file wrapper. Each one is a bare
+    // engine call whose whole throw surface is the record file and its lock, so
+    // the wide arm is precise here for the same reason it is at the read above —
+    // and a caller that reaches one of these mid-migration is exactly who must
+    // not receive a bare `SyntaxError` or a raw `ELOCKED`. The address
+    // canonicalization runs OUTSIDE the wrapper: its refusal is its own.
+    getProxyRecord: (address: string): Promise<ProxyDeployment | undefined> => {
+      const key = canonicalizeAddress(address);
+      return throughRecordRead(manifestFile, () => manifest.proxyRecord(key));
+    },
+    getImplRecord: (address: string): Promise<ImplDeployment | undefined> => {
+      const key = canonicalizeAddress(address);
+      return throughRecordRead(manifestFile, () => manifest.implRecord(key));
+    },
     addProxyRecord: (record: {
       readonly address: string;
       readonly kind: ProxyDeployment['kind'];
-    }): Promise<void> =>
-      manifest.addProxyRecord({
-        address: canonicalizeAddress(record.address),
-        kind: record.kind,
-      }),
-    recordCount: async (): Promise<number> => recordCount(await manifest.read()),
+    }): Promise<void> => {
+      const key = canonicalizeAddress(record.address);
+      return throughRecordRead(manifestFile, () =>
+        manifest.addProxyRecord({ address: key, kind: record.kind }),
+      );
+    },
+    recordCount: async (): Promise<number> =>
+      recordCount(await throughRecordRead(manifestFile, () => manifest.read())),
+    throughLock: <T,>(action: () => Promise<T>): Promise<T> =>
+      throughRecordLock(manifestFile, action),
   });
 }
 
@@ -264,6 +291,11 @@ async function diagnoseFingerprintRefusal(
   read: CodePresence,
 ): Promise<FingerprintRefusalDiagnosis> {
   try {
+    // Deliberately NOT through `throughRecordRead`: that wide arm converts a
+    // failed read into `RecordUnreadableError`, and raising here would mask
+    // the fingerprint refusal this diagnosis decorates with a different
+    // error about a different file. The catch below is this call's whole
+    // contract — any failure is the `indeterminate` diagnosis, never a throw.
     const proxies = (await manifest.read()).proxies ?? [];
     if (proxies.length === 0) {
       return 'no-proxies';

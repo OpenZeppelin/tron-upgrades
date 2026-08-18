@@ -399,13 +399,128 @@ export class RecordFingerprintUnreadableError extends Error {
   }
 }
 
+/** Why the deployment record itself could not be read. */
+export type RecordUnreadableCause =
+  /**
+   * `JSON.parse` refused the file. Detected as `SyntaxError`, its own class, so
+   * the arm is a type check rather than a reading of a message.
+   */
+  | 'not-json'
+  /**
+   * The file parses and the engine refused what is in it — a missing or unknown
+   * manifest version, an OpenZeppelin CLI-format record, a version with no
+   * migration path, or two network files for one chain. Those messages already
+   * say which, so the engine's own wording is carried through as the detail and
+   * this remedy covers what they have in common.
+   */
+  | 'contents-refused';
+
 /**
- * The three remedy tables, exported as data so a test reads the tables rather
+ * What both causes converge on. Deleting the record is an exit, and it is a
+ * costly one, so it is spelled out rather than implied: a fresh record knows
+ * about no deployments, and the operations that consult it will say so.
+ */
+const recordTwoExits =
+  'Restore the file from version control if you have it — it is the exit that ' +
+  'loses nothing. Failing that, move it aside: the next run starts a fresh ' +
+  'record, which knows about no deployments at all, so every live proxy has to ' +
+  'be re-adopted with forceImport(address) before it can be upgraded again. ' +
+  'The proxies themselves are unaffected either way; it is only this plugin\'s ' +
+  'memory of them that is at stake.';
+
+const recordUnreadableRemedies: Readonly<
+  Record<RecordUnreadableCause, string>
+> = Object.freeze({
+  'not-json':
+    'The record file is not JSON, so nothing could be read from it at all. A ' +
+    'hand edit, a merge conflict left unresolved, or a process that died ' +
+    'mid-write all look like this. ' +
+    recordTwoExits,
+  'contents-refused':
+    'The record file is JSON and its contents were refused — the reason above ' +
+    'is the engine\'s own. If it names a manifest version this plugin does not ' +
+    'understand, the record was written by a newer version and upgrading ' +
+    '@openzeppelin/tronbox-upgrades is the exit that loses nothing. If it names ' +
+    'the OpenZeppelin CLI, no automated migration exists and the record cannot ' +
+    'be carried forward. Editing the file by hand repairs neither. ' +
+    recordTwoExits,
+});
+
+/**
+ * The deployment record exists and cannot be read.
+ *
+ * The asymmetry this closes: a corrupt *fingerprint sidecar* already had
+ * {@link RecordFingerprintUnreadableError}, naming the file and a remedy per
+ * cause, while a corrupt *record* — the file that actually remembers every
+ * proxy — surfaced the engine's bare `SyntaxError`, whose message is a byte
+ * offset with no file name and no advice. Measured against the installed
+ * engine. The less consequential file had the better refusal.
+ *
+ * Raised only where the whole throw surface belongs to the engine's record file,
+ * so the wide `'contents-refused'` arm is precise rather than greedy — see
+ * `./refusals.ts` for that argument.
+ */
+export class RecordUnreadableError extends Error {
+  readonly code = 'TRON_RECORD_UNREADABLE' as const;
+
+  constructor(
+    readonly file: string,
+    readonly because: RecordUnreadableCause,
+    /** The engine's own message, kept because it is more specific than ours. */
+    readonly detail: string,
+  ) {
+    super(
+      `The deployment record in ${file} cannot be read (${because}): ` +
+        `${detail}\n\n${recordUnreadableRemedies[because]}`,
+    );
+    this.name = 'RecordUnreadableError';
+  }
+}
+
+/**
+ * Another process holds the record's lock.
+ *
+ * No `because` union, and deliberately: there is one cause. The engine locks
+ * with three retries before giving up — roughly seven seconds of backoff — and
+ * it holds that lock across an entire implementation deploy, so reaching this is
+ * a genuine race between two runs rather than a momentary overlap. A second
+ * cause would arrive with the union it needs.
+ *
+ * Named rather than left raw because of what an unnamed one becomes: an
+ * `ELOCKED` with no class is not catchable by type, and in an unawaited
+ * migration step it surfaces as an unhandled rejection that terminates
+ * `tronbox migrate` naming neither the operation nor the file.
+ */
+export class RecordLockedError extends Error {
+  readonly code = 'TRON_RECORD_LOCKED' as const;
+
+  constructor(
+    readonly file: string,
+    /** The lock library's own message. */
+    readonly detail: string,
+  ) {
+    super(
+      `The deployment record ${file} is locked by another process ` +
+        `(${detail}).\n\nTwo runs are touching the same record at once — a ` +
+        'second `tronbox migrate` in another terminal, or a CI job sharing the ' +
+        'project directory. The engine already waited and retried before ' +
+        'reporting this, so it is not a timing hiccup to shorten. Let the other ' +
+        'run finish and try again. Nothing was written by this run.',
+    );
+    this.name = 'RecordLockedError';
+  }
+}
+
+/**
+ * The four remedy tables, exported as data so a test reads the tables rather
  * than restating them — the same reason the seam exports its slot matrix.
+ * `RecordLockedError` has no table: one cause, one remedy, written into the
+ * message itself.
  */
 export const recordRemedyTables = Object.freeze({
   location: locationRemedies,
   address: addressRemedies,
   fingerprint: fingerprintRemedies,
   fingerprintDisposition: fingerprintDispositions,
+  unreadable: recordUnreadableRemedies,
 });
