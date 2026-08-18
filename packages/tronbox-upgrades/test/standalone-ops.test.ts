@@ -25,6 +25,8 @@ import {
   type WriteBackBearing,
 } from './helpers/write-back-bearing';
 import { pluginOptionDefaults } from '../src/options/defaults';
+import { NothingToAdoptError } from '../src/adopt/errors';
+import { BeaconProxyRefusedError } from '../src/proxy/errors';
 
 /*
  * The standalone operations — the CI surface over a recording fake. The
@@ -51,6 +53,17 @@ interface Spec {
    * through the same shape `confirmTransaction` produces.
    */
   readonly confirmOutcome?: 'confirmed-successful' | 'reverted';
+  /** What the referenced proxy's 1967 slots report. Default: a uups proxy. */
+  readonly slots?:
+    | { readonly kind: 'no-code' }
+    | {
+        readonly kind: 'code';
+        readonly implementation: string | null;
+        readonly admin: string | null;
+        readonly beacon: string | null;
+      };
+  /** A caller-supplied kind option, as resolution would carry it. */
+  readonly resolvedKind?: 'transparent' | 'uups' | 'beacon';
 }
 
 function abstraction(name: string): ContractAbstraction {
@@ -135,7 +148,15 @@ function buildFake(spec: Spec = {}) {
 
     hashWithoutMetadata: (bytecode: string) => bytecode.slice(0, 16),
     proxySlots: async () => {
-      throw new Error('proxySlots must not be consulted by this surface');
+      log.push('proxySlots');
+      return (
+        spec.slots ?? {
+          kind: 'code',
+          implementation: toTronHex(canonicalizeAddress(IMPL)),
+          admin: null,
+          beacon: null,
+        }
+      );
     },
 
     callThroughFacade: async (request: { at: string }) => {
@@ -223,7 +244,7 @@ function buildFake(spec: Spec = {}) {
   };
 
   const resolved: ResolvedForProxyOps = {
-    kind: undefined,
+    kind: spec.resolvedKind,
     initializer: undefined,
     constructorArgs: spec.constructorArgs ?? [],
     redeployImplementation: 'onchange',
@@ -244,6 +265,7 @@ function buildFake(spec: Spec = {}) {
 }
 
 const CHAIN_OR_STATE = [
+  'proxySlots',
   'queue',
   'requireDeployer',
   'fetchOrDeployImplementation',
@@ -395,5 +417,82 @@ describe('deployImplementation and prepareUpgrade', () => {
     ).rejects.toBeInstanceOf(CheatcodeSlotCollisionError);
     expect(fake.log.filter(e => e.startsWith('hostDeploy'))).toEqual([]);
     expect(fake.log).not.toContain('confirm');
+  });
+});
+
+describe('prepareUpgrade binds the kind of the referenced proxy (F4)', () => {
+  const ADMIN = '0x1111111111111111111111111111111111111111';
+  const BEACON = '0x2222222222222222222222222222222222222222';
+
+  it('a uups proxy (empty admin slot) judges BOTH candidate validations as uups', async () => {
+    // The deep-review probe recorded {"kinds":[null,null]} here — an omitted
+    // kind let the candidate self-infer transparent, suppressing exactly the
+    // missing-entry-point error that matters.
+    const fake = buildFake();
+    await runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2'));
+    expect(fake.kindsSeen).toEqual(['uups', 'uups']);
+  });
+
+  it('a transparent proxy (occupied admin slot) judges the candidate as transparent', async () => {
+    const fake = buildFake({
+      slots: {
+        kind: 'code',
+        implementation: toTronHex(canonicalizeAddress(IMPL)),
+        admin: ADMIN,
+        beacon: null,
+      },
+    });
+    await runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2'));
+    expect(fake.kindsSeen).toEqual(['transparent', 'transparent']);
+  });
+
+  it('a caller-supplied kind is honored over the slot reading', async () => {
+    const fake = buildFake({ resolvedKind: 'transparent' });
+    await runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2'));
+    expect(fake.kindsSeen).toEqual(['transparent', 'transparent']);
+  });
+
+  it('refuses kind: beacon before touching the chain', async () => {
+    // 'beacon' is in the option's closed set, and upstream filters the
+    // missing-entry-point error for it exactly as for transparent — honoring
+    // it would recreate the hole this binding removes.
+    const fake = buildFake({ resolvedKind: 'beacon' });
+    await expect(
+      runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2')),
+    ).rejects.toThrow(/beacon/);
+    expect(fake.log).not.toContain('proxySlots');
+    expect(fake.log).not.toContain('validate:BoxV2');
+  });
+
+  it('refuses a beacon proxy by name, before validating the candidate', async () => {
+    const fake = buildFake({
+      slots: { kind: 'code', implementation: null, admin: null, beacon: BEACON },
+    });
+    await expect(
+      runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2')),
+    ).rejects.toBeInstanceOf(BeaconProxyRefusedError);
+    expect(fake.log).not.toContain('validate:BoxV2');
+  });
+
+  it('refuses an address without code', async () => {
+    const fake = buildFake({ slots: { kind: 'no-code' } });
+    await expect(
+      runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2')),
+    ).rejects.toBeInstanceOf(NothingToAdoptError);
+  });
+
+  it('refuses code with an empty implementation slot', async () => {
+    const fake = buildFake({
+      slots: { kind: 'code', implementation: null, admin: null, beacon: null },
+    });
+    await expect(
+      runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2')),
+    ).rejects.toBeInstanceOf(NothingToAdoptError);
+  });
+
+  it('deployImplementation never consults the proxy slots', async () => {
+    const fake = buildFake();
+    await runDeployImplementation(fake.context, abstraction('Box'));
+    expect(fake.log).not.toContain('proxySlots');
   });
 });

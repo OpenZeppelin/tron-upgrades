@@ -12,6 +12,10 @@ import { getStorageUpgradeReport, InvalidDeployment } from '@openzeppelin/upgrad
 
 import { assertNoOptionsInArgsPosition, createOperationToolkit } from '../src/proxy/toolkit';
 import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
+import {
+  DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS,
+  runPrepareUpgrade,
+} from '../src/standalone';
 import { UPGRADE_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/upgrade-proxy';
 import {
   DEPLOY_BEACON_ACCEPTED_OPTIONS,
@@ -597,6 +601,50 @@ describe('kind:uups over an implementation with no upgrade mechanism — the clo
       transparent.resolved,
     );
     expect(validated.name).toBe(project.contractName);
+  });
+
+  it('prepareUpgrade with no caller kind derives uups from the proxy slots and the real engine refuses the entry-point-less candidate (F4)', async () => {
+    // The composition the deep review's finding 4 demands: nothing in the
+    // options names a kind, the referenced proxy's slots do (empty admin
+    // slot = uups), and that derived kind must reach the REAL `getErrors` —
+    // under the pre-fix code both validation calls judged with an omitted
+    // kind, the candidate self-inferred transparent, and this exact refusal
+    // was filtered.
+    const project = realToolkitProject({ standaloneId: 'flat' });
+    const context = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: {},
+      acceptedOptions: DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    // Validation throws before any deployer/queue/record member is touched,
+    // so the only chain member this path consults is the slot read.
+    const bound = {
+      ...context,
+      toolkit: {
+        ...context.toolkit,
+        proxySlots: async () => ({
+          kind: 'code' as const,
+          implementation: '0x' + 'ab'.repeat(20),
+          admin: null,
+          beacon: null,
+        }),
+      },
+    };
+    let caught: unknown;
+    try {
+      await runPrepareUpgrade(
+        bound,
+        '0x' + 'cd'.repeat(20),
+        { contractName: project.contractName } as never,
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain('is not upgrade-safe');
+    expect((caught as Error).message).toMatch(/upgradeTo/);
   });
 });
 

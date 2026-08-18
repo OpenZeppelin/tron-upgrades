@@ -22,6 +22,9 @@ import {
   TransactionRevertedError,
 } from '../deploy';
 import { canonicalizeAddress } from '../record';
+import { NothingToAdoptError } from '../adopt/errors';
+import { BeaconProxyRefusedError } from '../proxy/errors';
+import { requireProxyKind } from '../options/resolve';
 import { transactionIdentity, operationNotes } from '../results/types';
 import type {
   ImplementationDeployment,
@@ -227,7 +230,8 @@ export async function deployImplementation(
 /**
  * Prepares an upgrade: validates the candidate against the layout of the
  * implementation CURRENTLY installed at the proxy (chain-read, never
- * name-guessed), deploys only the new implementation, and never touches the
+ * name-guessed) and WITH that proxy's kind (slot-read, never inferred from
+ * the candidate), deploys only the new implementation, and never touches the
  * proxy (scenario 2) — the switch stays a later governance action.
  */
 export async function runPrepareUpgrade(
@@ -236,20 +240,69 @@ export async function runPrepareUpgrade(
   contract: ContractAbstraction,
 ): Promise<ImplementationDeployment> {
   const { toolkit, resolved } = context;
+  const proxy = canonicalizeAddress(proxyAddress);
+
+  // A caller-chosen kind is narrowed BEFORE any chain read: `'beacon'` is in
+  // the option's closed set, and upstream filters the missing-entry-point
+  // error for it exactly as for transparent (`dist/validate/overrides.js:
+  // 86-88`) — honoring it would reopen the hole this kind resolution exists
+  // to close. Same narrowing `deployProxy` applies to its own kind.
+  if (resolved.kind !== undefined) {
+    requireProxyKind(resolved.kind, ['transparent', 'uups'], 'prepareUpgrade');
+  }
+
+  // The kind comes from the REFERENCED proxy, never inferred from the
+  // candidate: a candidate that dropped its upgrade entry point would
+  // self-infer `transparent`, which makes the engine suppress exactly the
+  // missing-entry-point error that matters (`runValidateUpgrade` above states
+  // the same rule for a contract reference; here the reference is a chain
+  // address). Slots are read BEFORE validation — the reverse of
+  // `runUpgradeProxy`'s ordering — because the kind must exist when
+  // `getErrors` judges the candidate, and `processProxyKind` cannot run
+  // before the validation it consumes. One non-raising slot read, as there:
+  // the per-slot readers raise on an empty slot, measured live. Known limit,
+  // shared with force-import: a uups proxy whose 1967 admin slot was left
+  // dirty classifies as transparent here.
+  const slots = await toolkit.proxySlots(proxy);
+  if (slots.kind === 'no-code') {
+    throw new NothingToAdoptError(proxy);
+  }
+  if (slots.beacon !== null) {
+    throw new BeaconProxyRefusedError(proxy, slots.beacon);
+  }
+  if (slots.implementation === null) {
+    throw new NothingToAdoptError(
+      proxy,
+      'code with an empty 1967 implementation slot — not a proxy this plugin can prepare an upgrade for',
+    );
+  }
+  const kind =
+    resolved.kind ?? (slots.admin !== null ? 'transparent' : 'uups');
+  if (kind === 'beacon') {
+    // `requireProxyKind` refused above; this is TypeScript's proof of it.
+    throw new Error(
+      'unreachable: requireProxyKind admits only transparent | uups here',
+    );
+  }
+  // Threaded through the CONTEXT so the second validation inside
+  // `deployImplementationThroughQueue` judges with the same kind.
+  const bound: OperationContext = {
+    ...context,
+    resolved: { ...resolved, kind },
+  };
+
   const validated = await toolkit.validateImplementation(
     nameOf(contract, 'prepareUpgrade'),
-    resolved,
+    bound.resolved,
   );
   toolkit.requireDeployer();
 
-  const currentImplementation =
-    await toolkit.chain.read.readImplementationAddress(proxyAddress);
   // Scenario 3 rides storedLayoutFor's own refusal: an unregistered reference
   // names force-import as the escape hatch rather than failing opaquely.
-  const currentLayout = await toolkit.storedLayoutFor(currentImplementation);
-  await toolkit.assertStorageCompatible(currentLayout, validated, resolved);
+  const currentLayout = await toolkit.storedLayoutFor(slots.implementation);
+  await toolkit.assertStorageCompatible(currentLayout, validated, bound.resolved);
 
-  return deployImplementationThroughQueue(context, contract, 'prepareUpgrade');
+  return deployImplementationThroughQueue(bound, contract, 'prepareUpgrade');
 }
 
 export async function prepareUpgrade(
