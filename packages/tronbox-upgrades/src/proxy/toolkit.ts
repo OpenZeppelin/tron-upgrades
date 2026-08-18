@@ -762,12 +762,18 @@ export async function createOperationToolkit(request: {
         ),
       );
       const resolution = env.artifacts.resolve(contractName);
-      if (resolution.status !== 'unique') {
+      if (resolution.status === 'indeterminate') {
         // The operation's own statement for the collision the validation
         // pipeline deliberately proceeds through in silence (see
         // `validation-input/pipeline.ts:artifactAbstraction`, whose own doc
         // comment names this call site as the one that owns it) — recorded
         // here rather than there so the disclosure has exactly one source.
+        // `ambiguous` is NOT this case: a same-source resolution is not
+        // degraded — the pipeline's own gate above already verified the
+        // record it used by deployed-bytecode identity, so nothing here is
+        // less certain than the `unique` path — and a distinct-source
+        // resolution never reaches this line, because `deriveValidationInput`
+        // threw `ArtifactNameAmbiguousError` before returning an outcome.
         channel.degraded({
           code: 'artifact-name-indeterminate',
           summary: `${contractName}: the build-info index could not be built, so artifact-name collisions could not be checked.`,

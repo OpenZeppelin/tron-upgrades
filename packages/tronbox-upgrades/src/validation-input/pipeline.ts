@@ -46,8 +46,10 @@ import type { SolcStandardInput, SolcStandardOutput } from './solc-input';
  * thing a leniency flip touches.
  *
  * The only thing this module throws is `ValidationInputInvariantError` (plus
- * the seam's own `ArtifactNameAmbiguousError`, for an operation that skipped
- * its ambiguity decision), and both denote plugin bugs rather than user
+ * the seam's own `ArtifactNameAmbiguousError`, when the candidates span more
+ * than one source and the calling operation skipped deciding that collision
+ * itself — same-source candidates are the pipeline's own decision, below,
+ * and never reach a throw), and both denote plugin bugs rather than user
  * conditions.
  *
  * ── The Foundry model, which is this module's shape ──────────────────────────
@@ -402,17 +404,27 @@ function assertInput(input: ValidationInput): void {
 /**
  * Resolves the artifact, or hands the decision back to whoever owns it.
  *
- * `resolve` reports three statuses and only one of them is the validation
- * pipeline's:
+ * `resolve` reports three statuses:
  *
  * - **`unique`** — proceed.
- * - **`ambiguous`** — *policy for this branch is the operation's*, stated in the
- *   seam itself, and the operation is expected to decide before calling here.
- *   When it has not, the validation pipeline fails closed by raising the seam's
- *   **own** diagnosis rather than validating one of N same-named contracts:
- *   picking silently is the mis-pairing class this whole sub-feature exists to
- *   remove, and `ArtifactNameAmbiguousError` renders the candidates itself, so
- *   no sentence is hand-written here.
+ * - **`ambiguous`** — the pipeline decides for itself when every candidate
+ *   names the same `(sourcePath, contractName)`: recompiles accumulate
+ *   build-info files (two `tronbox compile` runs are enough), so that shape
+ *   is one contract seen in several records, not a collision. Only DISTINCT
+ *   sources are a collision a user must resolve, and *that* decision stays
+ *   the operation's — stated in the seam itself, and expected before calling
+ *   here. When it has not been made, the pipeline fails closed by raising the
+ *   seam's **own** diagnosis rather than validating one of N distinctly
+ *   sourced same-named contracts: picking silently is the mis-pairing class
+ *   this whole sub-feature exists to remove, and `ArtifactNameAmbiguousError`
+ *   renders the candidates itself, so no sentence is hand-written here. Same
+ *   test as `proxy/artifacts.ts:requireProxyArtifact`, and safe for the same
+ *   reason plus one more: `consultBuildRecord` below verifies every record by
+ *   deployed-bytecode identity, so the record consumed matches these exact
+ *   compiled bytes, whichever of the same-source candidates named it. That
+ *   identity is weaker for metadata-free builds (`metadata.bytecodeHash:
+ *   "none"`), where a stale record can still match — the storage-layout
+ *   provenance follow-up owns that residue.
  * - **`indeterminate`** — the build-info index could not be built, so *collisions
  *   could not be checked*; the abstraction still came from the host's own
  *   resolver for that name. The operation owns the statement for it
@@ -429,6 +441,14 @@ function artifactAbstraction(
     return { name: resolution.name, contract: resolution.contract };
   }
   if (resolution.status === 'indeterminate') {
+    return { name: resolution.name, contract: resolution.unverifiedContract };
+  }
+  const distinct = new Set(
+    resolution.candidates.map(
+      candidate => `${candidate.sourcePath}:${candidate.contractName}`,
+    ),
+  );
+  if (distinct.size <= 1) {
     return { name: resolution.name, contract: resolution.unverifiedContract };
   }
   throw new ArtifactNameAmbiguousError(resolution.name, resolution.candidates);
