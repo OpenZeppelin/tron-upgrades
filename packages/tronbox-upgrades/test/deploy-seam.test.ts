@@ -228,6 +228,73 @@ describe('the bridge settles its own promise where a direct await would hang', (
   });
 });
 
+describe('steps on one host run one at a time, in registration order (issue 16 decision 1)', () => {
+  // FixtureDeployer is a thenable, so it cannot ride an async return without
+  // being adopted; each test constructs and starts it inline, as :220 does.
+  it('the second step does not start until the first settles', async () => {
+    const deployer = new FixtureDeployer();
+    await deployer.start();
+    const order: string[] = [];
+    let releaseA!: () => void;
+    const gateA = new Promise<void>(resolve => {
+      releaseA = resolve;
+    });
+    const a = runThroughQueue(deployer, async () => {
+      order.push('a:start');
+      await gateA;
+      order.push('a:end');
+      return 'a';
+    });
+    const b = runThroughQueue(deployer, async () => {
+      order.push('b:start');
+      return 'b';
+    });
+    // Give b every chance to start early before releasing a.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(order).toEqual(['a:start']);
+    releaseA();
+    await expect(a).resolves.toBe('a');
+    await expect(b).resolves.toBe('b');
+    expect(order).toEqual(['a:start', 'a:end', 'b:start']);
+  });
+
+  it('a rejecting first step neither blocks nor fails the second', async () => {
+    const deployer = new FixtureDeployer();
+    await deployer.start();
+    const boom = new Error('first step failed');
+    const a = runThroughQueue(deployer, async () => {
+      throw boom;
+    });
+    const b = runThroughQueue(deployer, async () => 'b');
+    await expect(a).rejects.toBe(boom);
+    await expect(b).resolves.toBe('b');
+  });
+
+  it('two different hosts do not serialize against each other', async () => {
+    // Pins the contract's boundary: per host, not global.
+    const order: string[] = [];
+    let releaseA!: () => void;
+    const gateA = new Promise<void>(resolve => {
+      releaseA = resolve;
+    });
+    const hostA = new FixtureDeployer();
+    await hostA.start();
+    const hostB = new FixtureDeployer();
+    await hostB.start();
+    const a = runThroughQueue(hostA, async () => {
+      await gateA;
+      order.push('a');
+    });
+    const b = runThroughQueue(hostB, async () => {
+      order.push('b');
+    });
+    await b;
+    expect(order).toEqual(['b']);
+    releaseA();
+    await a;
+  });
+});
+
 // ---------------------------------------------------------------------------
 // the marshalling and staleness guards
 // ---------------------------------------------------------------------------
