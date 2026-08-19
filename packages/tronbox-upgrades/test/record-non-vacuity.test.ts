@@ -911,19 +911,16 @@ describe('obeying the printed remedy recovers — measured, not assumed', () => 
       expect(failure).toBeInstanceOf(ChainInstanceChangedError);
       const message = (failure as ChainInstanceChangedError).message;
 
-      // The remedy names BOTH files, together. Measured from a consumer
-      // project against a restarted TRE: the manifest alone leaves the
-      // surviving fingerprint refusing the next run over zero records.
-      expect(message).toContain(
-        `delete ${MANIFEST_FILE} together with its fingerprint file ${SIDECAR_FILE}`,
-      );
-      // And the third place that remembers the old chain — TronBox's
+      // The remedy names the manifest alone: the fingerprint re-arms itself
+      // once the record is empty, so the two-file deletion is no longer asked.
+      expect(message).toContain(`delete ${MANIFEST_FILE},`);
+      expect(message).not.toContain('together with its fingerprint file');
+      // And the other place that remembers the old chain — TronBox's
       // per-network write-backs in the build artifacts — with its command.
       expect(message).toContain('tronbox compile --all');
 
-      // Obey it: exactly the two files the message names, nothing else.
+      // Obey it: exactly the one file the message names, nothing else.
       await fs.rm(MANIFEST_FILE, { force: true });
-      await fs.rm(SIDECAR_FILE, { force: true });
 
       // The re-run proceeds on first-run semantics and re-arms against the
       // chain that is actually answering.
@@ -940,22 +937,27 @@ describe('obeying the printed remedy recovers — measured, not assumed', () => 
     }
   });
 
-  it('non-vacuity: the manifest alone — the remedy as previously worded — still refuses, over zero records', async () => {
+  it('a changed instance over an EMPTY record proceeds, re-arms on disk, and names why in the report', async () => {
     await placeRecordFixtures(mainnetFirstBlockHash);
     try {
       await fs.rm(MANIFEST_FILE, { force: true });
 
-      const failure = await openRecord(
+      // The gate runs on the surviving fingerprint, but it guards zero
+      // records, so it re-arms instead of refusing.
+      const session = await openRecord(
         depsFor(identityFor(REBOOTED_FIRST_BLOCK_HASH)),
-      ).then(
-        () => undefined,
-        (cause: unknown) => cause,
       );
-      // The gate runs on the fingerprint, so the deletion the old wording
-      // prescribed changes nothing — and the refusal now guards a manifest
-      // with nothing in it. This is the loop the reworded remedy exits.
-      expect(failure).toBeInstanceOf(ChainInstanceChangedError);
-      expect((failure as ChainInstanceChangedError).context.recordCount).toBe(0);
+      expect(session.report.instance).toBe('indeterminate');
+      expect(session.report.instanceBecause).toBe('instance-changed-record-empty');
+      const rearmed = JSON.parse(await fs.readFile(SIDECAR_FILE, 'utf8')) as {
+        readonly firstBlockHash: string;
+      };
+      expect(rearmed.firstBlockHash).toBe(REBOOTED_FIRST_BLOCK_HASH);
+
+      // On disk, not only in memory: the next run compares as the same
+      // instance.
+      const next = await openRecord(depsFor(identityFor(REBOOTED_FIRST_BLOCK_HASH)));
+      expect(next.report.instance).toBe('same');
     } finally {
       await clearRecordFixtures();
     }
@@ -1033,13 +1035,14 @@ describe('the refusal names both files, and says that neither deletion alone res
     // message.
     expect(withoutClause).toContain(MANIFEST_FILE);
 
-    // And the two differ in exactly two sidecar-shaped places: the clause, and
-    // the remedy's deletion target ("together with its fingerprint file …").
-    // The artifacts sentence — the third place that remembers the old chain —
-    // is present in BOTH branches, because the write-backs exist whether or
-    // not a fingerprint sidecar does.
-    expect(withoutClause).not.toContain('together with its fingerprint file');
-    expect(withClause).toContain('together with its fingerprint file');
+    // And the two differ in exactly two sidecar-shaped places: the clause,
+    // and the re-arm sentence. The deletion target is the manifest in BOTH
+    // branches — the fingerprint re-arms itself over an empty record — and
+    // the artifacts sentence is present in both, because the write-backs
+    // exist whether or not a fingerprint sidecar does.
+    expect(withoutClause).not.toContain('re-arms itself');
+    expect(withClause).toContain('re-arms itself');
+    expect(withClause).not.toContain('together with its fingerprint file');
     expect(withClause).toContain('tronbox compile --all');
     expect(withoutClause).toContain('tronbox compile --all');
   });

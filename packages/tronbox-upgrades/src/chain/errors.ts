@@ -428,14 +428,15 @@ function renderInstanceChange(
 ): string {
   const records = `${String(context.recordCount)} deployment record(s) in ${context.manifestFile}`;
   const fingerprint = renderFingerprintClause(context.sidecarFile);
-  // The wiped-node deletions, named TOGETHER on purpose: deleting the manifest
-  // alone leaves the surviving fingerprint refusing the next run over zero
-  // records — measured from a consumer project against a restarted TRE — while
-  // the clause above already forbids deleting the fingerprint alone.
-  const wipedDeletions =
+  // The remedy names the manifest alone: a fingerprint guarding zero records
+  // re-arms itself on the next run (the record layer's empty-record rule), so
+  // the two-file deletion the message used to demand is no longer needed — and
+  // the clause above still forbids deleting the fingerprint on its own.
+  const rearmClause =
     context.sidecarFile === undefined
-      ? context.manifestFile
-      : `${context.manifestFile} together with its fingerprint file ${context.sidecarFile}`;
+      ? ''
+      : 'The fingerprint file stays: once the manifest holds no records it ' +
+        're-arms itself against the chain that answers. ';
 
   if (comparison.signal === 'chain-id') {
     return (
@@ -461,15 +462,14 @@ function renderInstanceChange(
     'of the same chain, so those records do not describe it.\n\n' +
     fingerprint +
     'Nothing has been changed or removed. If this is a disposable local node ' +
-    `that has been restarted, delete ${wipedDeletions}, clear the old ` +
+    `that has been restarted, delete ${context.manifestFile}, clear the old ` +
     "chain's addresses out of the build artifacts — delete the build " +
-    'directory and run `tronbox compile --all` — and run again. All three ' +
-    'places remember the old chain: the manifest holds the records, the ' +
-    'fingerprint holds the identity they were checked against, and the ' +
-    "artifacts hold TronBox's per-network write-backs, which would refuse " +
-    'the next deploy over a proxy this chain has never seen. If you did not ' +
-    'expect a restart, the node may be serving a different chain than ' +
-    'intended — check the endpoint before deleting anything.'
+    'directory and run `tronbox compile --all` — and run again. ' +
+    rearmClause +
+    "The artifacts hold TronBox's per-network write-backs, which would " +
+    'refuse the next deploy over a proxy this chain has never seen. If you ' +
+    'did not expect a restart, the node may be serving a different chain ' +
+    'than intended — check the endpoint before deleting anything.'
   );
 }
 

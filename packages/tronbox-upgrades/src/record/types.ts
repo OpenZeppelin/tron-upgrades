@@ -203,7 +203,12 @@ export interface ProxyRecordVerdict {
 export type InstanceIndeterminateCause =
   | 'no-recorded-identity'
   | 'recorded-identity-incomplete'
-  | 'fingerprint-unreadable';
+  | 'fingerprint-unreadable'
+  /**
+   * Session-level, never the comparator's: the instance changed but the record
+   * held zero deployments, so the gate re-armed instead of refusing.
+   */
+  | 'instance-changed-record-empty';
 
 /** Which of the fingerprint's two hash fields was missing. */
 export type IncompleteFingerprintField = 'genesisHash' | 'firstBlockHash';

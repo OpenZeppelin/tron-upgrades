@@ -94,9 +94,11 @@ import type { RecordDeps, RecordSession } from './types';
  *   cannot answer degrades the diagnosis to `indeterminate` rather than masking this
  *   refusal. An absent sidecar is a different state and never reaches this throw.
  * @throws {ChainInstanceChangedError} the chain reports a different instance than the
- *   records were written against. The chain seam owns that message and never throws it;
- *   deciding that refusal is the policy is this layer's act. **Nothing has been written
- *   when it is raised.**
+ *   records were written against AND the record holds at least one deployment. The
+ *   chain seam owns that message and never throws it; deciding that refusal is the
+ *   policy is this layer's act. **Nothing has been written when it is raised.** Over
+ *   an empty record the gate re-arms the fingerprint instead and reports
+ *   `instance-changed-record-empty`.
  * @throws {AddressNotCanonicalizableError} an address the operation named is not a
  *   usable TRON address. An address already *stored* in the manifest is never a reason
  *   to refuse — it is left as it is and reported.
@@ -167,8 +169,17 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
   // modified, and in particular the address migration below has not run.
   const data = await throughRecordRead(manifestFile, () => manifest.read());
 
-  // Step 5. The refusal, before any write.
-  if (comparison.kind === 'changed') {
+  // Step 5. The refusal, before any write — unless the record guards NOTHING.
+  // A fingerprint over zero deployments blocks the printed remedy's own next run
+  // (the manifest is deleted, the sidecar survives) while protecting no record,
+  // so with zero records the gate re-arms instead: the fingerprint is rewritten
+  // to the live instance under the step-6 lock, and the report names the cause.
+  // Upstream is looser still — the engine silently deletes invalid deployments
+  // on dev networks and redeploys — so proceeding only at zero records is the
+  // conservative end of that precedent.
+  const rearmOverEmptyRecord =
+    comparison.kind === 'changed' && recordCount(data) === 0;
+  if (comparison.kind === 'changed' && !rearmOverEmptyRecord) {
     throw new ChainInstanceChangedError(comparison, {
       manifestFile,
       recordCount: recordCount(data),
@@ -181,13 +192,18 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
       sidecarFile: fingerprintFile,
     });
   }
-  const settled: SettledInstanceComparison = comparison;
+  // `settled` is undefined exactly on the re-arm path: `changed` stays
+  // unrepresentable in the report (reconcile.ts's rule), so that path builds its
+  // outcome explicitly below instead of flowing the comparison through.
+  const settled: SettledInstanceComparison | undefined =
+    comparison.kind === 'changed' ? undefined : comparison;
 
   // Step 6. Nothing at all on the steady-state path: comparator says the same
   // instance, so the fingerprint on disk already matches and there is nothing to
   // write; if the stored addresses are already canonical there is nothing to migrate
   // either, and no lock is taken.
-  const needsFingerprint = settled.kind === 'indeterminate';
+  const needsFingerprint =
+    settled === undefined || settled.kind === 'indeterminate';
   let migration = canonicalizeStoredAddresses(data);
   let addressesMigrated = 0;
 
@@ -224,7 +240,13 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
 
   const report = buildReport({
     chainId: identity.chainId,
-    outcome: instanceOutcomeOf(read, settled),
+    outcome:
+      settled === undefined
+        ? Object.freeze({
+            instance: 'indeterminate',
+            instanceBecause: 'instance-changed-record-empty',
+          } as const)
+        : instanceOutcomeOf(read, settled),
     addressesMigrated,
     addressesUnmigratable: migration.unmigratable,
     proxies: verdicts,
