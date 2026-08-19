@@ -477,6 +477,17 @@ describe('prepareUpgrade binds the kind of the referenced proxy (F4)', () => {
     expect(fake.log).not.toContain('validate:BoxV2');
   });
 
+  it('a proxy recorded as beacon refuses toward upgradeBeacon, before validating', async () => {
+    // The plugin's own writes never record a beacon proxy this way (its
+    // beacon is what gets recorded), but the manifest is a file a user can
+    // edit — and a beacon upgrade goes through upgradeBeacon.
+    const fake = buildFake({ proxyRecord: { kind: 'beacon' } });
+    await expect(
+      runPrepareUpgrade(fake.context, PROXY, abstraction('BoxV2')),
+    ).rejects.toThrow('upgradeBeacon');
+    expect(fake.log).not.toContain('validate:BoxV2');
+  });
+
   it('refuses kind: beacon before touching the chain', async () => {
     // 'beacon' is in the option's closed set, and upstream filters the
     // missing-entry-point error for it exactly as for transparent — honoring

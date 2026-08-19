@@ -603,10 +603,10 @@ describe('kind:uups over an implementation with no upgrade mechanism — the clo
     expect(validated.name).toBe(project.contractName);
   });
 
-  it('prepareUpgrade with no caller kind derives uups from the proxy slots and the real engine refuses the entry-point-less candidate (F4)', async () => {
+  it('prepareUpgrade with no caller kind takes uups from the proxy record and the real engine refuses the entry-point-less candidate (F4)', async () => {
     // The composition the deep review's finding 4 demands: nothing in the
-    // options names a kind, the referenced proxy's slots do (empty admin
-    // slot = uups), and that derived kind must reach the REAL `getErrors` —
+    // options names a kind, the referenced proxy's record does, and that
+    // recorded kind must reach the REAL `getErrors` —
     // under the pre-fix code both validation calls judged with an omitted
     // kind, the candidate self-inferred transparent, and this exact refusal
     // was filtered.
