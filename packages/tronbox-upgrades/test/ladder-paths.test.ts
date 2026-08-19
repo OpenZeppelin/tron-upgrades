@@ -1,13 +1,19 @@
 import { hashBytecodeWithoutMetadata } from '@openzeppelin/upgrades-core';
 import { describe, expect, it } from 'vitest';
 
-import type { BuildInfoReadResult } from '../src/environment';
+import {
+  ArtifactNameAmbiguousError,
+  type AbsolutePath,
+  type BuildInfoReadResult,
+} from '../src/environment';
 import { deriveValidationInput } from '../src/validation-input';
 import type { ValidationInput } from '../src/validation-input';
 import { verifyBuildRecordFreshness } from '../src/validation-input/identity';
+import { createArtifactAccess } from '../src/environment/artifacts';
 
 import {
   BUILD_INFO_DIR,
+  CONTRACTS_DIR,
   EMPTY_LAYOUT,
   EXECUTABLE_MUTATION_INDEX,
   artifactBytecodeFor,
@@ -39,6 +45,7 @@ import {
   upgradePairsFixture,
   type LadderProject,
 } from './helpers/ladder-fixtures';
+import { absolute } from './helpers/readers';
 
 /**
  * The Foundry-model pipeline — two paths, zero compiles, and a discriminator
@@ -1088,5 +1095,148 @@ describe('the Foundry model: absent/stale refuse, fresh consumes the pair', () =
         'section "Validation without storage layouts" for what that mode can ' +
         'and cannot decide.',
     );
+  });
+});
+
+/** ─── artifact-name ambiguity: same source vs. distinct sources ──────────── */
+
+/**
+ * Relabels a project's real `unique` resolution as `ambiguous`, carrying the
+ * given candidates — the shape `env.artifacts.resolve` reports when the
+ * build-info index finds more than one artifact under the requested bare
+ * name (`src/environment/artifacts.ts`). `unverifiedContract` is the real
+ * resolution's own `contract`, so the abstraction the pipeline falls back to
+ * on the same-source path is the project's genuine one, not a stand-in.
+ */
+function ambiguousOver(
+  env: LadderProject['env'],
+  candidates: ReadonlyArray<{
+    sourcePath: string;
+    contractName: string;
+    buildInfoFile: AbsolutePath;
+  }>,
+) {
+  const real = env.artifacts;
+  return {
+    ...env,
+    artifacts: {
+      ...real,
+      resolve: (name: string) => {
+        const resolution = real.resolve(name);
+        if (resolution.status !== 'unique') return resolution;
+        return {
+          status: 'ambiguous' as const,
+          name: resolution.name,
+          candidates: candidates.map(c => Object.freeze({ ...c })),
+          unverifiedContract: resolution.contract,
+        };
+      },
+    },
+  };
+}
+
+describe('artifact-name ambiguity across build records', () => {
+  const SOURCE_PATH = `${CONTRACTS_DIR}/${SOURCE_KEY}`;
+  const VERIFYING_RECORD = recordFor('append', 'before');
+
+  it('proceeds when every candidate is the same source seen in several build records', async () => {
+    // Two records, one (sourcePath, contractName): the compile-twice shape the
+    // live migration hit. The pipeline must reach its own gate, which verifies
+    // by bytecode identity, rather than refusing at the name.
+    const project = pairProject('append', 'before');
+    const outcome = await deriveValidationInput({
+      contract: CONTRACT,
+      env: ambiguousOver(project.env, [
+        {
+          sourcePath: SOURCE_PATH,
+          contractName: CONTRACT,
+          buildInfoFile: absolute(`${BUILD_INFO_DIR}/aaa.json`),
+        },
+        {
+          sourcePath: SOURCE_PATH,
+          contractName: CONTRACT,
+          buildInfoFile: absolute(`${BUILD_INFO_DIR}/bbb.json`),
+        },
+      ]),
+      deps: ladderDeps(project, { readBuildInfo: buildInfoReader([VERIFYING_RECORD]) }),
+    });
+    expect(outcome.kind).toBe('input');
+  });
+
+  it('two accumulated records of one source, through the REAL index: resolution proceeds and the gate consumes the record matching the artifact', async () => {
+    // The accumulated shape produced the way it actually happens — the source
+    // changed between compiles, so two build-info files name the same
+    // (sourcePath, contractName) with different content — and detected by the
+    // real ambiguity index, not a relabeled resolution (review comment on
+    // #20). The stale record sorts FIRST, so consuming the right one is the
+    // gate's bytecode verification at work, never file order.
+    const project = pairProject('append', 'after');
+    const stale = recordFor('append', 'before', `${BUILD_INFO_DIR}/aaa-stale.output.json`);
+    const fresh = recordFor('append', 'after', `${BUILD_INFO_DIR}/bbb-fresh.output.json`);
+    const readBoth = buildInfoReader([stale, fresh]);
+    const resolved = project.env.artifacts.resolve(CONTRACT);
+    if (resolved.status !== 'unique') throw new Error('unreachable');
+    const abstraction = resolved.contract;
+    const access = createArtifactAccess(
+      {
+        resolver: {},
+        require: () => abstraction,
+        contracts: () => [abstraction],
+      },
+      {
+        ...project.env.paths,
+        contractsBuildDirectory: project.env.paths.buildInfoDirectory,
+        contractsBuildDirectoryIsExternal: false,
+      },
+      { read: readBoth, exists: () => true },
+    );
+    // The index itself reports the accumulation.
+    const resolution = access.resolve(CONTRACT);
+    expect(resolution.status).toBe('ambiguous');
+
+    const outcome = await deriveValidationInput({
+      contract: CONTRACT,
+      // Resolution goes through the REAL access; artifact-fact reading keeps
+      // the fixture's reader, which is not this test's subject.
+      env: {
+        ...project.env,
+        artifacts: { ...access, record: project.env.artifacts.record },
+      },
+      deps: ladderDeps(project, { readBuildInfo: readBoth }),
+    });
+    const input = expectInput(outcome);
+    // The record consumed describes the artifact's bytes: its layout is the
+    // 'after' shape, not the stale 'before' one.
+    const consumed = JSON.stringify(layoutOfInput(input));
+    const afterLayout = JSON.stringify(
+      layoutOfInput((await deriveFresh('append', 'after')).input),
+    );
+    const beforeLayout = JSON.stringify(
+      layoutOfInput((await deriveFresh('append', 'before')).input),
+    );
+    expect(consumed).toBe(afterLayout);
+    expect(afterLayout).not.toBe(beforeLayout);
+  });
+
+  it('still refuses when the same name comes from two distinct sources', async () => {
+    const project = pairProject('append', 'before');
+    await expect(
+      deriveValidationInput({
+        contract: CONTRACT,
+        env: ambiguousOver(project.env, [
+          {
+            sourcePath: `${CONTRACTS_DIR}/A.sol`,
+            contractName: CONTRACT,
+            buildInfoFile: absolute(`${BUILD_INFO_DIR}/aaa.json`),
+          },
+          {
+            sourcePath: `${CONTRACTS_DIR}/B.sol`,
+            contractName: CONTRACT,
+            buildInfoFile: absolute(`${BUILD_INFO_DIR}/bbb.json`),
+          },
+        ]),
+        deps: ladderDeps(project, { readBuildInfo: buildInfoReader([VERIFYING_RECORD]) }),
+      }),
+    ).rejects.toThrow(ArtifactNameAmbiguousError);
   });
 });

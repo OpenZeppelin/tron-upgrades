@@ -195,10 +195,13 @@ export class EnvironmentInconsistentError extends TronBoxEnvironmentError {
 }
 
 /**
- * Exported for the proxy operations to throw if refusal is the policy it
- * chooses. The environment seam owns the diagnosis text because it holds the
- * candidates; the environment seam never throws this itself. Deliberately not
- * a `TronBoxEnvironmentError` subclass — that family is fixed at three.
+ * Exported for a caller — the validation pipeline or a proxy operation — to
+ * throw if refusal is the policy it chooses for a genuine cross-source
+ * collision; same-source candidates are each caller's own, silent collapse,
+ * never this error. The environment seam owns the diagnosis text because it
+ * holds the candidates; the environment seam never throws this itself.
+ * Deliberately not a `TronBoxEnvironmentError` subclass — that family is
+ * fixed at three.
  */
 export class ArtifactNameAmbiguousError extends Error {
   readonly candidates: readonly ArtifactCandidate[];
@@ -217,7 +220,10 @@ export class ArtifactNameAmbiguousError extends Error {
               `- ${candidate.sourcePath}:${candidate.contractName} ` +
               `(from build info ${candidate.buildInfoFile})`,
           )
-          .join('\n'),
+          .join('\n') +
+        '\nRename one of the contracts so the name is unique, or delete the ' +
+        'build directory and run `tronbox compile --all` if a listed source ' +
+        'file no longer exists in the project.',
     );
     this.name = 'ArtifactNameAmbiguousError';
     this.candidates = frozen;

@@ -14,8 +14,14 @@ records what is deployed where.
 npm install --save-dev @openzeppelin/tronbox-upgrades
 ```
 
-The plugin declares `tronbox` (>= 4.0.0), `tronweb` (>= 6.0.0) and `ethers`
-(^6.13.0) as peer dependencies.
+The plugin declares `tronbox` (>= 4.8.0), `tronweb` (>= 6.0.0) and `ethers`
+(^6.13.0) as peer dependencies. The TronBox floor is real, for two reasons a
+user can check: 4.7.0 introduced the `build_info_directory` records this
+plugin's validation reads (older releases never write them, so every operation
+refuses), and 4.8.0 fixed `migrate` exiting the process or silently
+continuing on errors thrown by migration scripts, contract calls, or
+`deployer` steps (TronBox's own 4.8.0 changelog) — the refusals this plugin
+raises mid-migration depend on that fix to be reported as a failed migration.
 
 ### One-time setup: make the proxy contracts compilable
 

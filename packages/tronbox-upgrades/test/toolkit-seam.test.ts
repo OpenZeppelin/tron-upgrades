@@ -12,6 +12,10 @@ import { getStorageUpgradeReport, InvalidDeployment } from '@openzeppelin/upgrad
 
 import { assertNoOptionsInArgsPosition, createOperationToolkit } from '../src/proxy/toolkit';
 import { DEPLOY_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/deploy-proxy';
+import {
+  DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS,
+  runPrepareUpgrade,
+} from '../src/standalone';
 import { UPGRADE_PROXY_ACCEPTED_OPTIONS } from '../src/proxy/upgrade-proxy';
 import {
   DEPLOY_BEACON_ACCEPTED_OPTIONS,
@@ -598,6 +602,56 @@ describe('kind:uups over an implementation with no upgrade mechanism — the clo
     );
     expect(validated.name).toBe(project.contractName);
   });
+
+  it('prepareUpgrade with no caller kind takes uups from the proxy record and the real engine refuses the entry-point-less candidate (F4)', async () => {
+    // The composition the deep review's finding 4 demands: nothing in the
+    // options names a kind, the referenced proxy's record does, and that
+    // recorded kind must reach the REAL `getErrors` —
+    // under the pre-fix code both validation calls judged with an omitted
+    // kind, the candidate self-inferred transparent, and this exact refusal
+    // was filtered.
+    const project = realToolkitProject({ standaloneId: 'flat' });
+    const context = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: {},
+      acceptedOptions: DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+    // Validation throws before any deployer/queue/record member is touched,
+    // so the only chain member this path consults is the slot read.
+    const bound = {
+      ...context,
+      toolkit: {
+        ...context.toolkit,
+        proxySlots: async () => ({
+          kind: 'code' as const,
+          implementation: '0x' + 'ab'.repeat(20),
+          admin: null,
+          beacon: null,
+        }),
+        // validate-only mode opens no record session; the recorded kind is
+        // the one chain-adjacent answer this path needs before validation
+        // throws.
+        session: {
+          getProxyRecord: async () => ({ kind: 'uups' as const }),
+        } as never,
+      },
+    };
+    let caught: unknown;
+    try {
+      await runPrepareUpgrade(
+        bound,
+        '0x' + 'cd'.repeat(20),
+        { contractName: project.contractName } as never,
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain('is not upgrade-safe');
+    expect((caught as Error).message).toMatch(/upgradeTo/);
+  });
 });
 
 /*
@@ -617,7 +671,7 @@ describe('kind:uups over an implementation with no upgrade mechanism — the clo
  * `fs.readFileSync` / `fileSystemBuildInfoReader.read` to succeed.
  */
 describe('the degraded-output channel is truthful: every capturable engine call and the single indeterminate-resolution emit site disclose', () => {
-  it('validateImplementation records artifact-name-indeterminate when env.artifacts.resolve reports non-unique', async () => {
+  it('validateImplementation records artifact-name-indeterminate when env.artifacts.resolve reports indeterminate', async () => {
     const project = realToolkitProject({
       standaloneId: 'stateless',
       withMalformedCompanion: true,
@@ -645,6 +699,38 @@ describe('the degraded-output channel is truthful: every capturable engine call 
     expect(note?.remedy).toBe(
       'Run `tronbox compile --all` to rebuild the build-info directory, or rename the colliding contract.',
     );
+  });
+
+  it('validateImplementation stays silent for a same-source ambiguous resolution (review comment on #20)', async () => {
+    // The narrowing's other half: two records of the same source — the
+    // accumulation shape — resolve as `ambiguous`, and that must NOT emit
+    // the indeterminate note, whose summary claims the index could not be
+    // built. Nothing here is less certain than the `unique` path: the
+    // pipeline's record gate verified the record it consumed by
+    // deployed-bytecode identity.
+    const project = realToolkitProject({
+      standaloneId: 'stateless',
+      withDuplicateRecord: true,
+    });
+    const context = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: { kind: 'transparent' },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+
+    const validated = await context.toolkit.validateImplementation(
+      project.contractName,
+      context.resolved,
+    );
+
+    expect(validated.name).toBe(project.contractName);
+    expect(
+      context.toolkit.channel.recorded.filter(
+        entry => entry.code === 'artifact-name-indeterminate',
+      ),
+    ).toEqual([]);
   });
 
   it('validateImplementation surfaces a real engine.validate() Note as engine-note on the channel', async () => {

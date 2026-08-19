@@ -53,10 +53,19 @@ export interface RealToolkitProjectSpec {
    * simply `continue`s past a file it cannot parse as maps) still finds the
    * real file and reports it fresh. That asymmetry is what lets
    * `deriveValidationInput` succeed while `env.artifacts.resolve` reports
-   * non-`'unique'` — the one combination `validateImplementation`'s own
+   * `'indeterminate'` — the one combination `validateImplementation`'s own
    * indeterminate-resolution site exists to disclose.
    */
   readonly withMalformedCompanion?: boolean;
+  /**
+   * Writes a second, well-formed copy of the build-info pair alongside the
+   * real one, so the ambiguity index reports the same `(sourcePath,
+   * contractName)` from two records — the accumulation shape a recompile
+   * with a differing compiler input leaves behind. Both records verify by
+   * deployed-bytecode identity, so `consultBuildRecord` proceeds whichever
+   * it reads.
+   */
+  readonly withDuplicateRecord?: boolean;
 }
 
 export interface RealToolkitProject {
@@ -122,6 +131,17 @@ export function realToolkitProject(
     fs.writeFileSync(
       path.join(buildInfoDir, 'zzzz.output.json'),
       JSON.stringify({ contracts: 'not-an-object', sources: {} }),
+    );
+  }
+
+  if (spec.withDuplicateRecord === true) {
+    fs.writeFileSync(
+      path.join(buildInfoDir, 'bbbb.output.json'),
+      JSON.stringify(compile.output),
+    );
+    fs.writeFileSync(
+      path.join(buildInfoDir, 'bbbb.json'),
+      JSON.stringify(compile.input),
     );
   }
 

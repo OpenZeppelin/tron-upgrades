@@ -148,6 +148,25 @@ describe('exactly three diagnoses, with code derived from diagnosis', () => {
     expect(error.message).toContain('contracts/Box.sol');
     expect(error.message).toContain('a.output.json');
   });
+
+  it('names the remedy after the candidate list', () => {
+    // A genuine collision names what to do, not only what exists: rename, or
+    // clear the records of a source that no longer exists.
+    const error = new ArtifactNameAmbiguousError('Box', [
+      {
+        sourcePath: 'contracts/A.sol',
+        contractName: 'Box',
+        buildInfoFile: absolute('/proj/build/build-info/a.output.json'),
+      },
+      {
+        sourcePath: 'contracts/B.sol',
+        contractName: 'Box',
+        buildInfoFile: absolute('/proj/build/build-info/b.output.json'),
+      },
+    ]);
+    expect(error.message).toContain('Rename one of the contracts');
+    expect(error.message).toContain('tronbox compile --all');
+  });
 });
 
 describe('the diagnosis partition is total and mutually exclusive', () => {

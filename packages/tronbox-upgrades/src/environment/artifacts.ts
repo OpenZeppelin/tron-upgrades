@@ -288,8 +288,10 @@ export function createArtifactAccess(
 
     const candidates = getIndex().candidates(normalizedName);
     if (candidates.length > 1) {
-      // Detection only. Policy for this branch is the proxy operations', and
-      // `ArtifactNameAmbiguousError` is exported for the proxy operations to throw.
+      // Detection only. Same-source-vs-distinct-source triage is each caller's
+      // own policy (`validation-input/pipeline.ts:artifactAbstraction`,
+      // `proxy/artifacts.ts:requireProxyArtifact`), and `ArtifactNameAmbiguousError`
+      // is exported for a caller that decides to refuse to throw.
       return Object.freeze({
         status: 'ambiguous',
         name: normalizedName,
