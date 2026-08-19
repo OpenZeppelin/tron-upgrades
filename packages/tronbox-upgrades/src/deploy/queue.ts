@@ -29,7 +29,7 @@
  * `Promise.resolve().then(fn)`.
  *
  * The post-start path serializes nothing by itself, so this seam adds the
- * mutex (issue 16, decision 1): steps registered through `runThroughQueue`
+ * mutex: steps registered through `runThroughQueue`
  * execute one at a time per host, in registration order, each chained on the
  * previous step's settlement — never its success — so a failing step rejects
  * only its own caller. The serialization is per process; concurrent processes

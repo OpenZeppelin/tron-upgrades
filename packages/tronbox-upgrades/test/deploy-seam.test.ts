@@ -228,7 +228,7 @@ describe('the bridge settles its own promise where a direct await would hang', (
   });
 });
 
-describe('steps on one host run one at a time, in registration order (issue 16 decision 1)', () => {
+describe('steps on one host run one at a time, in registration order', () => {
   // FixtureDeployer is a thenable, so it cannot ride an async return without
   // being adopted; each test constructs and starts it inline, as :220 does.
   it('the second step does not start until the first settles', async () => {

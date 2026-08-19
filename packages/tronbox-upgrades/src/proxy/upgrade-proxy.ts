@@ -202,10 +202,10 @@ export async function runUpgradeProxy(
     }
 
     // Record only when no record existed — and as the last statement INSIDE
-    // the step, which is where `deployProxy` does it. A write placed after the
-    // step closes sits outside whatever serialization the queue provides, so a
-    // second operation started from the same migration body can interleave
-    // between the verified upgrade and the record that remembers it.
+    // the step, which is where `deployProxy` does it. The queue's per-host
+    // mutex covers only the step itself, so a write placed after the step
+    // closes could still interleave with the next operation's step — between
+    // the verified upgrade and the record that remembers it.
     const existing = await toolkit.session.getProxyRecord(proxyAddress);
     if (existing === undefined) {
       // Named with the on-chain fact for the same reason as `deployProxy`'s:
