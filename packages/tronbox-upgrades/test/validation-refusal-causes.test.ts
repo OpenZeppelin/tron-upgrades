@@ -270,7 +270,7 @@ const REMEDY_NAMES: Record<Cause['kind'], string> = {
   'compiler-unsupported': 'compilers.solc.version',
   'source-unreadable': 'Restore ',
   'import-unresolvable': 'Fix the reference',
-  'artifact-shape-unsupported': 'Upgrade TronBox',
+  'artifact-shape-unsupported': 'Upgrade TronBox to 4.8.0 or later',
   'build-record-absent': 'even when TronBox considers the project up to date',
   'build-record-stale': 'same compile as the artifact',
   'library-name-unsupported': 'Rename ',

@@ -142,7 +142,7 @@ describe('proxy-artifact triage', () => {
     ).toBe(abstraction);
   });
 
-  it('treats same-source duplicates as unique — recompiles accumulate build records, and that is not a user collision', () => {
+  it('treats same-source duplicates as unique — build records accumulate when the compiler input differs between runs, and that is not a user collision', () => {
     // Found by the first live migration: two compiles left two build-info
     // files, both carrying the proxy, and the triage refused a "collision"
     // whose two paths were identical.

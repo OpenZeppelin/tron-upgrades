@@ -671,7 +671,7 @@ describe('kind:uups over an implementation with no upgrade mechanism — the clo
  * `fs.readFileSync` / `fileSystemBuildInfoReader.read` to succeed.
  */
 describe('the degraded-output channel is truthful: every capturable engine call and the single indeterminate-resolution emit site disclose', () => {
-  it('validateImplementation records artifact-name-indeterminate when env.artifacts.resolve reports non-unique', async () => {
+  it('validateImplementation records artifact-name-indeterminate when env.artifacts.resolve reports indeterminate', async () => {
     const project = realToolkitProject({
       standaloneId: 'stateless',
       withMalformedCompanion: true,
@@ -699,6 +699,38 @@ describe('the degraded-output channel is truthful: every capturable engine call 
     expect(note?.remedy).toBe(
       'Run `tronbox compile --all` to rebuild the build-info directory, or rename the colliding contract.',
     );
+  });
+
+  it('validateImplementation stays silent for a same-source ambiguous resolution (review comment on #20)', async () => {
+    // The narrowing's other half: two records of the same source — the
+    // accumulation shape — resolve as `ambiguous`, and that must NOT emit
+    // the indeterminate note, whose summary claims the index could not be
+    // built. Nothing here is less certain than the `unique` path: the
+    // pipeline's record gate verified the record it consumed by
+    // deployed-bytecode identity.
+    const project = realToolkitProject({
+      standaloneId: 'stateless',
+      withDuplicateRecord: true,
+    });
+    const context = await createOperationToolkit({
+      handles: project.shape.handles,
+      rawOptions: { kind: 'transparent' },
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      processEnv: {},
+      mode: 'validate-only',
+    });
+
+    const validated = await context.toolkit.validateImplementation(
+      project.contractName,
+      context.resolved,
+    );
+
+    expect(validated.name).toBe(project.contractName);
+    expect(
+      context.toolkit.channel.recorded.filter(
+        entry => entry.code === 'artifact-name-indeterminate',
+      ),
+    ).toEqual([]);
   });
 
   it('validateImplementation surfaces a real engine.validate() Note as engine-note on the channel', async () => {
