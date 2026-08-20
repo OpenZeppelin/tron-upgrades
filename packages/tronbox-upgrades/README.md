@@ -129,10 +129,10 @@ Two things to notice:
 - **`await`, always.** Operations started from one migration body run one at
   a time, in call order, even without `await` — but only your `await` hears
   the outcome. An operation that is not awaited cannot report its failure to
-  your migration: TronBox's queue lets the run continue and even end green
-  while the failure is visible only in the operation's own output. When you
-  *do* await — the only supported usage — a failure rejects your `await` with
-  the real error.
+  your migration: the failure surfaces as an unhandled rejection, which
+  crashes `tronbox migrate` with a non-zero exit instead of letting the run
+  end green. When you *do* await — the only supported usage — a failure
+  rejects your `await` with the real error, where you can handle it.
 
 `tronbox-config.js`, here against a local
 [TronBox Runtime Environment](https://developers.tron.network/reference/what-is-tronbox)
