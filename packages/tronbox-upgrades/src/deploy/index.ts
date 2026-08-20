@@ -22,6 +22,7 @@ export {
   DeploySeamInvariantError,
   LinkedImplementationRefusedError,
   LinkVerificationFailedError,
+  NestedOperationError,
   SenderMismatchError,
   StaleTransactionIdentityError,
   TransactionRevertedError,
@@ -47,3 +48,4 @@ export {
   linkedLibraryNames,
   refuseUnlessLinkingAllowed,
 } from './link';
+export { serializeOperation } from './serialize';

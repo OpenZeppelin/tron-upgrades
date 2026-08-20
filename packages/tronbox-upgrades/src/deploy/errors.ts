@@ -36,6 +36,27 @@ export abstract class DeploymentRefusedError extends Error {
 }
 
 /**
+ * An operation started from inside another operation's body. Without this
+ * refusal the nested call joins some deployer's tail while that tail's head
+ * is the operation awaiting it — a silent hang with no name in it. Refused
+ * for ANY deployer, not just the innermost one: a cross-deployer chain that
+ * re-enters an outer deployer deadlocks exactly like same-deployer nesting
+ * does, and no legitimate operation ever runs inside another (review
+ * r3823745356).
+ */
+export class NestedOperationError extends DeploymentRefusedError {
+  readonly code = 'nested-operation';
+  constructor(operation: string) {
+    super(
+      `${operation} was started from inside another operation. Operations ` +
+        'compose by sequence, not by nesting: await the running operation, ' +
+        'then start this one.',
+    );
+    this.name = 'NestedOperationError';
+  }
+}
+
+/**
  * What already exists on-chain when a refusal fires *after* the spend.
  *
  * The rule this type serves: **every refusal that can fire after an irreversible

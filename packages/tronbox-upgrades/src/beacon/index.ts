@@ -19,6 +19,7 @@ import {
   ConfirmationIndeterminateError,
   TransactionRevertedError,
   type SpentDeployment,
+  serializeOperation,
 } from '../deploy';
 import { transactionIdentity, operationNotes } from '../results/types';
 import { sealUnavailable } from '../results/limitations';
@@ -262,12 +263,14 @@ export async function deployBeacon(
   contract: ContractAbstraction,
   options: DeployBeaconOptions & MigrationHandles = {},
 ): Promise<DeployedBeacon> {
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: DEPLOY_BEACON_ACCEPTED_OPTIONS,
+  return serializeOperation('deployBeacon', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: DEPLOY_BEACON_ACCEPTED_OPTIONS,
+    });
+    return runDeployBeacon(context, contract);
   });
-  return runDeployBeacon(context, contract);
 }
 
 /** Deploys a BeaconProxy pointing at an existing beacon. */
@@ -333,12 +336,14 @@ export async function deployBeaconProxy(
     args,
     DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS,
   );
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS,
+  return serializeOperation('deployBeaconProxy', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: DEPLOY_BEACON_PROXY_ACCEPTED_OPTIONS,
+    });
+    return runDeployBeaconProxy(context, beaconAddress, contract, args);
   });
-  return runDeployBeaconProxy(context, beaconAddress, contract, args);
 }
 
 /** Upgrades a beacon; every proxy pointing at it follows. */
@@ -413,10 +418,12 @@ export async function upgradeBeacon(
   contract: ContractAbstraction,
   options: UpgradeBeaconOptions & MigrationHandles = {},
 ): Promise<UpgradedProxy> {
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: UPGRADE_BEACON_ACCEPTED_OPTIONS,
+  return serializeOperation('upgradeBeacon', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: UPGRADE_BEACON_ACCEPTED_OPTIONS,
+    });
+    return runUpgradeBeacon(context, beaconAddress, contract);
   });
-  return runUpgradeBeacon(context, beaconAddress, contract);
 }

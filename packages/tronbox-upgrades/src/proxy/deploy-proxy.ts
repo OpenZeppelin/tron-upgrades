@@ -22,6 +22,7 @@ import {
   TransactionRevertedError,
   refuseUnlessLinkingAllowed,
   linkedLibraryNames,
+  serializeOperation,
 } from '../deploy';
 import { transactionIdentity, operationNotes } from '../results/types';
 import { sealUnavailable } from '../results/limitations';
@@ -356,14 +357,22 @@ export async function deployProxy(
   // positional-overloads shape must never reach the record session or the
   // environment resolver.
   assertNoOptionsInArgsPosition('deployProxy', args, DEPLOY_PROXY_ACCEPTED_OPTIONS);
-  // The record session reconciles only addresses it is given, so the replay
-  // decision's verdict exists exactly when the prior address is named here.
-  const prior = readPriorDeployedAddress(contract);
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
-    addresses: prior === null ? [] : [{ address: prior }],
+  return serializeOperation('deployProxy', options.deployer, async () => {
+    // Read inside the serialization slot, not at call time: a queued
+    // predecessor may deploy through this same abstraction, and its
+    // write-back must be visible here. The record session reconciles only
+    // addresses it is given, so the replay decision's verdict exists exactly
+    // when the prior address is named below — a pre-slot capture would seed
+    // the session without the predecessor's address, and the decision's own
+    // fresh read (step 5) would then refuse a perfectly recorded proxy with
+    // 'no-verdict'.
+    const prior = readPriorDeployedAddress(contract);
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      addresses: prior === null ? [] : [{ address: prior }],
+    });
+    return runDeployProxy(context, contract, args);
   });
-  return runDeployProxy(context, contract, args);
 }

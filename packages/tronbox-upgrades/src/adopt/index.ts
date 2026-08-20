@@ -10,6 +10,7 @@
  * and record writes only.
  */
 
+import { serializeOperation } from '../deploy';
 import type { ContractAbstraction } from '../environment';
 import type { ForceImportOptions } from '../options/types';
 import { canonicalizeAddress } from '../record';
@@ -218,10 +219,12 @@ export async function forceImport(
   contract: ContractAbstraction,
   options: ForceImportOptions & MigrationHandles = {},
 ): Promise<AdoptionOutcome> {
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: FORCE_IMPORT_ACCEPTED_OPTIONS,
+  return serializeOperation('forceImport', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: FORCE_IMPORT_ACCEPTED_OPTIONS,
+    });
+    return runForceImport(context, address, contract);
   });
-  return runForceImport(context, address, contract);
 }

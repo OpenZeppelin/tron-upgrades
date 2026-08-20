@@ -29,9 +29,12 @@
  * `Promise.resolve().then(fn)`.
  *
  * Two consequences worth stating outright, because the pre-start arm's shape
- * invites the opposite assumption. That post-start path **serializes nothing**:
- * two operations started from one migration body interleave freely, and this
- * seam is not a mutex. And the pre-start protections below are insurance
+ * invites the opposite assumption. That post-start path **serializes nothing
+ * by itself**, and this bridge is not the mutex: whole operations are
+ * serialized per deployer at their public entries (`serialize.ts`), one level
+ * up, where the slot is claimed before any network work. The bridge stays
+ * registration-immediate on purpose — that is what keeps the pre-start skip
+ * semantics true per step. And the pre-start protections below are insurance
  * against a host or a caller that does register early — not a description of
  * what production runs. The bridge covers both arms because it is handed a host
  * and cannot know which one it got.

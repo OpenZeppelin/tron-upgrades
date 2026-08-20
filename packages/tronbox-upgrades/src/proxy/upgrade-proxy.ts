@@ -16,6 +16,7 @@ import {
   TransactionRevertedError,
   refuseUnlessLinkingAllowed,
   linkedLibraryNames,
+  serializeOperation,
 } from '../deploy';
 import { NothingToAdoptError } from '../adopt/errors';
 import { transactionIdentity, operationNotes } from '../results/types';
@@ -202,10 +203,10 @@ export async function runUpgradeProxy(
     }
 
     // Record only when no record existed — and as the last statement INSIDE
-    // the step, which is where `deployProxy` does it. A write placed after the
-    // step closes sits outside whatever serialization the queue provides, so a
-    // second operation started from the same migration body can interleave
-    // between the verified upgrade and the record that remembers it.
+    // the step, which is where `deployProxy` does it. In-process, the entry
+    // mutex keeps the next operation out until this whole body returns; the
+    // placement stays because the record belongs to the same unit of work as
+    // the upgrade it remembers, not to whatever code runs after the step.
     const existing = await toolkit.session.getProxyRecord(proxyAddress);
     if (existing === undefined) {
       // Named with the on-chain fact for the same reason as `deployProxy`'s:
@@ -253,10 +254,12 @@ export async function upgradeProxy(
   contract: ContractAbstraction,
   options: UpgradeProxyOptions & MigrationHandles = {},
 ): Promise<UpgradedProxy> {
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: UPGRADE_PROXY_ACCEPTED_OPTIONS,
+  return serializeOperation('upgradeProxy', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: UPGRADE_PROXY_ACCEPTED_OPTIONS,
+    });
+    return runUpgradeProxy(context, proxy, contract);
   });
-  return runUpgradeProxy(context, proxy, contract);
 }

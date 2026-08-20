@@ -166,6 +166,12 @@ describe('no module in the plugin imports the host, by any path', () => {
       // specifier in the whole directory: `policy.ts`, `classify.ts` and
       // `slots.ts` import nothing at all.
       `chain${path.sep}index.ts: @openzeppelin/upgrades-core (import)`,
+      // Added by the operation mutex, and additive: a Node builtin (the
+      // repository's floor is Node 20), not the host. `AsyncLocalStorage` is
+      // what lets a NESTED operation be told apart from a concurrent one —
+      // the first must refuse by name, the second must wait — which no
+      // WeakMap or flag can decide without async context.
+      `deploy${path.sep}serialize.ts: node:async_hooks (import)`,
       `environment${path.sep}ambiguity.ts: node:fs (import)`,
       `environment${path.sep}ambiguity.ts: node:path (import)`,
       `environment${path.sep}artifacts.ts: node:path (import)`,

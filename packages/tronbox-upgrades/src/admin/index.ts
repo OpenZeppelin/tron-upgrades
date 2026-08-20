@@ -12,6 +12,7 @@ import { canonicalizeAddress } from '../record';
 import {
   ConfirmationIndeterminateError,
   TransactionRevertedError,
+  serializeOperation,
 } from '../deploy';
 import { transactionIdentity, operationNotes } from '../results/types';
 import type { AuthorityTransfer } from '../results/types';
@@ -130,12 +131,14 @@ export async function transferProxyAdminOwnership(
   newOwner: string,
   options: TransferProxyAdminOwnershipOptions & MigrationHandles = {},
 ): Promise<AuthorityTransfer> {
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: TRANSFER_OWNERSHIP_ACCEPTED_OPTIONS,
+  return serializeOperation('transferProxyAdminOwnership', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: TRANSFER_OWNERSHIP_ACCEPTED_OPTIONS,
+    });
+    return runTransferProxyAdminOwnership(context, proxy, newOwner);
   });
-  return runTransferProxyAdminOwnership(context, proxy, newOwner);
 }
 
 export type { ContractAbstraction };
