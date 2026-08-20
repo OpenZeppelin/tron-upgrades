@@ -846,13 +846,19 @@ describe('the refusal happens before any write, with both files byte-unchanged',
       expect(pending.unmigratable).toBe(0);
 
       // The node was wiped and restarted: same chain id, same genesis hash, a
-      // different block 1.
+      // different block 1. With records to guard, the refusal fires from the
+      // UNLOCKED routing read — step 5's own promise is that no `lockedRun`
+      // is entered on this path, so the promise is measured, not assumed.
+      const engine = await import('@openzeppelin/upgrades-core');
+      const lockedRuns = vi.spyOn(engine.Manifest.prototype, 'lockedRun');
       const failure = await openRecord(
         depsFor(identityFor(REBOOTED_FIRST_BLOCK_HASH)),
       ).then(
         () => undefined,
         (cause: unknown) => cause,
       );
+      expect(lockedRuns).not.toHaveBeenCalled();
+      lockedRuns.mockRestore();
       expect(failure).toBeInstanceOf(ChainInstanceChangedError);
       const refusal = failure as ChainInstanceChangedError;
       expect(refusal.comparison.signal).toBe('first-block-hash');
