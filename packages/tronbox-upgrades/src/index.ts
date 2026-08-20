@@ -152,6 +152,7 @@ export {
   TransactionRevertedError,
   ConfirmationIndeterminateError,
   SenderMismatchError,
+  NestedOperationError,
   LinkedImplementationRefusedError,
   LinkVerificationFailedError,
   StaleTransactionIdentityError,

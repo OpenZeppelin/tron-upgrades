@@ -20,6 +20,7 @@ import type {
 import {
   ConfirmationIndeterminateError,
   TransactionRevertedError,
+  serializeOperation,
 } from '../deploy';
 import { canonicalizeAddress } from '../record';
 import { NothingToAdoptError } from '../adopt/errors';
@@ -93,13 +94,15 @@ export async function validateImplementation(
   contract: ContractAbstraction,
   options: ValidateImplementationOptions & MigrationHandles = {},
 ): Promise<ValidationOutcome> {
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: VALIDATE_ACCEPTED_OPTIONS,
-    mode: 'validate-only',
+  return serializeOperation('validateImplementation', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: VALIDATE_ACCEPTED_OPTIONS,
+      mode: 'validate-only',
+    });
+    return runValidateImplementation(context, contract);
   });
-  return runValidateImplementation(context, contract);
 }
 
 /**
@@ -133,13 +136,15 @@ export async function validateUpgrade(
   to: ContractAbstraction,
   options: ValidateUpgradeOptions & MigrationHandles = {},
 ): Promise<ValidationOutcome> {
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: VALIDATE_ACCEPTED_OPTIONS,
-    mode: 'validate-only',
+  return serializeOperation('validateUpgrade', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: VALIDATE_ACCEPTED_OPTIONS,
+      mode: 'validate-only',
+    });
+    return runValidateUpgrade(context, from, to);
   });
-  return runValidateUpgrade(context, from, to);
 }
 
 async function deployImplementationThroughQueue(
@@ -218,12 +223,14 @@ export async function deployImplementation(
   contract: ContractAbstraction,
   options: DeployImplementationOptions & MigrationHandles = {},
 ): Promise<ImplementationDeployment> {
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS,
+  return serializeOperation('deployImplementation', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS,
+    });
+    return runDeployImplementation(context, contract);
   });
-  return runDeployImplementation(context, contract);
 }
 
 /**
@@ -335,10 +342,12 @@ export async function prepareUpgrade(
   contract: ContractAbstraction,
   options: PrepareUpgradeOptions & MigrationHandles = {},
 ): Promise<ImplementationDeployment> {
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS,
+  return serializeOperation('prepareUpgrade', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: DEPLOY_IMPLEMENTATION_ACCEPTED_OPTIONS,
+    });
+    return runPrepareUpgrade(context, proxyAddress, contract);
   });
-  return runPrepareUpgrade(context, proxyAddress, contract);
 }

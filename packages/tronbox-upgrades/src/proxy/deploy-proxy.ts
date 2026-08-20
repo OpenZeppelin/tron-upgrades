@@ -22,6 +22,7 @@ import {
   TransactionRevertedError,
   refuseUnlessLinkingAllowed,
   linkedLibraryNames,
+  serializeOperation,
 } from '../deploy';
 import { transactionIdentity, operationNotes } from '../results/types';
 import { sealUnavailable } from '../results/limitations';
@@ -359,11 +360,13 @@ export async function deployProxy(
   // The record session reconciles only addresses it is given, so the replay
   // decision's verdict exists exactly when the prior address is named here.
   const prior = readPriorDeployedAddress(contract);
-  const context = await createOperationToolkit({
-    handles: handlesFrom(options),
-    rawOptions: options,
-    acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
-    addresses: prior === null ? [] : [{ address: prior }],
+  return serializeOperation('deployProxy', options.deployer, async () => {
+    const context = await createOperationToolkit({
+      handles: handlesFrom(options),
+      rawOptions: options,
+      acceptedOptions: DEPLOY_PROXY_ACCEPTED_OPTIONS,
+      addresses: prior === null ? [] : [{ address: prior }],
+    });
+    return runDeployProxy(context, contract, args);
   });
-  return runDeployProxy(context, contract, args);
 }

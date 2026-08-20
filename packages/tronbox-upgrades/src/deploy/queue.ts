@@ -28,15 +28,16 @@
  * when the step is registered and `queueOrExec` returns a bare
  * `Promise.resolve().then(fn)`.
  *
- * The post-start path serializes nothing by itself, so this seam adds the
- * mutex: steps registered through `runThroughQueue`
- * execute one at a time per host, in registration order, each chained on the
- * previous step's settlement — never its success — so a failing step rejects
- * only its own caller. The serialization is per process; concurrent processes
- * still meet the record lock (`RecordLockedError`). The pre-start protections
- * below are insurance against a host or a caller that does register early —
- * not a description of what production runs. The bridge covers both arms
- * because it is handed a host and cannot know which one it got.
+ * Two consequences worth stating outright, because the pre-start arm's shape
+ * invites the opposite assumption. That post-start path **serializes nothing
+ * by itself**, and this bridge is not the mutex: whole operations are
+ * serialized per deployer at their public entries (`serialize.ts`), one level
+ * up, where the slot is claimed before any network work. The bridge stays
+ * registration-immediate on purpose — that is what keeps the pre-start skip
+ * semantics true per step. And the pre-start protections below are insurance
+ * against a host or a caller that does register early — not a description of
+ * what production runs. The bridge covers both arms because it is handed a host
+ * and cannot know which one it got.
  *
  * So no host queue value ever escapes this module. Every operation gets
  * a promise this module allocates, settled exactly once from inside the queued
@@ -66,41 +67,13 @@ import {
 } from './errors';
 
 /**
- * One step at a time per host, in registration order. The tail is keyed by
- * the host object (one deployer per migration run) and each step chains on
- * the previous step's settlement, so a failure rejects only its own caller.
- * The first step on a host takes the direct path, preserving the bridge's
- * registration timing. Cross-process runs are outside this mutex.
- */
-const stepTails = new WeakMap<QueueHost, Promise<unknown>>();
-
-export function runThroughQueue<T>(
-  host: QueueHost,
-  step: () => Promise<T> | T,
-): Promise<T> {
-  const tail = stepTails.get(host);
-  const run =
-    tail === undefined
-      ? bridgeStep(host, step)
-      : tail.then(() => bridgeStep(host, step));
-  stepTails.set(
-    host,
-    run.then(
-      () => undefined,
-      () => undefined,
-    ),
-  );
-  return run;
-}
-
-/**
  * Queues `step` on the host and returns a promise this seam owns. The host's
  * return value is consumed here and never escapes. The step's failure settles
  * the returned promise and nothing else — the host chain sees a fulfilled step
  * either way, which is what keeps one error from being delivered three
  * times (caller, runner, unhandled-rejection handler).
  */
-function bridgeStep<T>(
+export function runThroughQueue<T>(
   host: QueueHost,
   step: () => Promise<T> | T,
 ): Promise<T> {

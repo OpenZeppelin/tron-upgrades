@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -10,6 +12,7 @@ import {
   refuseUnlessLinkingAllowed,
   resolveEffectiveSender,
   runThroughQueue,
+  serializeOperation,
   CheatcodeSlotCollisionError,
   ConfirmationIndeterminateError,
   DeployerAbsentError,
@@ -17,6 +20,7 @@ import {
   DeploySeamInvariantError,
   LinkedImplementationRefusedError,
   LinkVerificationFailedError,
+  NestedOperationError,
   SenderMismatchError,
   StaleTransactionIdentityError,
   TransactionRevertedError,
@@ -228,24 +232,21 @@ describe('the bridge settles its own promise where a direct await would hang', (
   });
 });
 
-describe('steps on one host run one at a time, in registration order', () => {
-  // FixtureDeployer is a thenable, so it cannot ride an async return without
-  // being adopted; each test constructs and starts it inline, as :220 does.
-  it('the second step does not start until the first settles', async () => {
-    const deployer = new FixtureDeployer();
-    await deployer.start();
+describe('operations on one deployer run one at a time, in call order', () => {
+  it('the second operation does not start until the first settles', async () => {
+    const host = {};
     const order: string[] = [];
     let releaseA!: () => void;
     const gateA = new Promise<void>(resolve => {
       releaseA = resolve;
     });
-    const a = runThroughQueue(deployer, async () => {
+    const a = serializeOperation('a', host, async () => {
       order.push('a:start');
       await gateA;
       order.push('a:end');
       return 'a';
     });
-    const b = runThroughQueue(deployer, async () => {
+    const b = serializeOperation('b', host, async () => {
       order.push('b:start');
       return 'b';
     });
@@ -258,40 +259,131 @@ describe('steps on one host run one at a time, in registration order', () => {
     expect(order).toEqual(['a:start', 'a:end', 'b:start']);
   });
 
-  it('a rejecting first step neither blocks nor fails the second', async () => {
-    const deployer = new FixtureDeployer();
-    await deployer.start();
-    const boom = new Error('first step failed');
-    const a = runThroughQueue(deployer, async () => {
+  it('a rejecting first operation neither blocks nor fails the second', async () => {
+    const host = {};
+    const boom = new Error('first operation failed');
+    const a = serializeOperation('a', host, async () => {
       throw boom;
     });
-    const b = runThroughQueue(deployer, async () => 'b');
+    const b = serializeOperation('b', host, async () => 'b');
     await expect(a).rejects.toBe(boom);
     await expect(b).resolves.toBe('b');
   });
 
-  it('two different hosts do not serialize against each other', async () => {
-    // Pins the contract's boundary: per host, not global.
+  it('two different deployers do not serialize against each other', async () => {
+    // Pins the contract's boundary: per deployer, not global.
     const order: string[] = [];
     let releaseA!: () => void;
     const gateA = new Promise<void>(resolve => {
       releaseA = resolve;
     });
-    const hostA = new FixtureDeployer();
-    await hostA.start();
-    const hostB = new FixtureDeployer();
-    await hostB.start();
-    const a = runThroughQueue(hostA, async () => {
+    const a = serializeOperation('a', {}, async () => {
       await gateA;
       order.push('a');
     });
-    const b = runThroughQueue(hostB, async () => {
+    const b = serializeOperation('b', {}, async () => {
       order.push('b');
     });
     await b;
     expect(order).toEqual(['b']);
     releaseA();
     await a;
+  });
+
+  it('a non-object deployer handle runs free, unkeyed', async () => {
+    expect(await serializeOperation('a', undefined, async () => 41)).toBe(41);
+  });
+
+  it('an un-awaited failing operation stays an unhandled rejection (review r3817080646)', async () => {
+    // The tail absorber must live on a private promise: a rejection handler on
+    // the promise the CALLER receives would mark every failure handled, and an
+    // un-awaited operation would die silently instead of loudly.
+    const prior = process.listeners('unhandledRejection');
+    process.removeAllListeners('unhandledRejection');
+    const seen: unknown[] = [];
+    const capture = (reason: unknown): void => {
+      seen.push(reason);
+    };
+    process.on('unhandledRejection', capture);
+    const boom = new Error('un-awaited failure');
+    let dropped: Promise<never> | undefined;
+    try {
+      dropped = serializeOperation('a', {}, async () => {
+        throw boom;
+      }) as Promise<never>;
+      // Unhandled rejections surface on a macrotask boundary.
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(seen).toEqual([boom]);
+    } finally {
+      process.removeAllListeners('unhandledRejection');
+      for (const listener of prior) {
+        process.on('unhandledRejection', listener as never);
+      }
+      dropped?.catch(() => undefined);
+    }
+  });
+
+  it('a nested operation on the same deployer refuses by name instead of hanging (review r3817080667)', async () => {
+    const host = {};
+    const outer = serializeOperation('outer', host, async () => {
+      return serializeOperation('inner', host, async () => 'unreachable');
+    });
+    await expect(outer).rejects.toBeInstanceOf(NestedOperationError);
+    await expect(outer).rejects.toThrow(
+      'inner was started from inside another operation on the same deployer',
+    );
+    // The tail is not poisoned: the next operation still runs.
+    expect(await serializeOperation('next', host, async () => 'ran')).toBe('ran');
+  });
+});
+
+describe('a second BRIDGED step is skipped after a pre-start failure, like a raw follower (review r3817080660)', () => {
+  it('the upstream failure rejects both bridged callers and neither step body runs', async () => {
+    const deployer = new FixtureDeployer();
+    const upstream = new Error('an earlier migration step failed');
+    deployer.then(() => Promise.reject(upstream));
+
+    let firstRan = false;
+    let secondRan = false;
+    const first = runThroughQueue(deployer, () => {
+      firstRan = true;
+    }).catch((e: unknown) => e);
+    const second = runThroughQueue(deployer, () => {
+      secondRan = true;
+    }).catch((e: unknown) => e);
+
+    await expect(deployer.start()).rejects.toBe(upstream);
+    expect(await first).toBe(upstream);
+    expect(await second).toBe(upstream);
+    expect(firstRan).toBe(false);
+    expect(secondRan).toBe(false);
+
+    await deployer.chain.chain.catch(() => {});
+  });
+});
+
+describe('every public operation entry claims its serialization slot', () => {
+  // A census rather than eleven integration harnesses: the wrapper is one
+  // call per entry, and an entry that loses it regresses to pre-queue racing.
+  const ENTRIES: Record<string, readonly string[]> = {
+    'src/proxy/deploy-proxy.ts': ['deployProxy'],
+    'src/proxy/upgrade-proxy.ts': ['upgradeProxy'],
+    'src/beacon/index.ts': ['deployBeacon', 'deployBeaconProxy', 'upgradeBeacon'],
+    'src/standalone/index.ts': [
+      'validateImplementation',
+      'validateUpgrade',
+      'deployImplementation',
+      'prepareUpgrade',
+    ],
+    'src/adopt/index.ts': ['forceImport'],
+    'src/admin/index.ts': ['transferProxyAdminOwnership'],
+  };
+
+  it.each(Object.entries(ENTRIES))('%s wraps each entry', (file, names) => {
+    const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+    for (const name of names) {
+      expect(source).toContain(`serializeOperation('${name}', options.deployer`);
+    }
   });
 });
 
