@@ -983,6 +983,7 @@ async function realRecordSession(chainIdHex: string): Promise<RecordSession> {
     // could disagree about which file is in force.
     env: process.env,
     chain,
+    disclose: () => undefined,
     addresses: [],
   });
 }

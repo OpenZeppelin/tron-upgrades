@@ -807,6 +807,8 @@ function depsFor(identity: ChainInstanceIdentity): RecordDeps {
     // fixed in, so the file the engine writes and the file a message names agree.
     env: process.env,
     chain: seamFor(identity),
+    // Required by RecordDeps; tests that assert on disclosure override it.
+    disclose: () => undefined,
   };
 }
 
@@ -971,8 +973,14 @@ describe('obeying the printed remedy recovers — measured, not assumed', () => 
       expect(rearmed.firstBlockHash).toBe(REBOOTED_FIRST_BLOCK_HASH);
 
       // On disk, not only in memory: the next run compares as the same
-      // instance.
-      const next = await openRecord(depsFor(identityFor(REBOOTED_FIRST_BLOCK_HASH)));
+      // instance. It carries the SAME recording hook — with a hookless open
+      // the silence assertion below is vacuous (review r3823745544).
+      const next = await openRecord({
+        ...depsFor(identityFor(REBOOTED_FIRST_BLOCK_HASH)),
+        disclose: (title, detail) => {
+          disclosed.push({ title, detail });
+        },
+      });
       expect(next.report.instance).toBe('same');
 
       // The steady path stays silent: no disclosure without a re-arm.

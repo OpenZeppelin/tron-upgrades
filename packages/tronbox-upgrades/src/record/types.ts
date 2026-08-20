@@ -67,8 +67,15 @@ export interface RecordDeps {
    * output surface of its own; a caller with one (the operation toolkit lends
    * its channel) passes it here. Today's one speaker: the empty-record re-arm,
    * which retargets the chain-instance guard and must not do so silently.
+   *
+   * REQUIRED, deliberately (review r3823745544): the only production supplier
+   * is the toolkit's one forwarding line, and with an optional field the
+   * compiler accepts that line's absence — a refactor could silently
+   * disconnect the message the re-arm exists to print, and no test would
+   * notice. Required, its removal is a compile error. A caller with nothing
+   * to say passes a noop.
    */
-  readonly disclose?: (title: string, detail: readonly string[]) => void;
+  readonly disclose: (title: string, detail: readonly string[]) => void;
 }
 
 /** An address an operation names, with the kind the caller asserted for it if any. */

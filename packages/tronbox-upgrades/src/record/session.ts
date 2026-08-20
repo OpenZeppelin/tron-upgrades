@@ -251,7 +251,7 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
     if (changedComparison !== undefined) {
       // Persisted, so say so: a silent retarget of the guard is invisible
       // exactly when it matters.
-      deps.disclose?.('chain fingerprint re-armed', [
+      deps.disclose('chain fingerprint re-armed', [
         `The chain at ${identity.observedThrough} is a different instance ` +
           `of chain ${identity.chainId} than the fingerprint remembered.`,
         'The record held no deployments, so the fingerprint was rewritten ' +
