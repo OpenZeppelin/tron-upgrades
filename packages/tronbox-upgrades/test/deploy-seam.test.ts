@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -27,6 +28,7 @@ import {
   HOST_CONFIRMATION_BOUNDS,
 } from '../src/deploy';
 import { canonicalizeAddress } from '../src/record';
+import { packageRoot } from './helpers/locate';
 
 /*
  * The deploy seam, exercised against a faithful queue fixture.
@@ -380,7 +382,7 @@ describe('every public operation entry claims its serialization slot', () => {
   };
 
   it.each(Object.entries(ENTRIES))('%s wraps each entry', (file, names) => {
-    const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+    const source = readFileSync(path.join(packageRoot, file), 'utf8');
     for (const name of names) {
       expect(source).toContain(`serializeOperation('${name}', options.deployer`);
     }
