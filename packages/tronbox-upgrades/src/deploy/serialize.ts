@@ -32,15 +32,28 @@ export function serializeOperation<T>(
   deployer: unknown,
   run: () => Promise<T>,
 ): Promise<T> {
+  if (active.getStore() !== undefined) {
+    // Any operation started inside another refuses by name, BEFORE the
+    // keyed/unkeyed split: same-host nesting awaits its own tail, a
+    // cross-deployer chain that re-enters an outer deployer (A on d1 → B on
+    // d2 → C on d1) would pass an innermost-host equality check and deadlock
+    // on d1's tail just the same (review r3823745356), and an UNKEYED nested
+    // call checked after the split would silently run outside the mutex it
+    // is nested within. No legitimate operation runs inside another, and an
+    // unconditional refusal cannot deadlock on any deployer count. One known
+    // edge, accepted: the store survives into DETACHED async work an
+    // operation spawns and never awaits (a timer, a dropped promise), so an
+    // operation started from such a descendant refuses too — nothing in this
+    // package spawns one, and a loud refusal there beats a silent deadlock.
+    // The caller's own continuations are NOT this edge: the returned
+    // promise's reactions are registered at the call site, outside the
+    // store, so `await op1; op2()` and `op1.then(() => op2())` both compose.
+    throw new NestedOperationError(operation);
+  }
   const host = hostKey(deployer);
   if (host === undefined) {
-    // Nothing to key on — a call with no deployer handle runs free.
+    // Nothing to key on — a top-level call with no deployer handle runs free.
     return run();
-  }
-  if (active.getStore() === host) {
-    // A nested operation would await its own tail: a silent hang. Refuse by
-    // name instead.
-    throw new NestedOperationError(operation);
   }
   const tail = tails.get(host);
   const chained =

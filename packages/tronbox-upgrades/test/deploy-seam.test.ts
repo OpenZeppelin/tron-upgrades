@@ -27,7 +27,10 @@ import {
   TransactionRevertedError,
   HOST_CONFIRMATION_BOUNDS,
 } from '../src/deploy';
+import { deployProxy } from '../src/proxy/deploy-proxy';
 import { canonicalizeAddress } from '../src/record';
+import { validateImplementation } from '../src/standalone';
+import { migrateShapedHandles } from './helpers/handles';
 import { packageRoot } from './helpers/locate';
 
 /*
@@ -332,10 +335,66 @@ describe('operations on one deployer run one at a time, in call order', () => {
     });
     await expect(outer).rejects.toBeInstanceOf(NestedOperationError);
     await expect(outer).rejects.toThrow(
-      'inner was started from inside another operation on the same deployer',
+      'inner was started from inside another operation',
     );
     // The tail is not poisoned: the next operation still runs.
     expect(await serializeOperation('next', host, async () => 'ran')).toBe('ran');
+  });
+
+  it('nesting refuses across deployers too — an innermost-host check would deadlock (review r3823745356)', async () => {
+    // A on d1 → B on d2 → C on d1: with an equality-against-innermost guard,
+    // C passes the check (the store holds d2) and chains on d1's tail, whose
+    // head is A — which is awaiting C. The unconditional guard refuses at the
+    // FIRST nesting instead, so this test hangs (times out) under the old
+    // guard and refuses by name under the new one. The awaits are load-
+    // bearing: they move each nested call past its parent's synchronous
+    // segment, after the parent's tail is registered — the shape a real
+    // operation body has, and the one whose chaining deadlocks.
+    const d1 = {};
+    const d2 = {};
+    const outer = serializeOperation('outer', d1, async () => {
+      await Promise.resolve();
+      return serializeOperation('middle', d2, async () => {
+        await Promise.resolve();
+        return serializeOperation('inner', d1, async () => 'unreachable');
+      });
+    });
+    await expect(outer).rejects.toBeInstanceOf(NestedOperationError);
+    await expect(outer).rejects.toThrow(
+      'middle was started from inside another operation',
+    );
+    // Neither deployer's tail is poisoned.
+    expect(await serializeOperation('next1', d1, async () => 'ran')).toBe('ran');
+    expect(await serializeOperation('next2', d2, async () => 'ran')).toBe('ran');
+  });
+
+  it('an unkeyed nested operation refuses too, instead of silently running outside the mutex', async () => {
+    // The nesting guard sits BEFORE the keyed/unkeyed split: an inner call
+    // with no deployer handle cannot deadlock, but letting it run would make
+    // "no operation starts inside another" false for exactly the calls the
+    // mutex cannot see.
+    const host = {};
+    const outer = serializeOperation('outer', host, async () => {
+      await Promise.resolve();
+      return serializeOperation('inner', undefined, async () => 'unreachable');
+    });
+    await expect(outer).rejects.toBeInstanceOf(NestedOperationError);
+    expect(await serializeOperation('next', host, async () => 'ran')).toBe('ran');
+  });
+
+  it("a follow-up operation started from the caller's continuation is NOT nesting", async () => {
+    // The returned promise's reactions are registered at the CALL SITE,
+    // outside the operation's async context, so `op1.then(() => op2())` —
+    // and its `await` spelling — start op2 with an empty store. Pinned
+    // because continuation-vs-body is the whole line between composing by
+    // sequence and nesting, and an ALS frame that leaked into caller
+    // continuations would refuse every sequential migration.
+    const host = {};
+    const first = serializeOperation('first', host, async () => 'one');
+    const second = await first.then(() =>
+      serializeOperation('second', host, async () => 'two'),
+    );
+    expect(second).toBe('two');
   });
 });
 
@@ -385,6 +444,133 @@ describe('every public operation entry claims its serialization slot', () => {
     const source = readFileSync(path.join(packageRoot, file), 'utf8');
     for (const name of names) {
       expect(source).toContain(`serializeOperation('${name}', options.deployer`);
+    }
+  });
+});
+
+describe('the slot contains the whole operation body, toolkit build included (review r3823745172)', () => {
+  // The census above pins the wrapper's PRESENCE per entry; these pin its
+  // PLACEMENT behaviorally. Hoisting the toolkit build (or the prior-address
+  // read) back outside the closure keeps the census string intact and the
+  // census green — measured in review — so the placement needs a witness of
+  // its own: while a predecessor holds the deployer's slot, a queued entry
+  // must have read no property VALUE off its caller but the deployer key
+  // (the get trap sees reads, spreads and destructuring alike; bare key
+  // enumeration is not part of the witness — and no build path enumerates
+  // without reading).
+
+  /** Restores the variable `configureRecordLocation` writes into process.env. */
+  function withManifestDirRestored(): () => void {
+    const saved = process.env['MANIFEST_DEFAULT_DIR'];
+    return () => {
+      if (saved === undefined) {
+        delete process.env['MANIFEST_DEFAULT_DIR'];
+      } else {
+        process.env['MANIFEST_DEFAULT_DIR'] = saved;
+      }
+    };
+  }
+
+  function readLogging<T extends object>(
+    target: T,
+    log: Set<string>,
+    except: readonly string[] = [],
+  ): T {
+    return new Proxy(target, {
+      get(t, property, receiver) {
+        if (typeof property === 'string' && !except.includes(property)) {
+          log.add(property);
+        }
+        return Reflect.get(t, property, receiver);
+      },
+    });
+  }
+
+  it('validateImplementation builds its toolkit only once the slot opens', async () => {
+    const restoreEnv = withManifestDirRestored();
+    const shape = migrateShapedHandles();
+    let release!: () => void;
+    const held = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    // A real predecessor holding this deployer's slot.
+    const holder = serializeOperation('holder', shape.deployer, () => held);
+
+    const reads = new Set<string>();
+    // The deployer key is the entry's ONE legitimate pre-slot read — it is
+    // how the entry finds the slot at all — so it alone is exempt.
+    const options = readLogging({ ...shape.handles }, reads, ['deployer']);
+    let secondSettled: Promise<unknown> | undefined;
+    try {
+      const second = validateImplementation(
+        { contractName: 'Box', abi: [] } as never,
+        options as never,
+      );
+      // Handled from birth, so a refusal after release never surfaces as a
+      // late-handled rejection.
+      secondSettled = second.catch(() => undefined);
+      await new Promise(resolve => setTimeout(resolve, 25));
+      // The slot is still held: no environment resolution, no toolkit build,
+      // no option resolution — nothing read off the caller's object.
+      expect([...reads]).toEqual([]);
+      release();
+      await holder;
+      // The operation itself may refuse (the bare fixture has no build
+      // records for Box); settlement is all this test needs from it.
+      await secondSettled;
+      // Once the slot opened, the toolkit build resolved the environment off
+      // these handles.
+      expect(reads.has('artifacts')).toBe(true);
+      expect(reads.has('tronWrap')).toBe(true);
+    } finally {
+      // On an assertion failure the queued operation still settles HERE,
+      // not in whatever test runs next.
+      release();
+      await secondSettled;
+      restoreEnv();
+    }
+  });
+
+  it("deployProxy reads the abstraction's prior address only once the slot opens", async () => {
+    const restoreEnv = withManifestDirRestored();
+    const shape = migrateShapedHandles();
+    let release!: () => void;
+    const held = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    const holder = serializeOperation('holder', shape.deployer, () => held);
+
+    const contractReads = new Set<string>();
+    const contract = readLogging(
+      {
+        contractName: 'Box',
+        abi: [],
+        bytecode: '0x6080',
+        isDeployed: () => false,
+      },
+      contractReads,
+    );
+    let secondSettled: Promise<unknown> | undefined;
+    try {
+      const second = deployProxy(contract as never, [], {
+        ...shape.handles,
+      } as never);
+      secondSettled = second.catch(() => undefined);
+      await new Promise(resolve => setTimeout(resolve, 25));
+      // The prior-address read is part of the operation, not of the call: a
+      // queued predecessor deploying through this same abstraction writes its
+      // address back, and that write-back must be visible to this read (a
+      // pre-slot capture seeds the record session without it, and the replay
+      // decision then refuses a perfectly recorded proxy with 'no-verdict').
+      expect([...contractReads]).toEqual([]);
+      release();
+      await holder;
+      await secondSettled;
+      expect(contractReads.has('isDeployed')).toBe(true);
+    } finally {
+      release();
+      await secondSettled;
+      restoreEnv();
     }
   });
 });
