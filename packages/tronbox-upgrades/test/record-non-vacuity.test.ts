@@ -30,7 +30,7 @@ import fs from 'node:fs/promises';
 import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { ManifestData } from '@openzeppelin/upgrades-core';
 
 import type { AbsolutePath } from '../src/environment';
@@ -944,11 +944,21 @@ describe('obeying the printed remedy recovers — measured, not assumed', () => 
 
       // The gate runs on the surviving fingerprint, but it guards zero
       // records, so it re-arms instead of refusing.
-      const session = await openRecord(
-        depsFor(identityFor(REBOOTED_FIRST_BLOCK_HASH)),
-      );
-      expect(session.report.instance).toBe('indeterminate');
-      expect(session.report.instanceBecause).toBe('instance-changed-record-empty');
+      const disclosed: { title: string; detail: readonly string[] }[] = [];
+      const session = await openRecord({
+        ...depsFor(identityFor(REBOOTED_FIRST_BLOCK_HASH)),
+        disclose: (title, detail) => {
+          disclosed.push({ title, detail });
+        },
+      });
+      // A distinct member, not `indeterminate`: this case WAS determined.
+      expect(session.report.instance).toBe('re-armed');
+      expect(session.report.instanceBecause).toBeUndefined();
+      // And it says so out loud — a silent retarget of the guard is invisible
+      // exactly when it matters.
+      expect(disclosed).toHaveLength(1);
+      expect(disclosed[0]?.title).toBe('chain fingerprint re-armed');
+      expect(disclosed[0]?.detail.join(' ')).toContain('held no deployments');
       const rearmed = JSON.parse(await fs.readFile(SIDECAR_FILE, 'utf8')) as {
         readonly firstBlockHash: string;
       };
@@ -958,6 +968,9 @@ describe('obeying the printed remedy recovers — measured, not assumed', () => 
       // instance.
       const next = await openRecord(depsFor(identityFor(REBOOTED_FIRST_BLOCK_HASH)));
       expect(next.report.instance).toBe('same');
+
+      // The steady path stays silent: no disclosure without a re-arm.
+      expect(disclosed).toHaveLength(1);
     } finally {
       await clearRecordFixtures();
     }
@@ -995,6 +1008,51 @@ function refusalMessage(sidecarFile?: string): string {
     sidecarFile === undefined ? base : { ...base, sidecarFile },
   ).message;
 }
+
+describe('the emptiness decision is re-made under the lock', () => {
+  it('a record written between the unlocked read and the lock revives the refusal instead of being blessed', async () => {
+    const before = await placeRecordFixtures(mainnetFirstBlockHash);
+    try {
+      // A same-instance open first: it configures the record location, so the
+      // engine import below cannot precede that configuration (the entry
+      // closure hazard, in test form).
+      await openRecord(depsFor(identityFor(mainnetFirstBlockHash)));
+      // The unlocked routing read reports an EMPTY manifest while the disk
+      // truly holds records — the interleaving where another process writes
+      // between the read and the lock. The locked re-read is real.
+      const engine = await import('@openzeppelin/upgrades-core');
+      const original = engine.Manifest.prototype.read;
+      const spy = vi
+        .spyOn(engine.Manifest.prototype, 'read')
+        .mockImplementationOnce(async function (
+          this: InstanceType<typeof engine.Manifest>,
+        ) {
+          const { admin, ...data } = (await original.call(this)) as ManifestData;
+          void admin;
+          return { ...data, proxies: [], impls: {} };
+        });
+      try {
+        const failure = await openRecord(
+          depsFor(identityFor(REBOOTED_FIRST_BLOCK_HASH)),
+        ).then(
+          () => undefined,
+          (cause: unknown) => cause,
+        );
+        expect(failure).toBeInstanceOf(ChainInstanceChangedError);
+        // The count is the LOCKED read's, not the stale one that routed here.
+        expect((failure as ChainInstanceChangedError).context.recordCount).toBe(
+          FIXTURE_RECORD_COUNT,
+        );
+        // And the fingerprint was NOT rewritten over the live records.
+        expect(await fs.readFile(SIDECAR_FILE, 'utf8')).toBe(before.sidecar);
+      } finally {
+        spy.mockRestore();
+      }
+    } finally {
+      await clearRecordFixtures();
+    }
+  });
+});
 
 describe('the refusal names both files, and says that neither deletion alone resets anything', () => {
   it('names both files, so the remedy cannot be read as "delete the unfamiliar one"', () => {

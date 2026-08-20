@@ -24,8 +24,10 @@
  *    — do the recorded proxies exist at this endpoint? — so it reads the manifest and
  *    asks the chain for code before throwing: reads only, failure-tolerant, and still
  *    ahead of every write.
- * 5. **Refuse on a changed instance, before any write.** The refusal message promises
- *    *"Nothing has been changed or removed."* If the refusal came after step 6 it would
+ * 5. **Refuse on a changed instance, before any write** — unless the record holds
+ *    zero deployments, where the gate re-arms the fingerprint instead (the
+ *    emptiness is re-checked under step 6's lock before the write). The refusal
+ *    message promises *"Nothing has been changed or removed."* If the refusal came after step 6 it would
  *    already have rewritten the manifest's address casing and the promise would be
  *    false. The chain seam could not have guaranteed this — it has no filesystem access
  *    at all — which is why the guarantee is this module's.
@@ -96,9 +98,10 @@ import type { RecordDeps, RecordSession } from './types';
  * @throws {ChainInstanceChangedError} the chain reports a different instance than the
  *   records were written against AND the record holds at least one deployment. The
  *   chain seam owns that message and never throws it; deciding that refusal is the
- *   policy is this layer's act. **Nothing has been written when it is raised.** Over
- *   an empty record the gate re-arms the fingerprint instead and reports
- *   `instance-changed-record-empty`.
+ *   policy is this layer's act. **Nothing has been written when it is raised**,
+ *   from either throw site — the unlocked routing read or the locked re-check.
+ *   Over an empty record the gate re-arms the fingerprint instead, reports
+ *   `instance: 're-armed'`, and discloses through `deps.disclose`.
  * @throws {AddressNotCanonicalizableError} an address the operation named is not a
  *   usable TRON address. An address already *stored* in the manifest is never a reason
  *   to refuse — it is left as it is and reported.
@@ -174,9 +177,12 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
   // (the manifest is deleted, the sidecar survives) while protecting no record,
   // so with zero records the gate re-arms instead: the fingerprint is rewritten
   // to the live instance under the step-6 lock, and the report names the cause.
-  // Upstream is looser still — the engine silently deletes invalid deployments
-  // on dev networks and redeploys — so proceeding only at zero records is the
-  // conservative end of that precedent.
+  // The precedent is half-supportive and says so: upstream's engine silently
+  // deletes invalid deployments and redeploys, but only behind its
+  // `isDevelopmentNetwork` gate, which is false on TRON (`chain/errors.ts`) —
+  // so this re-arm can fire on any network. What justifies proceeding anyway
+  // is that the record guards nothing AND the re-arm is disclosed, never
+  // silent. The emptiness seen here is re-checked under the lock below.
   const rearmOverEmptyRecord =
     comparison.kind === 'changed' && recordCount(data) === 0;
   if (comparison.kind === 'changed' && !rearmOverEmptyRecord) {
@@ -193,10 +199,11 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
     });
   }
   // `settled` is undefined exactly on the re-arm path: `changed` stays
-  // unrepresentable in the report (reconcile.ts's rule), so that path builds its
-  // outcome explicitly below instead of flowing the comparison through.
+  // unrepresentable in the report (reconcile.ts's rule), so that path reports
+  // itself as `re-armed` below instead of flowing the comparison through.
   const settled: SettledInstanceComparison | undefined =
     comparison.kind === 'changed' ? undefined : comparison;
+  const changedComparison = comparison.kind === 'changed' ? comparison : undefined;
 
   // Step 6. Nothing at all on the steady-state path: comparator says the same
   // instance, so the fingerprint on disk already matches and there is nothing to
@@ -214,12 +221,24 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
     // as "the record file cannot be read".
     const written = await throughRecordLock(manifestFile, () =>
       manifest.lockedRun(async () => {
+        // Re-read FIRST, inside the lock: the snapshot from before it was
+        // unsynchronized, so another process may have written since.
+        const locked = canonicalizeStoredAddresses(await manifest.read());
+        if (changedComparison !== undefined && recordCount(locked.data) > 0) {
+          // The emptiness that routed here is stale: a record was written
+          // between the read and the lock, so the guard has something to
+          // protect after all — the refusal revives, with the locked count,
+          // and nothing has been written on this path either.
+          throw new ChainInstanceChangedError(changedComparison, {
+            manifestFile,
+            recordCount: recordCount(locked.data),
+            endpoint: identity.observedThrough,
+            sidecarFile: fingerprintFile,
+          });
+        }
         if (needsFingerprint) {
           await writeFingerprint(fingerprintFile, fingerprintFor(identity));
         }
-        // Re-read inside the lock rather than reusing the snapshot from before it: that
-        // read was unsynchronized, so another process may have written since.
-        const locked = canonicalizeStoredAddresses(await manifest.read());
         if (locked.rewritten > 0) {
           await manifest.write(locked.data);
         }
@@ -228,6 +247,17 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
     );
     migration = written;
     addressesMigrated = written.rewritten;
+
+    if (changedComparison !== undefined) {
+      // Persisted, so say so: a silent retarget of the guard is invisible
+      // exactly when it matters.
+      deps.disclose?.('chain fingerprint re-armed', [
+        `The chain at ${identity.observedThrough} is a different instance ` +
+          `of chain ${identity.chainId} than the fingerprint remembered.`,
+        'The record held no deployments, so the fingerprint was rewritten ' +
+          'to the live chain instead of refusing.',
+      ]);
+    }
   }
 
   const verdicts = await reconcileProxies(
@@ -242,10 +272,7 @@ export async function openRecord(deps: RecordDeps): Promise<RecordSession> {
     chainId: identity.chainId,
     outcome:
       settled === undefined
-        ? Object.freeze({
-            instance: 'indeterminate',
-            instanceBecause: 'instance-changed-record-empty',
-          } as const)
+        ? Object.freeze({ instance: 're-armed' } as const)
         : instanceOutcomeOf(read, settled),
     addressesMigrated,
     addressesUnmigratable: migration.unmigratable,

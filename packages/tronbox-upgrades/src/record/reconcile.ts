@@ -38,10 +38,12 @@ import type {
 /**
  * A comparison that did **not** refuse.
  *
- * `'changed'` is excluded at the type level rather than handled: a report describing a
- * refused run cannot exist, because the refusal happens before any report is
- * constructed. Making the wrong answer unnameable is cheaper than documenting that it
- * cannot happen.
+ * `'changed'` is excluded at the type level rather than handled: with records to
+ * guard, the refusal happens before any report is constructed, and the one changed
+ * case that proceeds — a record holding zero deployments, which re-arms — never
+ * flows through this type: the session reports it as `'re-armed'` directly.
+ * Making the wrong answer unnameable is cheaper than documenting that it cannot
+ * happen.
  */
 export type SettledInstanceComparison = Exclude<
   InstanceComparison,
@@ -50,7 +52,7 @@ export type SettledInstanceComparison = Exclude<
 
 /** The instance half of the report. */
 export interface InstanceOutcome {
-  readonly instance: 'same' | 'indeterminate';
+  readonly instance: 'same' | 'indeterminate' | 're-armed';
   readonly instanceBecause?: InstanceIndeterminateCause;
   readonly incompleteField?: IncompleteFingerprintField;
 }
@@ -266,7 +268,7 @@ export function buildReport(input: {
 }): ReplayReconciliationReport {
   const report: {
     chainId: string;
-    instance: 'same' | 'indeterminate';
+    instance: 'same' | 'indeterminate' | 're-armed';
     instanceBecause?: InstanceIndeterminateCause;
     incompleteField?: IncompleteFingerprintField;
     addressesMigrated: number;

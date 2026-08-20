@@ -62,6 +62,13 @@ export interface RecordDeps {
    * nowhere else, and the reconciliation report covers exactly these.
    */
   readonly addresses?: readonly NamedAddress[];
+  /**
+   * Where a session-level decision says so out loud. The record layer has no
+   * output surface of its own; a caller with one (the operation toolkit lends
+   * its channel) passes it here. Today's one speaker: the empty-record re-arm,
+   * which retargets the chain-instance guard and must not do so silently.
+   */
+  readonly disclose?: (title: string, detail: readonly string[]) => void;
 }
 
 /** An address an operation names, with the kind the caller asserted for it if any. */
@@ -203,12 +210,7 @@ export interface ProxyRecordVerdict {
 export type InstanceIndeterminateCause =
   | 'no-recorded-identity'
   | 'recorded-identity-incomplete'
-  | 'fingerprint-unreadable'
-  /**
-   * Session-level, never the comparator's: the instance changed but the record
-   * held zero deployments, so the gate re-armed instead of refusing.
-   */
-  | 'instance-changed-record-empty';
+  | 'fingerprint-unreadable';
 
 /** Which of the fingerprint's two hash fields was missing. */
 export type IncompleteFingerprintField = 'genesisHash' | 'firstBlockHash';
@@ -216,11 +218,13 @@ export type IncompleteFingerprintField = 'genesisHash' | 'firstBlockHash';
 export interface ReplayReconciliationReport {
   readonly chainId: string;
   /**
-   * `'changed'` is unrepresentable here, and that is cheaper than documenting that
-   * it cannot happen: a `changed` verdict refuses in the preflight, before any
-   * report exists.
+   * A `changed` verdict refuses in the preflight, before any report exists —
+   * with one exception it names rather than relabels: over a record holding
+   * zero deployments the gate re-arms the fingerprint instead, and the report
+   * says `'re-armed'`. A distinct member on purpose: that case WAS determined,
+   * so reporting it as `indeterminate` would answer a future consumer wrongly.
    */
-  readonly instance: 'same' | 'indeterminate';
+  readonly instance: 'same' | 'indeterminate' | 're-armed';
   readonly instanceBecause?: InstanceIndeterminateCause;
   /**
    * Which field the persisted fingerprint was missing, present only on
