@@ -1,6 +1,6 @@
 {
   "name": "@openzeppelin/tronbox-upgrades",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "OpenZeppelin Upgrades plugin for TronBox: deploy and upgrade proxies on TRON with upgrade-safety validations.",
   "license": "MIT",
   "main": "dist/index.js",
@@ -21,6 +21,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
+    "@openzeppelin/tron-contracts": "^5.6.0-rc.0",
     "@openzeppelin/upgrades-core": "^1.46.0"
   },
   "peerDependencies": {

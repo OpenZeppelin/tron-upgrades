@@ -48,7 +48,7 @@ export class ProxyArtifactMissingError extends ProxyOperationRefusedError {
     super(
       `The proxy contract artifact ${artifactName} is not among this project's ` +
         `compiled contracts. Add a file such as contracts/Proxies.sol containing ` +
-        `\`import "openzeppelin-tron-solidity/contracts/proxy/transparent/` +
+        `\`import "@openzeppelin/tron-contracts/proxy/transparent/` +
         `TransparentUpgradeableProxy.sol";\` (see the plugin README for the full ` +
         `file), then run \`tronbox compile\`.`,
     );

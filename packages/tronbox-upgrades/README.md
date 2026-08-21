@@ -342,16 +342,15 @@ refuses the same state for a transparent proxy's admin.
 
 ## Proxy provenance
 
-Every proxy contract this plugin deploys — `TransparentUpgradeableProxy`, `ProxyAdmin`, `TRC1967Proxy` (the UUPS proxy), `UpgradeableBeacon` and `BeaconProxy` — comes from **one package, `openzeppelin-tron-solidity`**, and reaches your build through **one file**, bundled with this plugin:
+Every proxy contract this plugin deploys — `TransparentUpgradeableProxy`, `ProxyAdmin`, `TRC1967Proxy` (the UUPS proxy), `UpgradeableBeacon` and `BeaconProxy` — comes from **one package, [`@openzeppelin/tron-contracts`](https://www.npmjs.com/package/@openzeppelin/tron-contracts)**, and reaches your build through **one file**, bundled with this plugin:
 
 ```solidity
 import "@openzeppelin/tronbox-upgrades/contracts/Proxies.sol";
 ```
 
-> ⚠️ `openzeppelin-tron-solidity` is not yet published; the version range this
-> plugin will declare against it is TBD. The import path and the set of
-> contracts it brings in are stable now — only the version constraint is
-> pending.
+The plugin declares `@openzeppelin/tron-contracts` as a regular dependency,
+so installing the plugin brings the proxy sources into your `node_modules`
+with no extra step.
 
 TronBox resolves compiled artifacts by **bare contract name**, with no
 directory or package qualification. That means a proxy artifact this plugin
