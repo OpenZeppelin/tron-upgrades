@@ -644,6 +644,11 @@ export async function createOperationToolkit(request: {
           env: processEnv,
           chain,
           addresses: request.addresses ?? [],
+          // The record layer has no output surface; the empty-record re-arm
+          // speaks through this channel rather than happening silently.
+          disclose: (title, detail) => {
+            channel.note(title, detail);
+          },
         });
 
   // The deferred loads, in one place — every module whose static closure

@@ -62,6 +62,20 @@ export interface RecordDeps {
    * nowhere else, and the reconciliation report covers exactly these.
    */
   readonly addresses?: readonly NamedAddress[];
+  /**
+   * Where a session-level decision says so out loud. The record layer has no
+   * output surface of its own; a caller with one (the operation toolkit lends
+   * its channel) passes it here. Today's one speaker: the empty-record re-arm,
+   * which retargets the chain-instance guard and must not do so silently.
+   *
+   * REQUIRED, deliberately (review r3823745544): the only production supplier
+   * is the toolkit's one forwarding line, and with an optional field the
+   * compiler accepts that line's absence — a refactor could silently
+   * disconnect the message the re-arm exists to print, and no test would
+   * notice. Required, its removal is a compile error. A caller with nothing
+   * to say passes a noop.
+   */
+  readonly disclose: (title: string, detail: readonly string[]) => void;
 }
 
 /** An address an operation names, with the kind the caller asserted for it if any. */
@@ -211,11 +225,13 @@ export type IncompleteFingerprintField = 'genesisHash' | 'firstBlockHash';
 export interface ReplayReconciliationReport {
   readonly chainId: string;
   /**
-   * `'changed'` is unrepresentable here, and that is cheaper than documenting that
-   * it cannot happen: a `changed` verdict refuses in the preflight, before any
-   * report exists.
+   * A `changed` verdict refuses in the preflight, before any report exists —
+   * with one exception it names rather than relabels: over a record holding
+   * zero deployments the gate re-arms the fingerprint instead, and the report
+   * says `'re-armed'`. A distinct member on purpose: that case WAS determined,
+   * so reporting it as `indeterminate` would answer a future consumer wrongly.
    */
-  readonly instance: 'same' | 'indeterminate';
+  readonly instance: 'same' | 'indeterminate' | 're-armed';
   readonly instanceBecause?: InstanceIndeterminateCause;
   /**
    * Which field the persisted fingerprint was missing, present only on
