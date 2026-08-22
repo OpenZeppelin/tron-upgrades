@@ -67,6 +67,11 @@ const PRIVATE_KEY =
   process.env.E2E_PRIVATE_KEY ||
   'c8afe0306dbb962a4ce8c09954f050c57facf05eb7ac88497ee1489d741aaff1';
 const TRONBOX_VERSION = process.env.E2E_TRONBOX_VERSION || '4.9.0';
+// The contracts package range, read from the plugin's own manifest so the
+// e2e consumer and the shipped dependency cannot drift apart.
+const TRON_CONTRACTS_RANGE = JSON.parse(
+  fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'),
+).dependencies['@openzeppelin/tron-contracts'];
 
 // A fixed throwaway key: the transfer target only ever RECEIVES ownership,
 // nothing signs with it, so any well-formed address works — but a derived one
@@ -291,19 +296,6 @@ async function main() {
     die(remedy);
   }
 
-  const vendorDir = path.join(repoRoot, 'vendor');
-  const vendorTarball = fs.existsSync(vendorDir)
-    ? fs
-        .readdirSync(vendorDir)
-        .filter(name => /^openzeppelin-tron-solidity-.*\.tgz$/.test(name))
-        .map(name => path.join(vendorDir, name))
-        .sort()
-        .pop()
-    : undefined;
-  if (!vendorTarball) {
-    die(`no openzeppelin-tron-solidity tarball under ${vendorDir}`);
-  }
-
   // 2 — pack
   const workRoot =
     process.env.E2E_WORKDIR ||
@@ -336,7 +328,9 @@ async function main() {
         private: true,
         dependencies: {
           '@openzeppelin/tronbox-upgrades': `file:${tarball}`,
-          'openzeppelin-tron-solidity': `file:${vendorTarball}`,
+          // The registry package, same range the plugin declares: the e2e's
+          // job is to mirror a real consumer install, vendored nothing.
+          '@openzeppelin/tron-contracts': TRON_CONTRACTS_RANGE,
           tronbox: TRONBOX_VERSION,
         },
       },

@@ -25,3 +25,6 @@ packages/hardhat-tron-upgrades/examples/*/.testnet-key
 
 # Local working directory
 /artifacts/
+
+# scratch consumer used by the packaging flow — never committed
+sandbox/

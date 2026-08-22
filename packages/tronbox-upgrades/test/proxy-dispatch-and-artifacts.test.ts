@@ -151,12 +151,12 @@ describe('proxy-artifact triage', () => {
       name: 'TransparentUpgradeableProxy',
       candidates: [
         {
-          sourcePath: 'openzeppelin-tron-solidity/contracts/proxy/transparent/TransparentUpgradeableProxy.sol',
+          sourcePath: '@openzeppelin/tron-contracts/proxy/transparent/TransparentUpgradeableProxy.sol',
           contractName: 'TransparentUpgradeableProxy',
           buildInfoFile: '/proj/build/info/a.json' as never,
         },
         {
-          sourcePath: 'openzeppelin-tron-solidity/contracts/proxy/transparent/TransparentUpgradeableProxy.sol',
+          sourcePath: '@openzeppelin/tron-contracts/proxy/transparent/TransparentUpgradeableProxy.sol',
           contractName: 'TransparentUpgradeableProxy',
           buildInfoFile: '/proj/build/info/b.json' as never,
         },
@@ -216,7 +216,7 @@ describe('proxy-artifact triage', () => {
       }
       expect(caught).toBeInstanceOf(ProxyArtifactMissingError);
       expect(caught?.message).toContain('tronbox compile');
-      expect(caught?.message).toContain('openzeppelin-tron-solidity');
+      expect(caught?.message).toContain('@openzeppelin/tron-contracts');
     }
   });
 });
