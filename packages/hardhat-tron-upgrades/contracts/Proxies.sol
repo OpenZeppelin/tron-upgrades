@@ -8,11 +8,11 @@ pragma solidity ^0.8.22;
 //
 // Hardhat only compiles node_modules sources that are imported by the
 // project, and the plugin deploys these proxies by artifact name.
-import {TRC1967Proxy} from "openzeppelin-tron-solidity/contracts/proxy/TRC1967/TRC1967Proxy.sol";
-import {TransparentUpgradeableProxy} from "openzeppelin-tron-solidity/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import {ProxyAdmin} from "openzeppelin-tron-solidity/contracts/proxy/transparent/ProxyAdmin.sol";
-import {UpgradeableBeacon} from "openzeppelin-tron-solidity/contracts/proxy/beacon/UpgradeableBeacon.sol";
-import {BeaconProxy} from "openzeppelin-tron-solidity/contracts/proxy/beacon/BeaconProxy.sol";
+import {TRC1967Proxy} from "@openzeppelin/tron-contracts/proxy/TRC1967/TRC1967Proxy.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/tron-contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {ProxyAdmin} from "@openzeppelin/tron-contracts/proxy/transparent/ProxyAdmin.sol";
+import {UpgradeableBeacon} from "@openzeppelin/tron-contracts/proxy/beacon/UpgradeableBeacon.sol";
+import {BeaconProxy} from "@openzeppelin/tron-contracts/proxy/beacon/BeaconProxy.sol";
 
 /// Stable upgrade entry points for UUPS proxies. The plugin calls the CURRENT
 /// implementation through the proxy, dispatching on the proxy's reported

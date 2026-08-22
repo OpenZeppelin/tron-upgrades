@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Initializable} from "openzeppelin-tron-solidity/contracts/proxy/utils/Initializable.sol";
-import {StorageSlot} from "openzeppelin-tron-solidity/contracts/utils/StorageSlot.sol";
+import {Initializable} from "@openzeppelin/tron-contracts/proxy/utils/Initializable.sol";
+import {StorageSlot} from "@openzeppelin/tron-contracts/utils/StorageSlot.sol";
 
 /// UUPS-style implementation exposing only the v4 upgrade entry point,
 /// upgradeTo(address) — no upgradeToAndCall, no UPGRADE_INTERFACE_VERSION.

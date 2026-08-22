@@ -16,7 +16,7 @@ const { ethers, upgrades, config, network } = hre;
 
 
 const ADMIN_FQN =
-  'openzeppelin-tron-solidity/contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin';
+  '@openzeppelin/tron-contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin';
 
 describe('chain-first validation — drift hard stops and merge semantics', function () {
   this.timeout(240_000);

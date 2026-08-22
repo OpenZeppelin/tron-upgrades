@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Initializable} from "openzeppelin-tron-solidity/contracts/proxy/utils/Initializable.sol";
+import {Initializable} from "@openzeppelin/tron-contracts/proxy/utils/Initializable.sol";
 
 /// Negative fixture: storage-compatible with TestBoxUUPSV1 but does NOT inherit
 /// UUPSUpgradeable — it has no upgrade mechanism. Upgrading a UUPS proxy to

@@ -50,7 +50,7 @@ describe('native TRON address formats at the API boundary', function () {
       });
       const adminAddress = await upgrades.erc1967.getAdminAddress(box);
       const admin = await ethers.getContractAt(
-        'openzeppelin-tron-solidity/contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin',
+        '@openzeppelin/tron-contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin',
         adminAddress,
       );
 
@@ -62,7 +62,7 @@ describe('native TRON address formats at the API boundary', function () {
       const box = await upgrades.deployProxy('TestBoxV1', [deployer.address, 92n]);
       const adminAddress = await upgrades.erc1967.getAdminAddress(box);
       const admin = await ethers.getContractAt(
-        'openzeppelin-tron-solidity/contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin',
+        '@openzeppelin/tron-contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin',
         adminAddress,
       );
 

@@ -4,7 +4,7 @@ import { implEntry, proxyRecord, readManifest } from './_manifest-helper';
 
 const { ethers, upgrades } = hre;
 
-const PROXY_ROOT = 'openzeppelin-tron-solidity/contracts/proxy';
+const PROXY_ROOT = '@openzeppelin/tron-contracts/proxy';
 const FQN = {
   transparent: `${PROXY_ROOT}/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy`,
   trc1967: `${PROXY_ROOT}/TRC1967/TRC1967Proxy.sol:TRC1967Proxy`,
