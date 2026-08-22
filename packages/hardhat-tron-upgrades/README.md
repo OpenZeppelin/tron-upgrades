@@ -4,7 +4,9 @@ Deploy and upgrade proxies on TRON (TVM) with upgrade-safety validations —
 the Upgrades plugin for Hardhat projects using
 [`@openzeppelin/hardhat-tron`](https://github.com/OpenZeppelin/hardhat-tron).
 
-> **Status: early development — API and manifest format may change. Not audited, not published.**
+> **Status: early development — API and manifest format may change. Not audited.**
+>
+> Requires the [`@openzeppelin/hardhat-tron`](https://github.com/OpenZeppelin/hardhat-tron) bridge as a peer dependency (`^0.1.0`): install it alongside this plugin.
 
 ```js
 // hardhat.config.cjs
@@ -71,7 +73,7 @@ await upgrades.admin.transferProxyAdminOwnership(box, newOwner);
   project's compiler build-info (tron-solc output is supported as-is).
 - **Deployment** runs through the consumer's TronWeb-bridged `hre.ethers`.
 - **Proxy bytecode** comes from the ported contracts library
-  (`openzeppelin-tron-solidity`). Add ONE import anywhere in your `contracts/`
+  ([`@openzeppelin/tron-contracts`](https://www.npmjs.com/package/@openzeppelin/tron-contracts), installed automatically as this plugin's dependency). Add ONE import anywhere in your `contracts/`
   so the proxy artifacts are compiled locally:
 
   ```solidity

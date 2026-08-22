@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Initializable} from "openzeppelin-tron-solidity/contracts/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "openzeppelin-tron-solidity/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {Initializable} from "@openzeppelin/tron-contracts/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/tron-contracts/proxy/utils/UUPSUpgradeable.sol";
 
 /// Safe from TestBoxUUPSV1, but unsafe from TestBoxUUPSV2 because its appended slot
 /// changes meaning from incrementCount to rewardPoints.

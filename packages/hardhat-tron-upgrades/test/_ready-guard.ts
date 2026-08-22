@@ -21,6 +21,12 @@ before(async function () {
   // STALE layout entries. TRE manifests are ephemeral by policy — start clean.
   if (hre.network.name === 'tre') {
     fs.rmSync(path.join(hre.config.paths.root, '.openzeppelin'), { recursive: true, force: true });
+    // The instance-qualified manifest lives in the OS temp dir (see
+    // manifestForHre): same running instance across suite runs means the
+    // same file, so it needs the same start-clean treatment.
+    const { manifestForHre } = await import('../src/utils/manifest');
+    const manifest = await manifestForHre(hre);
+    fs.rmSync(manifest.file, { force: true });
   }
 
   const { tronWeb, address } = hre.tre.makeTronWeb();

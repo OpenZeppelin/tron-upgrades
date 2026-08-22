@@ -4,7 +4,7 @@ import { expect } from 'chai';
 const { ethers, upgrades } = hre;
 
 const PROXY_ADMIN_FQN =
-  'openzeppelin-tron-solidity/contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin';
+  '@openzeppelin/tron-contracts/proxy/transparent/ProxyAdmin.sol:ProxyAdmin';
 
 describe('proxy admin ownership', function () {
   this.timeout(240_000);

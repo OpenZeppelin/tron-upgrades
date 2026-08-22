@@ -42,7 +42,7 @@ function body(address) {
 
 // The bridge's bare-name artifact index only covers local sources; contracts
 // compiled from node_modules need fully-qualified names.
-const PKG = 'openzeppelin-tron-solidity/contracts/proxy';
+const PKG = '@openzeppelin/tron-contracts/proxy';
 const TRANSPARENT_PROXY = `${PKG}/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy`;
 const PROXY_ADMIN = `${PKG}/transparent/ProxyAdmin.sol:ProxyAdmin`;
 const UPGRADEABLE_BEACON = `${PKG}/beacon/UpgradeableBeacon.sol:UpgradeableBeacon`;

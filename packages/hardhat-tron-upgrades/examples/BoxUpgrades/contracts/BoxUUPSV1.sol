@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Initializable} from "openzeppelin-tron-solidity/contracts/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "openzeppelin-tron-solidity/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {Initializable} from "@openzeppelin/tron-contracts/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/tron-contracts/proxy/utils/UUPSUpgradeable.sol";
 
 /// UUPS-style upgradeable implementation: the upgrade mechanism
 /// (upgradeToAndCall) is inherited into this contract's bytecode.

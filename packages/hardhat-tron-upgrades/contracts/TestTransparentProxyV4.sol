@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {TRC1967Proxy} from "openzeppelin-tron-solidity/contracts/proxy/TRC1967/TRC1967Proxy.sol";
-import {TRC1967Utils} from "openzeppelin-tron-solidity/contracts/proxy/TRC1967/TRC1967Utils.sol";
+import {TRC1967Proxy} from "@openzeppelin/tron-contracts/proxy/TRC1967/TRC1967Proxy.sol";
+import {TRC1967Utils} from "@openzeppelin/tron-contracts/proxy/TRC1967/TRC1967Utils.sol";
 
 /// A v4-style transparent proxy fixture. Unlike the ported v5
 /// TransparentUpgradeableProxy (which owns an immutable ProxyAdmin and

@@ -1,7 +1,7 @@
 // Proxy artifacts come from the ported contracts library, compiled by the
 // consumer project (see README). Fully-qualified names are required because
 // the bridge's bare-name artifact index only covers local sources.
-const PROXY_PKG = 'openzeppelin-tron-solidity/contracts/proxy';
+const PROXY_PKG = '@openzeppelin/tron-contracts/proxy';
 
 export const FQN = {
   transparent: `${PROXY_PKG}/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy`,

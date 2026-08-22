@@ -1,18 +1,21 @@
 import fs from 'node:fs';
 import hre from 'hardhat';
-import path from 'node:path';
 
-const { network, config } = hre;
+import { manifestForHre } from '../src/utils/manifest';
 
-// Helpers for the upstream-schema manifest (.openzeppelin/unknown-<chainId>.json):
-// impls keyed by version hash (with storage layouts), proxies as an array
-// with kinds. Chain id comes from the node, so the filename is discovered,
-// not assumed.
+// Helpers for the upstream-schema manifest: impls keyed by version hash
+// (with storage layouts), proxies as an array with kinds. The FILE is
+// resolved through the plugin's own Manifest.forNetwork path — on a TRE
+// that reports an instance id the manifest is keyed chain+instance and
+// lives in the OS temp dir, so a hardcoded
+// `.openzeppelin/unknown-<chainId>.json` reads a file the plugin never
+// writes (the bridge gained the instance-id seam; 29 tests broke on the
+// stale assumption).
 
 
 export async function manifestFile() {
-  const chainIdHex = await network.provider.send('eth_chainId', []);
-  return path.join(config.paths.root, '.openzeppelin', `unknown-${parseInt(chainIdHex, 16)}.json`);
+  const manifest = await manifestForHre(hre);
+  return manifest.file as string;
 }
 
 export async function readManifest() {
