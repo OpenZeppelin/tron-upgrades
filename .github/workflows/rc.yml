@@ -5,9 +5,10 @@ name: Release candidate
 # later publishes EXACTLY these bytes — never a rebuild.
 #
 # Unlike the single-package repos, this rc does not re-run the test suites:
-# the commit being packed is on main, which branch protection only admits
-# through the full CI matrix (unit suites plus the live packed-tarball
-# consumer e2e for both plugins). What this workflow validates is the
+# a candidate can only be packed from main (the first step refuses any
+# other ref), and branch protection only admits commits to main through
+# the full CI matrix (unit suites plus the live packed-tarball consumer
+# e2e for both plugins). What this workflow validates is the
 # ARTIFACT: a clean build, the packed contents, and a blocking production
 # audit of the tarball's own dependency tree, resolved lock-only in a
 # scratch consumer so no dependency script executes here.
@@ -29,6 +30,11 @@ jobs:
   pack:
     runs-on: ubuntu-latest
     steps:
+      - name: Refuse a ref other than main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Candidates are packed from main only: branch protection's CI matrix is what validates the packed commit. This run is on '$GITHUB_REF'."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -60,12 +66,17 @@ jobs:
           PKG_DIR: ${{ inputs.package }}
         run: |
           # The monorepo root lockfile mixes every workspace's development
-          # tree, so a root audit gates the release on tooling. Resolve the
-          # TARBALL's own production tree instead, lock-only (no scripts, no
-          # extraction), and audit that — it is exactly what a consumer gets.
+          # tree, so a root audit gates the release on tooling. Installing
+          # the tarball in a scratch consumer fails the same way: npm
+          # resolves PEER dependencies into that tree (with or without
+          # --omit=peer), so the gate would inherit tronbox's and hardhat's
+          # own advisories. Audit the tree this package controls instead:
+          # its declared dependencies, read straight out of the tarball and
+          # resolved lock-only — no dependency script ever executes here.
           TGZ="$(ls -1 -- *.tgz)"
           mkdir audit-scratch && cd audit-scratch
-          jq -n --arg tgz "../$TGZ" '{name: "rc-audit", private: true, dependencies: {pkg: ("file:" + $tgz)}}' > package.json
+          tar -xzOf "../$TGZ" package/package.json \
+            | jq '{name: "rc-audit", private: true, dependencies: (.dependencies // {})}' > package.json
           npm install --package-lock-only --no-audit --no-fund
           npm audit --omit=dev --audit-level=high
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

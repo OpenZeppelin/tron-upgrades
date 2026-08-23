@@ -109,13 +109,17 @@ jobs:
           echo "EXPECTED_INTEGRITY=sha512-$(openssl dgst -sha512 -binary "$TGZ" | base64 -w0)" >> "$GITHUB_ENV"
       - name: Production dependency audit of the tarball (blocking)
         run: |
-          # Lock-only resolution of the tarball's own production tree: no
-          # dependency script executes, and the root lockfile's development
-          # noise never gates a release. Same check the rc ran, re-verified
-          # on the exact bytes about to publish.
+          # Lock-only resolution of the DECLARED dependencies, read straight
+          # out of the tarball: no dependency script executes, the root
+          # lockfile's development noise never gates a release, and the peer
+          # trees stay out — npm resolves peers into a consumer tree, and
+          # tronbox's or hardhat's advisories are not this package's to fix.
+          # Same check the rc ran, re-verified on the exact bytes about to
+          # publish.
           TGZ="$(ls -1 rc/*.tgz)"
           mkdir audit-scratch && cd audit-scratch
-          jq -n --arg tgz "../$TGZ" '{name: "release-audit", private: true, dependencies: {pkg: ("file:" + $tgz)}}' > package.json
+          tar -xzOf "../$TGZ" package/package.json \
+            | jq '{name: "release-audit", private: true, dependencies: (.dependencies // {})}' > package.json
           npm install --package-lock-only --no-audit --no-fund
           npm audit --omit=dev --audit-level=high
       - name: Publish the exact verified bytes
