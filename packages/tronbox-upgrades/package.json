@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "description": "OpenZeppelin Upgrades plugin for TronBox: deploy and upgrade proxies on TRON with upgrade-safety validations.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenZeppelin/tron-upgrades.git",
+    "directory": "packages/tronbox-upgrades"
+  },
+  "homepage": "https://github.com/OpenZeppelin/tron-upgrades/tree/main/packages/tronbox-upgrades#readme",
+  "bugs": {
+    "url": "https://github.com/OpenZeppelin/tron-upgrades/issues"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
