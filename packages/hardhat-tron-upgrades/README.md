@@ -4,8 +4,6 @@ Deploy and upgrade proxies on TRON (TVM) with upgrade-safety validations —
 the Upgrades plugin for Hardhat projects using
 [`@openzeppelin/hardhat-tron`](https://github.com/OpenZeppelin/hardhat-tron).
 
-> **Status: early development — API and manifest format may change. Not audited.**
->
 > Requires the [`@openzeppelin/hardhat-tron`](https://github.com/OpenZeppelin/hardhat-tron) bridge as a peer dependency (`^0.1.0`): install it alongside this plugin.
 
 ```js

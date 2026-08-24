@@ -2,8 +2,6 @@
 
 OpenZeppelin Upgrades Plugins for the TRON Virtual Machine (TVM).
 
-> **Status: early scaffold — under active development. Not audited, not published.**
-
 | Package | What it is |
 |---|---|
 | [`@openzeppelin/hardhat-tron-upgrades`](packages/hardhat-tron-upgrades) | Transparent, UUPS, and beacon deployment/upgrades, preparation, import, reuse, and upgrade-safety validation for Hardhat on TRON |
