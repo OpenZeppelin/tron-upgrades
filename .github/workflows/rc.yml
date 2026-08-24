@@ -1,0 +1,88 @@
+name: Release candidate
+
+# Builds the ONE canonical release-candidate tarball for a chosen workspace
+# and records its identity (SHA-256 + npm integrity). The release workflow
+# later publishes EXACTLY these bytes — never a rebuild.
+#
+# Unlike the single-package repos, this rc does not re-run the test suites:
+# a candidate can only be packed from main (the first step refuses any
+# other ref), and branch protection only admits commits to main through
+# the full CI matrix (unit suites plus the live packed-tarball consumer
+# e2e for both plugins). What this workflow validates is the
+# ARTIFACT: a clean build, the packed contents, and a blocking production
+# audit of the tarball's own dependency tree, resolved lock-only in a
+# scratch consumer so no dependency script executes here.
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: The workspace to cut a candidate for
+        required: true
+        type: choice
+        options:
+          - tronbox-upgrades
+          - hardhat-tron-upgrades
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse a ref other than main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Candidates are packed from main only: branch protection's CI matrix is what validates the packed commit. This run is on '$GITHUB_REF'."
+          exit 1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Pack the candidate tarball
+        env:
+          PKG_DIR: ${{ inputs.package }}
+        run: |
+          set -o pipefail
+          TGZ="$(npm pack --workspace "@openzeppelin/$PKG_DIR" | tail -1)"
+          sha256sum "$TGZ" > "$TGZ.sha256"
+          INTEGRITY="sha512-$(openssl dgst -sha512 -binary "$TGZ" | base64 -w0)"
+          VERSION="$(jq -r .version "packages/$PKG_DIR/package.json")"
+          {
+            echo "## Release candidate"
+            echo "- package: \`@openzeppelin/$PKG_DIR\`"
+            echo "- file: \`$TGZ\`"
+            echo "- commit: \`$GITHUB_SHA\`"
+            echo "- sha256: \`$(cut -d' ' -f1 "$TGZ.sha256")\`"
+            echo "- npm integrity: \`$INTEGRITY\`"
+            echo
+            echo "Create a GitHub release tagged \`$PKG_DIR-v$VERSION\` and attach"
+            echo "\`$TGZ\` and \`$TGZ.sha256\` unchanged; the release workflow"
+            echo "refuses anything whose hash does not match."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Production dependency audit of the tarball (blocking)
+        env:
+          PKG_DIR: ${{ inputs.package }}
+        run: |
+          # The monorepo root lockfile mixes every workspace's development
+          # tree, so a root audit gates the release on tooling. Installing
+          # the tarball in a scratch consumer fails the same way: npm
+          # resolves PEER dependencies into that tree (with or without
+          # --omit=peer), so the gate would inherit tronbox's and hardhat's
+          # own advisories. Audit the tree this package controls instead:
+          # its declared dependencies, read straight out of the tarball and
+          # resolved lock-only — no dependency script ever executes here.
+          TGZ="$(ls -1 -- *.tgz)"
+          mkdir audit-scratch && cd audit-scratch
+          tar -xzOf "../$TGZ" package/package.json \
+            | jq '{name: "rc-audit", private: true, dependencies: (.dependencies // {})}' > package.json
+          npm install --package-lock-only --no-audit --no-fund
+          npm audit --omit=dev --audit-level=high
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-candidate
+          path: |
+            *.tgz
+            *.tgz.sha256
+          if-no-files-found: error
