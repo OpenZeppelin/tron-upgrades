@@ -2,12 +2,8 @@
 
 ## Unreleased
 
-- `@openzeppelin/tron-contracts` is required at `^5.6.0`, the final release,
-  in place of the `^5.6.0-rc.0` range the first release declared. The range
-  already resolved to `5.6.0` for new installs; this moves the declared floor
-  and the lockfiles off the release candidate. The proxy sources are
-  byte-identical between `5.6.0-rc.1` and `5.6.0`, so no deployed bytecode
-  changes.
+- Require `@openzeppelin/tron-contracts` `^5.6.0` instead of the
+  release-candidate range.
 
 ## 0.1.0 (2026-08-22)
 
