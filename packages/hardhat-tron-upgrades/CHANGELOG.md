@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Require `@openzeppelin/tron-contracts` `^5.6.0` instead of the
+  release-candidate range.
+
 ## 0.1.0 (2026-08-22)
 
 First published release.

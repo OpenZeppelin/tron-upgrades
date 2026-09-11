@@ -29,7 +29,7 @@
     "check:types": "tsc -p tsconfig.typetest.json"
   },
   "dependencies": {
-    "@openzeppelin/tron-contracts": "^5.6.0-rc.0",
+    "@openzeppelin/tron-contracts": "^5.6.0",
     "@openzeppelin/upgrades-core": "^1.46.0"
   },
   "peerDependencies": {

@@ -30,7 +30,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@openzeppelin/tron-contracts": "^5.6.0-rc.1",
+    "@openzeppelin/tron-contracts": "^5.6.0",
     "@openzeppelin/upgrades-core": "^1.46.0"
   },
   "peerDependencies": {

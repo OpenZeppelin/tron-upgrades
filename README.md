@@ -26,19 +26,21 @@ following the upstream `openzeppelin-upgrades` layout:
 cd packages/hardhat-tron-upgrades
 npm install
 npm test             # builds, boots a Dockerized TRON node, runs the suite
-npm run test:examples  # consumer E2E: installs the packed tarballs like an npm user
+npm run test:examples  # consumer E2E: installs the packed plugin like an npm user
 ```
 
 `packages/hardhat-tron-upgrades/examples/BoxUpgrades` mirrors upstream's
 examples: a standalone consumer project (own package.json) that installs the
-plugins from packed tarballs (`vendor/` — the pre-publish stand-in for the npm
-registry) and hosts the public-testnet scripts.
+plugin from a packed tarball and hosts the public-testnet scripts.
 
-The unpublished TRON-specific dependencies (the bridge, the contracts library,
-this plugin) install from `vendor/` tarballs — everything else comes from the
-npm registry. A clean clone needs no sibling checkouts. To refresh the vendored contracts library:
-`cd ../tron-contracts && npm pack --ignore-scripts --pack-destination ../tron-upgrades/vendor`
-(tarball installs never run the library's husky `prepare` hook).
+Every dependency comes from the npm registry, the bridge
+(`@openzeppelin/hardhat-tron`) and the contracts library
+(`@openzeppelin/tron-contracts`, `^5.6.0`) included. The one tarball left under
+`vendor/` is this plugin's own: the example's lockfile resolves the plugin to
+it, and `test:examples` then replaces that install with a fresh `npm pack` of
+the checkout and verifies the two are byte-identical before running the
+example suite, so the example always exercises the code under review rather
+than the published release. A clean clone needs no sibling checkouts.
 
 Requirements: Node.js ≥ 20, Docker running.
 
