@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 (2026-09-11)
 
 - Require `@openzeppelin/tron-contracts` `^5.6.0` instead of the
   release-candidate range.
